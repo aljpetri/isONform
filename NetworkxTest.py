@@ -20,7 +20,7 @@ def generateGraphfromIntervals(intervals_to_correct):
         #print("Interval from "+str(inter[0])+" to "+str(inter[1]) +", supported by "+ str(inter[2])+" reads.")
     return DG
 def draw_Graph(DG):
-    pos = nx.planar_layout(DG)
+    pos = nx.spectral_layout(DG)
     nx.draw_networkx(DG, pos, font_weight='bold')
     labels = nx.get_edge_attributes(DG, 'weight')
     nx.draw_networkx_edge_labels(DG,pos, edge_labels=labels)
@@ -28,12 +28,23 @@ def draw_Graph(DG):
 def main():
     #intervals_to_correct=[(10,47,62),(47,67,20)]
     #DG=generateGraphfromIntervals(intervals_to_correct)
+    DG2=nx.read_graphml("outputgraph2.graphml")
     DG=nx.read_graphml("outputgraph.graphml")
-    print(len(DG))
-    print(DG.number_of_edges())
+    print("Number of Nodes for DG:"+str(len(DG)))
+    nodelist=list(DG.nodes)
+    for node in nodelist:
+        print(node)
+    print("Number of Edges for DG:"+str(DG.number_of_edges()))
+    print("Number of Nodes for DG2:" + str(len(DG2)))
+    print("Number of Edges for DG2:" + str(DG2.number_of_edges()))
     draw_Graph(DG)
+    draw_Graph(DG2)
+    print("Simple paths for DG:")
     for path in nx.all_simple_paths(DG,"s","t"):
-        print(path)
+       print(path)
+    #print("Simple paths for DG2:")
+    #for path in nx.all_simple_paths(DG2, "s", "t"):
+    #    print(path)
 
     #G = nx.Graph()
     #i = 1
