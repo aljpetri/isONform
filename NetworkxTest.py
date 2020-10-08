@@ -1,6 +1,16 @@
 
 import networkx as nx
 import matplotlib.pyplot as plt
+"This script generates the visual representation of a graph. "
+def simplifyGraph(DG):
+
+
+
+    simpleDG = nx.contracted_nodes(DG, 1, 3)
+
+    #function to convert string into list of ints: list(map(int, example_string.split(','))) (needed to recover reads_for_node_list)
+#https://networkx.github.io/documentation/stable/_modules/networkx/algorithms/traversal/breadth_first_search.html
+
 def generateGraphfromIntervals(intervals_to_correct):
     DG = nx.DiGraph()
     DG.add_node("s")
@@ -37,11 +47,15 @@ def main():
     print("Number of Edges for DG:"+str(DG.number_of_edges()))
     print("Number of Nodes for DG2:" + str(len(DG2)))
     print("Number of Edges for DG2:" + str(DG2.number_of_edges()))
+    att=nx.get_node_attributes(DG,reads)
+    print("749,762 attributes: "+str(att))
+
     draw_Graph(DG)
     draw_Graph(DG2)
-    print("Simple paths for DG:")
-    for path in nx.all_simple_paths(DG,"s","t"):
-       print(path)
+    #print("Simple paths for DG:")
+    #for i,path in enumerate(nx.all_simple_paths(DG,"s","t")):
+    #   print(i,path)
+
     #print("Simple paths for DG2:")
     #for path in nx.all_simple_paths(DG2, "s", "t"):
     #    print(path)

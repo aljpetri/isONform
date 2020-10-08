@@ -13,10 +13,13 @@ import matplotlib
 import parsefasta
 import math
 import re
+import subprocess
 from collections import deque
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import edlib
+import _pickle as pickle
+from sys import stdout
 
 from modules import create_augmented_reference, help_functions, correct_seqs #,align
 
@@ -378,6 +381,44 @@ def find_most_supported_span(r_id, m1, p1, m1_curr_spans, minimizer_combinations
             all_intervals.append((p1 + k_size, p2, len(seqs) // 3, seqs))
     del seqs
     return tmp_cnt, read_complexity_cnt
+#calls spoa and returns the consensus sequence for the given reads
+def run_spoa(reads, spoa_out_file, spoa_path):
+    with open(spoa_out_file, "w") as output_file:
+        # print('Running spoa...', end=' ')
+        stdout.flush()
+        null = open("/dev/null", "w")
+        subprocess.check_call([ spoa_path, reads, "-l", "0", "-r", "0", "-g", "-2"], stdout=output_file, stderr=null)
+        # print('Done.')
+        stdout.flush()
+    # output_file.close()
+    l = open(spoa_out_file, "r").readlines()
+    consensus = l[1].strip()
+    del l
+    return consensus
+#generates the sequences which are to be aligned using spoa and writes the consensus into a file
+def generate_isoform_using_spoa(curr_best_seqs, reads, k_size, work_dir, max_seqs_to_spoa = 200):
+    """
+        curr_best_seqs is an array with q_id, pos1, pos2
+        the current read is on index 0 in curr_best_seqs array
+    """
+    # print()
+    # print()
+    # print(weight)
+    # print()
+    # print()
+
+    reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
+    for i, (q_id, pos1, pos2) in  enumerate(grouper(curr_best_seqs, 3)):
+        seq = reads[q_id][1][pos1: pos2 + k_size]
+        if i > max_seqs_to_spoa:
+            break
+        reads_path.write(">{0}\n{1}\n".format(str(q_id)+str(pos1)+str(pos2), seq))
+    reads_path.close()
+
+    spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir,"spoa_tmp.fa"), "spoa")
+    consensus_file = open(os.path.join(work_dir, "spoa.fa"), 'w')
+    consensus_file.write(">{0}\n{1}\n".format('consensus', spoa_ref))
+    consensus_file.close()
 def generateSimpleGraphfromIntervals(all_intervals_for_graph):
     G = nx.DiGraph()
     #a source and a sink node are added to the graph in order to have a well-defined start and end for the paths
@@ -392,7 +433,7 @@ def generateSimpleGraphfromIntervals(all_intervals_for_graph):
         # iterate over all intervals, which are in the solution of a certain read
         for inter in intervals_for_read:
             # the name of each node is defined to be startminimizerpos , endminimizerpos
-            name = str(inter[0]) + ", " + str(inter[1])
+            name = str(inter[0]) + ", " + str(inter[1])#+str(r_id)
             if not G.has_node(name):
                 G.add_node(name)
             # add edge between current node and previous node
@@ -403,15 +444,26 @@ def generateSimpleGraphfromIntervals(all_intervals_for_graph):
         G.add_edge(previous_node, "t")
 
     return G
+
+
+# Function to convert a list into a string to enable the writing of a graph (Taken from https://www.geeksforgeeks.org/python-program-to-convert-a-list-to-string/)
+def listToString(s):
+    # initialize an empty string
+    str1 = " "
+
+    # return string
+    return (str1.join(str(s)))
+
+
 #generates a networkx graph from the intervals given in all_intervals_for_graph.
 #INPUT: all_intervals_for_graph: A dictonary holding lists of minimizer intervals.
 def generateGraphfromIntervals(all_intervals_for_graph,k):
     DG = nx.DiGraph()
     #a source and a sink node are added to the graph in order to have a well-defined start and end for the paths
     DG.add_node("s")
-    print("Node s is added to the graph.")
+    #print("Node s is added to the graph.")
     DG.add_node("t")
-    print("Node t is added to the graph.")
+    #print("Node t is added to the graph.")
     # holds the r_id as key and a list of tuples as value: For identification of reads
     known_intervals = {}
 
@@ -435,14 +487,14 @@ def generateGraphfromIntervals(all_intervals_for_graph,k):
                 #if not res:
                 del res
                 #print("adding node "+name)
-                name = str(inter[0]) + ", " + str(inter[1])
+                name = str(inter[0]) + ", " + str(inter[1])+", "+str(r_id)
 
-                if  not DG.has_node(name):
-                    DG.add_node(name)
-                    print("Node " + name + " is added to the graph.")
+
                 read_id=inter[3][slice(0, len(inter[3]), 3)]#recover the read id from the array of instances which was delivered with all_intervals_for_graph
                 start_coord = inter[3][slice(1, len(inter[3]), 3)]#recover the start coordinate of an interval from the array of instances
-                #end_coord = inter[3][slice(2, len(inter[3]), 3)]
+                end_coord = inter[3][slice(2, len(inter[3]), 3)]
+                reads_at_node_list=[]
+                reads_at_node_list.append(r_id)
                 #adds the instance to each read's overview list
                 for i, r in enumerate(read_id):
                     #As not all keys may have been added to the dictionary previously, we add the rest of keys now
@@ -450,21 +502,27 @@ def generateGraphfromIntervals(all_intervals_for_graph,k):
                         known_intervals[r] = []
                     #while the start pos stored in inter[0] has the right position the start positions in the list of instances are at pos-k
                     coord=start_coord[i]+k
+                    end=end_coord[i]
                     #generate a tuple having the least amount of information needed to properly build up the graph, denoting one minimizer interval and add it to known_intervals
-                    tuple=(coord,name)
+                    tuple=(coord,name,end)
                     known_intervals[r].append(tuple)
                     #print("ReadID "+str(r)+" from "+str(start_coord[i])+" to "+str(end_coord[i]))
                     #DONE: Try to find out what to do with all the edges to be added ->main idea: add edge as soon as node was added.
                     #if node is new: Add edges from previous intervals (Where to get this info?), else:
+                    reads_at_node_list.append(r)
+                if  not DG.has_node(name):
+                    reads_at_node_string=listToString(reads_at_node_list)
+                    DG.add_node(name,reads=reads_at_node_string)
+                    #print("Node " + name + " is added to the graph.")
                 # add edge between current node and previous node
                 if DG.has_node(name) and DG.has_node(previous_node):
                     DG.add_edge(previous_node, name)#   weight=weightval
             #if the node was already added to the graph, we still have to find out, whether more edges need to be added to the graph
             else:
-                name = str(inter[0]) + ", " + str(inter[1])
+                name = str(inter[0]) + ", " + str(inter[1])+", "+str(r_id)
                 tup = res[0]
                 name=tup[1]
-                print("Node "+name+" already present in the graph.")
+                #print("Node "+name+" already present in the graph.")
                 #see if previous node and this node are connected by an edge. If not add an edge dedicated to fulfill this need
                 if not DG.has_edge(previous_node,name):
                     if DG.has_node(name) and DG.has_node(previous_node):
@@ -479,6 +537,8 @@ def generateGraphfromIntervals(all_intervals_for_graph,k):
 
     for key, value in known_intervals.items() :
         print (key,value)
+    with open('known_intervals.txt', 'wb') as file:
+        file.write(pickle.dumps(known_intervals))
     return DG
 #draws a directed Graph DG
 def draw_Graph(DG):
@@ -490,6 +550,66 @@ def draw_Graph(DG):
     # labels = nx.get_edge_attributes(DG, 'weight')
     #nx.draw_networkx_edge_labels(DG,pos, edge_labels=labels)
     plt.show()
+def find_equal_reads():
+    file = open('known_intervals.txt', 'rb')
+    known_intervals = pickle.load(file)
+    # sort the tuples by interval start positions.
+    for r_ids, intervals in known_intervals.items():
+        # print(type(intervals))
+        known_intervals[r_ids] = sorted(intervals, key=lambda x: x[0])
+    for key, value in known_intervals.items():
+        print(key, value)
+    node_ids_all_reads = []
+    # find all reads which are completely equal and pop the one with the higher id from the set
+    for r_ids, intervals in known_intervals.items():
+        nodeids = [x[1] for x in intervals]
+        node_ids_all_reads.append(nodeids)
+        print(r_ids, nodeids)
+    print("done")
+    for i in range(0, len(node_ids_all_reads) - 1):
+        poppedreads = []
+        poppedreads.append(i)
+        for j in range(i + 1, len(node_ids_all_reads)):
+            if node_ids_all_reads[i] == node_ids_all_reads[j]:
+                read_to_pop = j + 1
+                if read_to_pop in known_intervals.keys():
+                    known_intervals.pop(read_to_pop)
+                    print("Deleting read " + str(read_to_pop) + " from known_intervals")
+                    poppedreads.append(read_to_pop)
+        node_ids_all_reads.append(poppedreads)
+        # for r_ids2,intervals2 in known_intervals.items():
+        # do not pop if read is only equal to itself
+        #   if not r_ids==r_ids2:
+        # do only pop if all intervals of the reads are equal
+        # change here to only look at the name(id) and not start/stop anymore
+        #      if intervals==intervals2:
+        #          popentries=(r_ids,r_ids2)
+        #          popitems.append(popentries)
+        #          print("deleted read "+str(r_ids2)+"from known_intervals as equal to read "+str(r_ids))
+    # for popits in popitems:
+    #    if popits[0]<popits[1]:
+    #        r_id=popits[1]
+    # print(type(r_id))
+    #        if r_id in known_intervals.keys():
+    #            known_intervals.pop(r_id)
+    for key, value in known_intervals.items():
+        print(key, value)
+    print("And now for the isoforms")
+    for equalreads in node_ids_all_reads:
+        print(equalreads)
+    return node_ids_all_reads
+    # for mainid,otherids in isoforms_by_reads.items():
+    #    print("Read "+str(mainid) +" is equal to the following reads:")
+    #    print(','.join(str(x) for x in otherids))
+    # for popits in popitems:
+    # if popits[0] < popits[1]:
+    #        r_id = popits[1]
+    # print(type(r_id))
+    #        if r_id in known_intervals2.keys():
+    #            known_intervals2.pop(r_id)
+    print("Single occurance reads (no equals found):")
+    # for key, value in known_intervals2.items():
+    #    print(key, value)
 def main(args):
     # start = time()
     #read the file
@@ -649,6 +769,10 @@ def main(args):
                 # print(opt_indicies)
                 intervals_to_correct = get_intervals_to_correct(opt_indicies[::-1], all_intervals)
                 all_intervals_for_graph[r_id]=intervals_to_correct
+                #if r_id == 60:
+                #    print("Intervals to correct read 60:")
+                #    print(intervals_to_correct)
+                #    print("Intervals to correct done")
                 #del all_intervals
                 #all_intervals = []
                 #corrected_seq, other_reads_corrected_regions = correct_read(seq, reads, intervals_to_correct, k_size,
@@ -690,11 +814,20 @@ def main(args):
         for node in nodelist:
             print(node)
         DG2=generateSimpleGraphfromIntervals(all_intervals_for_graph)
-        draw_Graph(DG)
+        #att = nx.get_node_attributes(DG, reads)
+        #print("749,762 attributes: " + str(att))
+        #draw_Graph(DG)
         #draw_Graph(DG2)
         # writes the graph in GraphML format into a file. Makes it easier to work with the graph later on
-        nx.write_graphml_lxml(DG, "outputgraph.graphml")
-        nx.write_graphml_lxml(DG2, "outputgraph2.graphml")
+        #nx.write_graphml_lxml(DG, "outputgraph.graphml")
+        #nx.write_graphml_lxml(DG2, "outputgraph2.graphml")
+        print("finding the reads which make up the isoforms")
+        isoform_reads=find_equal_reads()
+        isoform=[]
+        for iso in isoform_reads:
+            print("hello")
+        for key,value in all_reads.items():
+            print(key,value)
         #for path in nx.all_simple_paths(DG,"s","t"):
         #    print(path)
         #print(all_intervals_for_graph)
@@ -703,8 +836,10 @@ def main(args):
             #print('Interval from ' + start + 'to '+end)
            #print(inter)
             #structure: tuple(start(int),stop(int),weighs(int), instance(array(I<-unsigned int)))
-        #for interval in all_intervals:
-        #    print(interval)
+
+        #for r_id,interval in all_intervals_for_graph.items():
+        #    if r_id==60:
+        #        print(r_id,interval)
         #print(type(opt_indicies))
         #print("Hello World")
         #for index in opt_indicies:
