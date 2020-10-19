@@ -545,43 +545,52 @@ def draw_Graph(DG):
     plt.show()
 
 
-def find_equal_reads(known_intervals):
+def find_equal_reads(known_intervals,delta_len,max_bubblesize):
+    #Deprecated file reader for a file containing known_intervals
     # file = open('known_intervals.txt', 'rb')
     # known_intervals = pickle.load(file)
     # file.close()
+
     # sort the tuples by interval start positions.
     for r_ids, intervals in known_intervals.items():
         # print(type(intervals))
         known_intervals[r_ids] = sorted(intervals, key=lambda x: x[0])
     # for key, value in known_intervals.items():
     #    print(key, value)
+    #the final output of the function: A list of lists structure which contains lists of all r_ids of reads which can be merged
     node_ids_all_reads = []
+    #a list containing all nodeids (meaning the id's of all minimizer spans) present in a read
     nodes_all_reads = []
-
+    #fill the nodes_all_reads with all the intervals found in the reads
     for r_ids, intervals in known_intervals.items():
         nodeids = [x[1] for x in intervals]
         nodes_all_reads.append(nodeids)
         print(r_ids, nodeids)
     print("done")
-    knownreads = []
-
+    #list of reads already considered. If a read has been added into a consensus already we do not have to consider it again
+    considered_reads = []
+    #iterate over all reads' interval lists
     for i in range(0, len(nodes_all_reads)):
-        if not (i + 1 in knownreads):
-            poppedreads = []
-            poppedreads.append(i + 1)
-            knownreads.append(i + 1)
+        #if a read has not yet been considered before
+        if not (i + 1 in considered_reads):
+            # list of reads which are equal to the current read. Those reads will be merged with the current read to form a consensus
+            reads_to_merge = []
+            #add this read to the list of equal reads (+1 as we want to have the read_id, but the iteration starts at 0 (r_ids start with 1)
+            reads_to_merge.append(i + 1)
+            # add this read to the list of considered reads(+1 as we want to have the read_id, but the iteration starts at 0 (r_ids start with 1). We know you now
+            considered_reads.append(i + 1)
+            #this is the step in which we compare the read to all other reads to find out whether there are mergeable ones
             for j in range(i + 1, len(nodes_all_reads)):
-                if nodes_all_reads[i] == nodes_all_reads[j]:
-                    read_to_pop = j + 1
-                    if read_to_pop in known_intervals.keys():
-                        known_intervals.pop(read_to_pop)
-                        print("Deleting read " + str(read_to_pop) + " from known_intervals")
-                        poppedreads.append(read_to_pop)
-                        knownreads.append(read_to_pop)
-            node_ids_all_reads.append(poppedreads)
+                # if a read has not yet been considered before
+                if not (j + 1 in considered_reads):
+                    if nodes_all_reads[i] == nodes_all_reads[j]:
+                        read_to_pop = j + 1
+                        reads_to_merge.append(read_to_pop)
+                        considered_reads.append(read_to_pop)
+            node_ids_all_reads.append(reads_to_merge)
     print("Knownreads:")
-    print(str(len(knownreads)))
-    print(knownreads)
+    print(str(len(considered_reads)))
+    print(considered_reads)
     # for r_ids2,intervals2 in known_intervals.items():
     # do not pop if read is only equal to itself
     #   if not r_ids==r_ids2:
@@ -689,7 +698,7 @@ def run_spoa(reads, spoa_out_file, spoa_path):
                               stdout=output_file, stderr=null)
         # print('Done.')
         stdout.flush()
-    # output_file.close()
+    output_file.close()
     l = open(spoa_out_file, "r").readlines()
     consensus = l[1].strip()
     del l
@@ -910,7 +919,7 @@ def main(args):
         # nx.write_graphml_lxml(DG, "outputgraph.graphml")
         # nx.write_graphml_lxml(DG2, "outputgraph2.graphml")
         print("finding the reads which make up the isoforms")
-        isoform_reads = find_equal_reads(known_intervals)
+        isoform_reads = find_equal_reads(known_intervals,args.delta_len,args.max_bubblesize)
         generate_isoform_using_spoa(isoform_reads, all_reads, k_size, work_dir, max_seqs_to_spoa)
         isoform = []
         # for iso in isoform_reads:
@@ -965,7 +974,9 @@ if __name__ == '__main__':
                                                                  not to be used for clusters with over ~500 reads)')
     parser.add_argument('--disable_numpy', action="store_true",
                         help='Do not require numpy to be installed, but this version is about 1.5x slower than with numpy.')
-
+    parser.add_argument('--delta_len', type=int, default=3, help='Maximum length difference between two reads for which they would still be merged')
+    parser.add_argument('--max_bubblesize', type=int, default=2,
+                        help='Maximum length of a possible bubble for which two reads are merged')
     parser.add_argument('--max_seqs_to_spoa', type=int, default=200, help='Maximum number of seqs to spoa')
     parser.add_argument('--max_seqs', type=int, default=1000,
                         help='Maximum number of seqs to correct at a time (in case of large clusters).')
