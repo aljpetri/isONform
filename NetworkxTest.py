@@ -2,11 +2,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 "This script generates the visual representation of a graph. "
-def simplifyGraph(DG):
 
-
-
-    simpleDG = nx.contracted_nodes(DG, 1, 3)
 
     #function to convert string into list of ints: list(map(int, example_string.split(','))) (needed to recover reads_for_node_list)
 #https://networkx.github.io/documentation/stable/_modules/networkx/algorithms/traversal/breadth_first_search.html
@@ -24,7 +20,7 @@ def generateGraphfromIntervals(intervals_to_correct):
         name=str(inter[0])+", "+str(inter[1])
         DG.add_node(name)
         #weightval=str(inter[2])
-        DG.add_edge(oldname,name, weight=weightval)
+        DG.add_edge(oldname,name)
         oldname = name
         #print("i"+str(i))
         #print("Interval from "+str(inter[0])+" to "+str(inter[1]) +", supported by "+ str(inter[2])+" reads.")
@@ -38,20 +34,20 @@ def draw_Graph(DG):
 def main():
     #intervals_to_correct=[(10,47,62),(47,67,20)]
     #DG=generateGraphfromIntervals(intervals_to_correct)
-    DG2=nx.read_graphml("outputgraph2.graphml")
+    #DG2=nx.read_graphml("outputgraph2.graphml")
     DG=nx.read_graphml("outputgraph.graphml")
     print("Number of Nodes for DG:"+str(len(DG)))
     nodelist=list(DG.nodes)
     for node in nodelist:
         print(node)
     print("Number of Edges for DG:"+str(DG.number_of_edges()))
-    print("Number of Nodes for DG2:" + str(len(DG2)))
-    print("Number of Edges for DG2:" + str(DG2.number_of_edges()))
-    att=nx.get_node_attributes(DG,reads)
-    print("749,762 attributes: "+str(att))
+#    print("Number of Nodes for DG2:" + str(len(DG2)))
+#    print("Number of Edges for DG2:" + str(DG2.number_of_edges()))
+    #att=nx.get_node_attributes(DG)
+    #print("749,762 attributes: "+str(att))
 
     draw_Graph(DG)
-    draw_Graph(DG2)
+#    draw_Graph(DG2)
     #print("Simple paths for DG:")
     #for i,path in enumerate(nx.all_simple_paths(DG,"s","t")):
     #   print(i,path)

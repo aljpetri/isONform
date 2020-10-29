@@ -455,16 +455,19 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
     DG.add_node("t")
     # print("Node t is added to the graph.")
     # holds the r_id as key and a list of tuples as value: For identification of reads
-    known_intervals = {}
-
+    known_intervals = []
+    #print(str(len(all_intervals_for_graph)))
+    for _ in itertools.repeat(None, len(all_intervals_for_graph)):
+        known_intervals.append([])
+    print(known_intervals)
     # iterate through the different reads stored in all_intervals_for_graph. For each read one path is built up from source to sink if the nodes needed are not already present
     for r_id, intervals_for_read in all_intervals_for_graph.items():  # intervals_for_read holds all intervals which make up the solution for the WIS of a read
-        if not r_id in known_intervals:
-            known_intervals[r_id] = []
+        #if not r_id in known_intervals:
+        #    known_intervals[r_id] = []
         # set previous_node to be s. This is the node all subsequent nodes are going to have edges with
         previous_node = "s"
         # the name of each node is defined to be startminimizerpos , endminimizerpos
-        liste = known_intervals[r_id]
+        liste = known_intervals[r_id-1]
         # iterate over all intervals, which are in the solution of a certain read
         for inter in intervals_for_read:
             res = list(filter(lambda x: inter[0] in x, liste))
@@ -477,7 +480,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
                 # if not res:
                 del res
                 # print("adding node "+name)
-                name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
+                name = str(inter[0]) + ", " + str(inter[1])# + ", " + str(r_id)
 
                 read_id = inter[3][slice(0, len(inter[3]),
                                          3)]  # recover the read id from the array of instances which was delivered with all_intervals_for_graph
@@ -485,32 +488,32 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
                                              3)]  # recover the start coordinate of an interval from the array of instances
                 end_coord = inter[3][slice(2, len(inter[3]), 3)]
                 reads_at_node_list = []
-                reads_at_node_list.append(r_id)
+                reads_at_node_list.append((r_id,inter[0],inter[1]))
                 # adds the instance to each read's overview list
                 for i, r in enumerate(read_id):
                     # As not all keys may have been added to the dictionary previously, we add the rest of keys now
-                    if not r in known_intervals:
-                        known_intervals[r] = []
+                    #if not r in known_intervals:
+                    #    known_intervals[r] = []
                     # while the start pos stored in inter[0] has the right position the start positions in the list of instances are at pos-k
                     coord = start_coord[i] + k
                     end = end_coord[i]
                     # generate a tuple having the least amount of information needed to properly build up the graph, denoting one minimizer interval and add it to known_intervals
                     tuple = (coord, name, end)
-                    known_intervals[r].append(tuple)
+                    known_intervals[r-1].append(tuple)
                     # print("ReadID "+str(r)+" from "+str(start_coord[i])+" to "+str(end_coord[i]))
                     # DONE: Try to find out what to do with all the edges to be added ->main idea: add edge as soon as node was added.
                     # if node is new: Add edges from previous intervals (Where to get this info?), else:
-                    reads_at_node_list.append(r)
+                    reads_at_node_list.append((r,coord,end))
                 if not DG.has_node(name):
                     reads_at_node_string = listToString(reads_at_node_list)
-                    DG.add_node(name, reads=reads_at_node_string)
+                    DG.add_node(name, reads=reads_at_node_list)
                     # print("Node " + name + " is added to the graph.")
                 # add edge between current node and previous node
                 if DG.has_node(name) and DG.has_node(previous_node):
                     DG.add_edge(previous_node, name)  # weight=weightval
             # if the node was already added to the graph, we still have to find out, whether more edges need to be added to the graph
             else:
-                name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
+                name = str(inter[0]) + ", " + str(inter[1])# + ", " + str(r_id)
                 tup = res[0]
                 name = tup[1]
                 # print("Node "+name+" already present in the graph.")
@@ -525,8 +528,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
         # if DG.has_node("t") and DG.has_node(previous_node):
         DG.add_edge(previous_node, "t")  # weight=weightval
 
-    for key, value in known_intervals.items():
-        print(key, value)
+    #for key, value in known_intervals.items():
+    #    print(key, value)
     result = (DG, known_intervals)
     with open('known_intervals.txt', 'wb') as file:
         file.write(pickle.dumps(known_intervals))
@@ -544,15 +547,123 @@ def draw_Graph(DG):
     # nx.draw_networkx_edge_labels(DG,pos, edge_labels=labels)
     plt.show()
 
+#TODO: invoke all_intervals_for_graph to retreive changes in the graph
+def get_read_difference(known_intervals,r_id1,r_id2,max_interval_delta,delta_len,max_bubblesize):
+    #list_i contains all nodeids for read r_id1
+    list_r_id1 = map(lambda item: item[1], known_intervals[r_id1])
+    # list_j contains all nodeids for read r_id2
+    list_r_id2 = map(lambda item: item[1], known_intervals[r_id2])
+    #known_inter_r_id_1 contains the list of tuples saved in known_intervals for read r_id1
+    known_inter_r_id_1=known_intervals[r_id1]
+    #known_inter_r_id_1 contains the list of tuples saved in known_intervals for read r_id2
+    known_inter_r_id_2 = known_intervals[r_id2]
+    #a dictionary holding the read id as key and a list of interval ids as a value
+    list_difference= {}
+    #list of interval ids for read r_id1 (value for list_difference)
+    difference1=[]
+    # list of interval ids for read r_id2 (value for list_difference)
+    difference2 =[]
+    #integer value holding the length of the bubble
+    bubblesize=0
+    #integer value holding the end of the interval previous to the bubble
+    prevpos=0
+    #list of bubbles for read r_id 1
+    bubbles_rid_1_len=[]
 
-def find_equal_reads(known_intervals,delta_len,max_bubblesize):
+
+    #iterate over the elements of list_r_id1 and find out, if 'item' is also an element of list_r_id_2
+    for i,item in enumerate(list_r_id1):
+        #if the interval is not in list_r_id2:
+        if item not in list_r_id2:
+            # list of intervals' ids only found in read r_id_1
+            #exclusive_int_r_1 = []
+            # list of intervals' ids only found in read r_id_1
+            #exclusive_int_r_2 = []
+            #if a certain element is in list_r_id1 but not in list_r_id2 it is added to difference1
+            difference1.append(item)
+            #find out whether difference1 is already bigger than the given threshold
+            if len(difference1)>max_interval_delta:
+                #if difference1>max_interval_delta, the difference between the reads is too big
+                read_ids_for_differences = (r_id1, r_id2, difference1, difference2)
+                #The third value in the return statement indicates, whether a too much intervals (or a bubble length) were the reason for telling the reads apart
+                return (True, read_ids_for_differences,True)
+            #if difference1<max_interval_delta
+            else:
+                #this is part of a bubble, therefore increase bubblesize
+                bubblesize+=1
+                #if bubblesize>max_bubblesize do not continue looking at the reads
+                if bubblesize>max_bubblesize:
+                    read_ids_for_differences = (r_id1, r_id2, difference1, difference2)
+                    return (True, read_ids_for_differences,True)
+        #if the interval is also in list_r_id2
+        else:
+            #tupl has the information about the interval(startpos,id,endpos)
+            tupl = known_inter_r_id_1[i]
+            #if the bubblesize is >0 this means we are at the end of a bubble
+            if bubblesize>0:
+                #find out how long (Bp) the bubble was
+                bubblelen_i=tupl[0]-prevpos
+                #append the information about the bubble (interval at end(id),length of bubble) to bubbles_rid_1_len to be able to access it later
+                bubbles_rid_1_len.append((item,bubblelen_i))
+                #set bubblesize to be 0 as the bubble did end here
+                bubblesize=0
+            #get the position of the end of this interval(possibly needed for bubblelength calculation)
+            prevpos = tupl[2]
+    #diff_counter counts the total amount of intervals which are not equal in both reads
+    diff_counter = len(difference1)
+    bubblesize=0
+    prevpos=0
+    # iterate over the elements of list_r_id2 and find out which items are not in list_r_id1
+    for i,item in enumerate(list_r_id2):
+        if item not in list_r_id1:
+            difference2.append(item)
+            diff_counter+=1
+            if diff_counter>max_interval_delta:
+                read_ids_for_differences = (r_id1, r_id2, difference1, difference2)
+                return (True, read_ids_for_differences,True)
+            else:
+                bubblesize+=1
+                if bubblesize>max_bubblesize:
+                    read_ids_for_differences = (r_id1, r_id2, difference1, difference2)
+                    return (True,read_ids_for_differences,True)
+        else:
+            tupl = known_inter_r_id_2[i]
+            if bubblesize > 0:
+                bubblelen_j = tupl[0] - prevpos
+                #bubbles_rid_2_len.append((item, bubblelen_i))
+                #find the tuple in r_id_1 which has the same start interval as we need
+                suitable_tuple=[item_i for item_i in bubbles_rid_1_len if item_i[0] ==item]
+                if suitable_tuple:
+                    len_difference=abs(bubblelen_j-suitable_tuple[1])
+                else:
+                    read_ids_for_differences = (r_id1, r_id2, difference1, difference2)
+                    return (True, read_ids_for_differences,False)
+                if len_difference>delta_len:
+                    read_ids_for_differences = (r_id1, r_id2, difference1, difference2)
+                    return (True, read_ids_for_differences,True)
+                bubblesize = 0
+            prevpos = tupl[2]
+            # list_i.remove(item)
+            # list_j.remove(item)
+    # store the read ids into a tuple to find out which r_id contains which intervals exclusively
+    read_ids_for_differences = (r_id1, r_id2, difference1, difference2)
+    #list_difference[r_id1]=difference1
+    #list_difference[r_id2]=difference2
+    return (False,read_ids_for_differences,False)
+
+
+def update_known_intervals(known_intervals,x):
+    #TODO: write function to update the amount of known intervals (merge nodes) according to the output of get_read_difference
+    print("This function updates the graph to show merged nodes instead of real ones")
+#TODO: write update function for graph (possible in networkx) as a reference
+def find_equal_reads(known_intervals,delta_len,max_bubblesize,max_interval_delta,all_intervals_for_graph):
     #Deprecated file reader for a file containing known_intervals
     # file = open('known_intervals.txt', 'rb')
     # known_intervals = pickle.load(file)
     # file.close()
 
     # sort the tuples by interval start positions.
-    for r_ids, intervals in known_intervals.items():
+    for r_ids, intervals in enumerate(known_intervals):
         # print(type(intervals))
         known_intervals[r_ids] = sorted(intervals, key=lambda x: x[0])
     # for key, value in known_intervals.items():
@@ -561,16 +672,18 @@ def find_equal_reads(known_intervals,delta_len,max_bubblesize):
     node_ids_all_reads = []
     #a list containing all nodeids (meaning the id's of all minimizer spans) present in a read
     nodes_all_reads = []
+    # list to keep track which differences were found between two reads
+    differences_overview = []
     #fill the nodes_all_reads with all the intervals found in the reads
-    for r_ids, intervals in known_intervals.items():
-        nodeids = [x[1] for x in intervals]
-        nodes_all_reads.append(nodeids)
-        print(r_ids, nodeids)
-    print("done")
+    #for r_ids, intervals in enumerate(known_intervals):
+    #    nodeids = [x[1] for x in intervals]
+    #    nodes_all_reads.append(nodeids)
+    #    print(r_ids, nodeids)
+    #print("done")
     #list of reads already considered. If a read has been added into a consensus already we do not have to consider it again
     considered_reads = []
     #iterate over all reads' interval lists
-    for i in range(0, len(nodes_all_reads)):
+    for i in range(0, len(known_intervals)):
         #if a read has not yet been considered before
         if not (i + 1 in considered_reads):
             # list of reads which are equal to the current read. Those reads will be merged with the current read to form a consensus
@@ -580,13 +693,28 @@ def find_equal_reads(known_intervals,delta_len,max_bubblesize):
             # add this read to the list of considered reads(+1 as we want to have the read_id, but the iteration starts at 0 (r_ids start with 1). We know you now
             considered_reads.append(i + 1)
             #this is the step in which we compare the read to all other reads to find out whether there are mergeable ones
-            for j in range(i + 1, len(nodes_all_reads)):
+            for j in range(i + 1, len(known_intervals)):
                 # if a read has not yet been considered before
                 if not (j + 1 in considered_reads):
-                    if nodes_all_reads[i] == nodes_all_reads[j]:
+                    #differing_nodes=nodes_all_reads[i].symmetric_difference(nodes_all_reads[j])
+                    #too_different is a boolean, denoting whether the reads are too different to merge them
+                    too_different,differences,bubble_break=get_read_difference(known_intervals,i,j,max_interval_delta,delta_len,max_bubblesize,all_intervals_for_graph)
+                    if not too_different:
                         read_to_pop = j + 1
                         reads_to_merge.append(read_to_pop)
                         considered_reads.append(read_to_pop)
+                    else:
+                        if bubble_break:
+                            print("bubble_break")
+                        else:
+                            print( "no bubble_break")
+
+                        #for elem in different_nodes[i]:
+                            #nodes_all_reads.index(elem)
+                    #if not different_nodes:
+                        #print(different_nodes)
+                    #if nodes_all_reads[i] == nodes_all_reads[j]:
+
             node_ids_all_reads.append(reads_to_merge)
     print("Knownreads:")
     print(str(len(considered_reads)))
@@ -657,18 +785,18 @@ def generate_isoform_using_spoa(curr_best_seqs, reads, k_size, work_dir, max_seq
             mapping[name].append(singleread[0])
             consensus_file.write(">{0}\n{1}\n".format(name, seq))
         else:
-            print("Equalreads has different size")
+            #print("Equalreads has different size")
             for i, q_id in enumerate(equalreads):
                 singleread = reads[q_id]
                 seq = singleread[1]
-                print(seq)
+                #print(seq)
                 mapping[name].append(singleread[0])
                 if i > max_seqs_to_spoa:
                     break
                 reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
             reads_path.close()
             spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
-            print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
+            #print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
             consensus_file.write(">{0}\n{1}\n".format(name, spoa_ref))
     # print(mapping)
 
@@ -686,7 +814,7 @@ def generate_isoform_using_spoa(curr_best_seqs, reads, k_size, work_dir, max_seq
     #        break
     #    reads_path.write(">{0}\n{1}\n".format(str(q_id), seq))
     # reads_path.close()
-
+    print("Isoforms generated")
 
 # calls spoa and returns the consensus sequence for the given reads
 def run_spoa(reads, spoa_out_file, spoa_path):
@@ -706,8 +834,80 @@ def run_spoa(reads, spoa_out_file, spoa_path):
     null.close()
 
     return consensus
+#method to simplify the graph
+def simplifyGraph(DG,max_bubblesize):
+    """
+            Method to simplify the graph. In the first step the cycles in the graph are looked up and the cyles are told apart from the bubbles
 
+        """
+    UG=DG.to_undirected()
+    #otherfun=list(nx.simple_cycles(DG))
+    #print("other functions' cycles:\n")
+    #print(otherfun)
+    bubble_limit=2*max_bubblesize+2
+    #print("Bubble limit: "+str(bubble_limit))
+    altcyc=nx.simple_cycles(DG)
+    print("Alternative cycles:")
+    list_of_cycles=[]
+    #collect the cycles in the graph (denoting repetative regions)
+    for comp in altcyc:
+        if len(comp)>1:
+            intermediate_cycle=[]
+            for node_i in comp:
+                intermediate = tuple(map(int, node_i.split(', ')))
+                print(intermediate)
+                #print(type(intermediate))
+                intermediate_cycle.append(intermediate)
+                #real_cycles.append(intermediate_sorted)
+                #print(intermediate_sorted)
 
+            cycle_sorted = sorted(intermediate_cycle, key=lambda x: x[0])
+            print(cycle_sorted)
+            list_of_cycles.append(cycle_sorted)
+    if list_of_cycles:
+        print("Found repetative region in reads")
+        for cyc in list_of_cycles:
+            print(cyc)
+
+    #collect the bubbles in the graph and tell them apart from the cycles (Bubbles denote possible mutations in the minimizers)
+    print("List of possible bubbles:")
+    list_of_bubbles = []
+    listofcycles = nx.cycle_basis(UG)
+    for listint,cycle in enumerate(listofcycles):
+        listofnodes=[]
+        if len(cycle)>1:
+            #print(cycle)
+            for node in cycle:
+                mytuple = tuple(map(int, node.split(', ')))
+                #intermediate_sorted = sorted(mytuple, key=lambda x: x[0])
+                listofnodes.append(mytuple)
+                #print(listofnodes)
+            #print (min(listofnodes, key = lambda x: x[0]))
+            #print(max(listofnodes, key=lambda x: x[1]))
+            if not(len(listofnodes)> bubble_limit):
+                possible_bubble_sorted = sorted(listofnodes, key=lambda x: x[0])
+                list_of_bubbles.append(possible_bubble_sorted)
+        else:
+            listofcycles.pop(listint)
+
+    for cycle in list_of_cycles:
+        list_of_bubbles= [x for x in list_of_bubbles if x!= cycle]
+    for bubble in list_of_bubbles:
+        endtuple=bubble[-1]
+        starttuple=bubble[0]
+        endname=endtuple[0]+','+endtuple[1]
+        startname = starttuple[0] + ',' + starttuple[1]
+        list_of_bubbles_sliced=bubble[1:-1]
+        for bub_node in list_of_bubbles_sliced:
+            
+    print(list_of_bubbles)
+    print("Long cycles done")
+    #print("List of cycles:")
+    #print(listofcycles)
+
+    #print(mytuple)
+
+    #simpleDG = nx.contracted_nodes(DG, 1, 3)
 def main(args):
     # start = time()
     # read the file
@@ -872,32 +1072,7 @@ def main(args):
                 #    print("Intervals to correct done")
                 # del all_intervals
                 # all_intervals = []
-                # corrected_seq, other_reads_corrected_regions = correct_read(seq, reads, intervals_to_correct, k_size,
-                #                                                            work_dir, v_depth_ratio_threshold,
-                #                                                            max_seqs_to_spoa, args.disable_numpy,
-                #                                                            args.verbose, args.use_racon)
-                # del intervals_to_correct
-                # for other_r_id, corrected_regions in other_reads_corrected_regions.items():
-                #    for corr_region in corrected_regions:
-                #        previously_corrected_regions[other_r_id].append(corr_region)
 
-            # from pympler import asizeof
-            # print("reads", asizeof.asizeof(reads)/1000000)
-            # # print("read_min_comb", asizeof.asizeof(read_min_comb)/1000000)
-            # print("not_prev_corrected_spans", asizeof.asizeof(not_prev_corrected_spans)/1000000)
-            # print("other_reads_corrected_regions", asizeof.asizeof(other_reads_corrected_regions)/1000000)
-            # print("previously_corrected_regions", asizeof.asizeof(previously_corrected_regions)/1000000)
-            # print("all_intervals", asizeof.asizeof(all_intervals)/1000000)
-            # print("read_min_comb", asizeof.asizeof(read_min_comb)/1000000)
-            # print("quality_values_database", asizeof.asizeof(quality_values_database)/1000000)
-            # print("already_computed", asizeof.asizeof(already_computed)/1000000)
-            # print("minimizer_database", asizeof.asizeof(minimizer_database)/1000000)
-            # print("minimizer_combinations_database", asizeof.asizeof(minimizer_combinations_database)/1000000)
-
-            # corrected_reads[r_id] = (acc, corrected_seq, "+" * len(corrected_seq))
-            # if args.verbose:
-            #    print("@{0}\n{1}\n+\n{2}".format(acc, corrected_seq, "+" * len(corrected_seq)))
-            #    eprint("{0},{1}".format(r_id, corrected_seq))
         print()
         print("Done with batch_id:", batch_id)
         print("Took {0} seconds.".format(time() - batch_start_time))
@@ -906,21 +1081,23 @@ def main(args):
         #     sys.exit()
         # print(type(intervals_to_correct))
         DG, known_intervals = generateGraphfromIntervals(all_intervals_for_graph, k_size)
+        DG.nodes(data=True)
         print("Number of Nodes for DG:" + str(len(DG)))
         nodelist = list(DG.nodes)
         for node in nodelist:
             print(node)
         DG2 = generateSimpleGraphfromIntervals(all_intervals_for_graph)
+        simplifyGraph(DG,args.max_bubblesize)
         # att = nx.get_node_attributes(DG, reads)
         # print("749,762 attributes: " + str(att))
-        # draw_Graph(DG)
+        draw_Graph(DG)
         # draw_Graph(DG2)
         # writes the graph in GraphML format into a file. Makes it easier to work with the graph later on
-        # nx.write_graphml_lxml(DG, "outputgraph.graphml")
+        #nx.write_graphml_lxml(DG, "outputgraph.graphml")
         # nx.write_graphml_lxml(DG2, "outputgraph2.graphml")
-        print("finding the reads which make up the isoforms")
-        isoform_reads = find_equal_reads(known_intervals,args.delta_len,args.max_bubblesize)
-        generate_isoform_using_spoa(isoform_reads, all_reads, k_size, work_dir, max_seqs_to_spoa)
+        print("finding the reads, which make up the isoforms")
+        #isoform_reads = find_equal_reads(known_intervals,args.delta_len,args.max_bubblesize,args.max_interval_delta,all_intervals_for_graph)
+        #generate_isoform_using_spoa(isoform_reads, all_reads, k_size, work_dir, max_seqs_to_spoa)
         isoform = []
         # for iso in isoform_reads:
         #    print("hello")
@@ -974,9 +1151,11 @@ if __name__ == '__main__':
                                                                  not to be used for clusters with over ~500 reads)')
     parser.add_argument('--disable_numpy', action="store_true",
                         help='Do not require numpy to be installed, but this version is about 1.5x slower than with numpy.')
-    parser.add_argument('--delta_len', type=int, default=3, help='Maximum length difference between two reads for which they would still be merged')
+    parser.add_argument('--delta_len', type=int, default=3, help='Maximum length difference between two reads intervals for which they would still be merged')
     parser.add_argument('--max_bubblesize', type=int, default=2,
                         help='Maximum length of a possible bubble for which two reads are merged')
+    parser.add_argument('--max_interval_delta', type=int, default=2,
+                        help='Maximum number of intervals which are allowed to differ in order to still allow a merging of the respective reads')
     parser.add_argument('--max_seqs_to_spoa', type=int, default=200, help='Maximum number of seqs to spoa')
     parser.add_argument('--max_seqs', type=int, default=1000,
                         help='Maximum number of seqs to correct at a time (in case of large clusters).')
