@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 
 from __future__ import print_function
+from SimplifyGraph import *
 import os, sys
 import argparse
 import networkx as nx
@@ -449,10 +450,11 @@ def listToString(s):
 # INPUT: all_intervals_for_graph: A dictonary holding lists of minimizer intervals.
 def generateGraphfromIntervals(all_intervals_for_graph, k):
     DG = nx.DiGraph()
+    reads_at_startend_list = []
     # a source and a sink node are added to the graph in order to have a well-defined start and end for the paths
-    DG.add_node("s")
+    DG.add_node("s",reads=reads_at_startend_list)
     # print("Node s is added to the graph.")
-    DG.add_node("t")
+    DG.add_node("t",reads=reads_at_startend_list)
     # print("Node t is added to the graph.")
     # holds the r_id as key and a list of tuples as value: For identification of reads
     known_intervals = []
@@ -466,6 +468,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
         #    known_intervals[r_id] = []
         # set previous_node to be s. This is the node all subsequent nodes are going to have edges with
         previous_node = "s"
+
         # the name of each node is defined to be startminimizerpos , endminimizerpos
         liste = known_intervals[r_id-1]
         # iterate over all intervals, which are in the solution of a certain read
@@ -834,80 +837,7 @@ def run_spoa(reads, spoa_out_file, spoa_path):
     null.close()
 
     return consensus
-#method to simplify the graph
-def simplifyGraph(DG,max_bubblesize):
-    """
-            Method to simplify the graph. In the first step the cycles in the graph are looked up and the cyles are told apart from the bubbles
 
-        """
-    UG=DG.to_undirected()
-    #otherfun=list(nx.simple_cycles(DG))
-    #print("other functions' cycles:\n")
-    #print(otherfun)
-    bubble_limit=2*max_bubblesize+2
-    #print("Bubble limit: "+str(bubble_limit))
-    altcyc=nx.simple_cycles(DG)
-    print("Alternative cycles:")
-    list_of_cycles=[]
-    #collect the cycles in the graph (denoting repetative regions)
-    for comp in altcyc:
-        if len(comp)>1:
-            intermediate_cycle=[]
-            for node_i in comp:
-                intermediate = tuple(map(int, node_i.split(', ')))
-                print(intermediate)
-                #print(type(intermediate))
-                intermediate_cycle.append(intermediate)
-                #real_cycles.append(intermediate_sorted)
-                #print(intermediate_sorted)
-
-            cycle_sorted = sorted(intermediate_cycle, key=lambda x: x[0])
-            print(cycle_sorted)
-            list_of_cycles.append(cycle_sorted)
-    if list_of_cycles:
-        print("Found repetative region in reads")
-        for cyc in list_of_cycles:
-            print(cyc)
-
-    #collect the bubbles in the graph and tell them apart from the cycles (Bubbles denote possible mutations in the minimizers)
-    print("List of possible bubbles:")
-    list_of_bubbles = []
-    listofcycles = nx.cycle_basis(UG)
-    for listint,cycle in enumerate(listofcycles):
-        listofnodes=[]
-        if len(cycle)>1:
-            #print(cycle)
-            for node in cycle:
-                mytuple = tuple(map(int, node.split(', ')))
-                #intermediate_sorted = sorted(mytuple, key=lambda x: x[0])
-                listofnodes.append(mytuple)
-                #print(listofnodes)
-            #print (min(listofnodes, key = lambda x: x[0]))
-            #print(max(listofnodes, key=lambda x: x[1]))
-            if not(len(listofnodes)> bubble_limit):
-                possible_bubble_sorted = sorted(listofnodes, key=lambda x: x[0])
-                list_of_bubbles.append(possible_bubble_sorted)
-        else:
-            listofcycles.pop(listint)
-
-    for cycle in list_of_cycles:
-        list_of_bubbles= [x for x in list_of_bubbles if x!= cycle]
-    for bubble in list_of_bubbles:
-        endtuple=bubble[-1]
-        starttuple=bubble[0]
-        endname=endtuple[0]+','+endtuple[1]
-        startname = starttuple[0] + ',' + starttuple[1]
-        list_of_bubbles_sliced=bubble[1:-1]
-        for bub_node in list_of_bubbles_sliced:
-            
-    print(list_of_bubbles)
-    print("Long cycles done")
-    #print("List of cycles:")
-    #print(listofcycles)
-
-    #print(mytuple)
-
-    #simpleDG = nx.contracted_nodes(DG, 1, 3)
 def main(args):
     # start = time()
     # read the file
@@ -1087,7 +1017,8 @@ def main(args):
         for node in nodelist:
             print(node)
         DG2 = generateSimpleGraphfromIntervals(all_intervals_for_graph)
-        simplifyGraph(DG,args.max_bubblesize)
+        #add_Nodes(DG,args.delta_len)
+        simplifyGraph(DG,args.max_bubblesize,args.delta_len)
         # att = nx.get_node_attributes(DG, reads)
         # print("749,762 attributes: " + str(att))
         draw_Graph(DG)
