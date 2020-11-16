@@ -427,6 +427,7 @@ def generateSimpleGraphfromIntervals(all_intervals_for_graph):
             name = str(inter[0]) + ", " + str(inter[1])  # +str(r_id)
             if not G.has_node(name):
                 G.add_node(name)
+
             # add edge between current node and previous node
             G.add_edge(previous_node, name)
             # whatever we did before, we have to set previous_node to the node we looked at in this iteration to keep going
@@ -471,8 +472,11 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
 
         # the name of each node is defined to be startminimizerpos , endminimizerpos
         liste = known_intervals[r_id-1]
+        #print("liste:")
+        #print(liste)
         # iterate over all intervals, which are in the solution of a certain read
         for inter in intervals_for_read:
+            #res denotes a list containing all occurances having start pos
             res = list(filter(lambda x: inter[0] in x, liste))
             if len(res) == 0:
                 # for r_id, liste in known_intervals.items():
@@ -491,7 +495,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
                                              3)]  # recover the start coordinate of an interval from the array of instances
                 end_coord = inter[3][slice(2, len(inter[3]), 3)]
                 reads_at_node_list = []
-                reads_at_node_list.append((r_id,inter[0],inter[1]))
+                #reads_at_node_list.append((r_id,inter[0],inter[1]))
                 # adds the instance to each read's overview list
                 for i, r in enumerate(read_id):
                     # As not all keys may have been added to the dictionary previously, we add the rest of keys now
@@ -516,14 +520,19 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
                     DG.add_edge(previous_node, name)  # weight=weightval
             # if the node was already added to the graph, we still have to find out, whether more edges need to be added to the graph
             else:
-                name = str(inter[0]) + ", " + str(inter[1])# + ", " + str(r_id)
+                #name = str(inter[0]) + ", " + str(inter[1])# + ", " + str(r_id)
+                #self loops occur, as tup is the same twice(this is due the structure of known intervals i suppose)
                 tup = res[0]
                 name = tup[1]
                 # print("Node "+name+" already present in the graph.")
                 # see if previous node and this node are connected by an edge. If not add an edge dedicated to fulfill this need
                 if not DG.has_edge(previous_node, name):
+                    #Here wrongly self-loops are added to the graph, not sure yet why that happens
                     if DG.has_node(name) and DG.has_node(previous_node):
-                        DG.add_edge(previous_node, name)
+                        #rule out self loops as they mess up the outcoming graph
+                        if not(previous_node == name):
+                            #print("wanting to add edge from " +previous_node+" to node "+ name)
+                            DG.add_edge(previous_node, name)
             # whatever we did before, we have to set previous_node to the node we looked at in this iteration to keep going
             previous_node = name
             # weightval = r_id
@@ -1011,11 +1020,11 @@ def main(args):
         #     sys.exit()
         # print(type(intervals_to_correct))
         DG, known_intervals = generateGraphfromIntervals(all_intervals_for_graph, k_size)
-        DG.nodes(data=True)
+        #DG.nodes(data=True)
         print("Number of Nodes for DG:" + str(len(DG)))
         nodelist = list(DG.nodes)
-        for node in nodelist:
-            print(node)
+        #for node in nodelist:
+        #    print(node)
         DG2 = generateSimpleGraphfromIntervals(all_intervals_for_graph)
         #add_Nodes(DG,args.delta_len)
         simplifyGraph(DG,args.max_bubblesize,args.delta_len)
