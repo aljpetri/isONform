@@ -101,22 +101,38 @@ def find_repetative_regions(DG):
                 intermediate_cycle.append((node_i,intermediate))
                 # real_cycles.append(intermediate_sorted)
                 # print(intermediate_sorted)
-                if not node_i in cycle_nodes:
-                    cycle_nodes.append(node_i)
+                #if not node_i in cycle_nodes:
+                #    cycle_nodes.append(node_i)
             cycle_sorted = sorted(intermediate_cycle, key=lambda x: x[0])
+            print("Cycle_sorted type")
+            print(str(type(cycle_sorted)))
             print(cycle_sorted)
             list_of_cycles.append(cycle_sorted)
     if list_of_cycles:
         print("Found repetative region in reads")
         for cyc in list_of_cycles:
             print(cyc)
-    return (list_of_cycles,cycle_nodes)
-def resolve_cycles(cycle_nodes,list_of_cycles,DG):
+    return (list_of_cycles)
+
+"""
+Method used to break the cycles which are present in the graph
+INPUT: DG Directed Graph
+OUTPUT: DG Directed Graph altered to not contain cycles anymore
+"""
+def resolve_cycles(list_of_cycles,DG):
+    #print(cycle_nodes)
     for cycle in list_of_cycles:
+        print("Cycle:")
+        print(cycle)
         reads_in_cycle=[]
-        for node in cycle_nodes:
-            readlist = (node,DG.nodes[node]['reads'])
+        cycle_nodes=[]
+        for node in cycle:
+            readlist = (node[0],DG.nodes[node[0]]['reads'])
             reads_in_cycle.append(readlist)
+            if not node[0] in cycle_nodes:
+                cycle_nodes.append(node[0])
+        print("Cycle_Nodes:")
+        print(cycle_nodes)
     for i,readlist in enumerate(reads_in_cycle):
         node=readlist[0]
         list_of_reads=readlist[1]
@@ -138,15 +154,55 @@ def resolve_cycles(cycle_nodes,list_of_cycles,DG):
         print(multiple_reads)
         print(node)
         print(list_of_reads)
+        multi_info={}
         if multiple_reads:
-            first_mult_read=[item for item in list_of_reads if item[0] == multiple_reads[0]]
-            print("Firstmultread")
-            print(first_mult_read)
-        DG.nodes[node]['reads']
+            for one_multi_read in multiple_reads:
+                mult_read_info=[item for item in list_of_reads if item[0] == one_multi_read]
+                mult_read_pos=[]
+                for info in mult_read_info:
+                    mult_read_pos.append((info[1],info[2]))
+                multi_info[one_multi_read]=mult_read_pos
+            for i in range(0,max_count):
+                if i>0:
+                    print("Firstmultread")
+                    print(multi_info)
+                    node_info=[]
+                    for key,value in multi_info.items():
+                        tuple_to_del=(key,value[i][0],value[i][1])
+                        node_info.append(tuple_to_del)
+                        list_of_reads.remove(tuple_to_del)
+                        print(tuple_to_del)
+                    print("List of reads")
+                    print(list_of_reads)
+                    print("Node Info")
+                    print(node_info)
+            print("Outgoing Edges")
+            #find the edges which point FROM the repeating node
+            out_edges = list(DG.edges(node))
+            #if edge[0] not in cycle_nodes:
+                #TODO get "other" node and iterate over both nodes' read lists. Find the occurance which makes the most sense for the edge and assign it to correct node.
+            #    in_edge_new_node = edge
+            #    DG.remove_edge(edge)
+            print("Edges done")
+            #print(cycle_nodes[-1])
+            #print("Firstmultread")
+            #print(multi_info)
+            #DG.addNode()
+            print("In edges:")
+            print(DG.in_edges(node))
+            in_edges=list(DG.in_edges(node))
+            print(type(in_edges))
+            print(in_edges[-1])
+            #find the edges which close the cycle by pointing INTO the repeating node
+ #           for edge in in_edges:
+
+  #              if edge[0] in cycle_nodes:
+  #                  in_edge_new_node=edge
+  #                  DG.remove_edge(edge)
 
 """Overall method used to simplify the graph
 During this method: - Cycles (denoting repetative regions) in the graph are identified  and resolved
-                    - Nodes are added (using delta_len, to make sure, no INDELS were overseen
+                    - Nodes are added (using delta_len, to make sure, no INDELS were overseen)
                     - Bubbles are identified and if possible popped             
 INPUT:  DG: Directed Graph before simplifications,
         max_bubblesize: maximum number of elements making up a bubble
@@ -154,10 +210,15 @@ INPUT:  DG: Directed Graph before simplifications,
 OUTPUT: DG: Graph after simplification took place    """
 def simplifyGraph(DG,max_bubblesize,delta_len):
     #remove edges which yield self loops, not sure yet whether it makes sense to remove or if needed
-    DG.remove_edges_from(nx.selfloop_edges(DG))
-    list_of_cycles,cycle_nodes=find_repetative_regions(DG)
-    resolve_cycles(cycle_nodes,list_of_cycles,DG)
+    print("self loops")
+    print(list(nx.selfloop_edges(DG)))
+    #DG.remove_edges_from(nx.selfloop_edges(DG))
+    #list_of_cycles=find_repetative_regions(DG)
+    #resolve_cycles(list_of_cycles,DG)
     #iterate_edges_to_add_nodes(DG,delta_len,cycle_nodes)
+    paths = list(nx.all_simple_paths(DG, source="s", target="t"))
+    #print(list(paths))
+    print("Found "+str(len(paths))+ "simple paths")
 
 
 def find_bubbles(DG,max_bubblesize,delta_len):
