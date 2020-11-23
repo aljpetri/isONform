@@ -545,11 +545,14 @@ def generateGraphfromIntervals_old(all_intervals_for_graph, k):
     with open('known_intervals.txt', 'wb') as file:
         file.write(pickle.dumps(known_intervals))
     return result
-# generates a networkx graph from the intervals given in all_intervals_for_graph.
+""" generates a networkx graph from the intervals given in all_intervals_for_graph.
 # INPUT: all_intervals_for_graph: A dictonary holding lists of minimizer intervals.
+"""
 def generateGraphfromIntervals(all_intervals_for_graph, k):
     DG = nx.DiGraph()
     reads_at_startend_list = []
+    for i in range(1,len(all_intervals_for_graph)+1):
+        reads_at_startend_list.append(i)
     # a source and a sink node are added to the graph in order to have a well-defined start and end for the paths
     DG.add_node("s",reads=reads_at_startend_list)
     # print("Node s is added to the graph.")
@@ -561,6 +564,10 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
     for _ in itertools.repeat(None, len(all_intervals_for_graph)):
         known_intervals.append([])
     #print(known_intervals)
+    nodes_for_graph = {}
+    prior_read_infos = []
+    for _ in itertools.repeat(None, len(all_intervals_for_graph)):
+        prior_read_infos.append([])
     # iterate through the different reads stored in all_intervals_for_graph. For each read one path is built up from source to sink if the nodes needed for that are not already present
     for r_id, intervals_for_read in all_intervals_for_graph.items():  # intervals_for_read holds all intervals which make up the solution for the WIS of a read
         #if not r_id in known_intervals:
@@ -569,91 +576,96 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
         previous_node = "s"
 
         # the name of each node is defined to be startminimizerpos , endminimizerpos
-        #liste gives a list of all the intervals already present in the read which currently is added to the graph
-        liste = known_intervals[r_id-1]
-        print("liste:")
-        print(liste)
+        #if there are any infos about this read, save t
+        if prior_read_infos[r_id - 1]:
+            prior_info=prior_read_infos[r_id-1]
         # iterate over all intervals, which are in the solution of a certain read
         for inter in intervals_for_read:
-            #res denotes a list containing all known intervals having startpos
-            # do some lambda magic to find the tuples containing inter[0] as first element
-            res= []
-            for tup in liste:
-                if tup[0]==inter[0]:
-                    res.append(tup)
-            #res = list(filter(lambda x[0]: inter[0] in x, liste))
-            #print("inter[0]")
-            #print(inter[0])
-            #print("res:")
-            #print(res)
-            if len(res) == 0:
-                # only add interval node, if the interval is not already known (meaning it is present in known_intervals)
+            #access prior_read_infos, if any reads are already known
+            if prior_read_infos[r_id-1]:
+                #list comprehension magic to find out whether a read with start at inter[0] and end at inter[1] exists in prior_info
+                known_tuples=[item for item in prior_info if item[1] == inter[0] and item[2]==inter[1]]
+                #if such an element exists
+                if known_tuples:
+                        #known_tuples is a list of tuples, but should only contain 1 element
+                        name = known_tuples[0][0]
+                        #update the read information of node name
+                        prev_nodelist=nodes_for_graph[name]
+                        prev_nodelist.append((r_id, inter[0], inter[1]))
+                        nodes_for_graph[name]=prev_nodelist
+                        #only add a new edge if the edge was not present before
+                        if not DG.has_edge(previous_node,name):
+                            DG.add_edge(previous_node, name)
+                        #keep known_intervals up to date
+                        known_intervals[r_id-1].append((inter[0],name,inter[1]))
 
-                # if such an element exists, we do nothing, else we add the interval into the graph and add the information of the interval for each read
-                # if not res:
-                del res
-                # print("adding node "+name)
-                name = str(inter[0]) + ", " + str(inter[1])# + ", " + str(r_id)
-
+                # if the information for the interval was not yet found in a previous read (meaning the interval is new)
+                else:
+                        #print("else")
+                        nodelist = []
+                        # add a node into nodes_for_graph
+                        name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
+                        #add the read information for the node
+                        nodelist.append((r_id, inter[0], inter[1]))
+                        nodes_for_graph[name] = nodelist
+                        DG.add_node(name)
+                        #keep known_intervas up to date
+                        known_intervals[r_id - 1].append((inter[0], name, inter[1]))
+                        #connect the node to the previous one
+                        DG.add_edge(previous_node, name)
+                        read_id = inter[3][slice(0, len(inter[3]),
+                                     3)]  # recover the read id from the array of instances which was delivered with all_intervals_for_graph
+                        start_coord = inter[3][slice(1, len(inter[3]),
+                                         3)]  # recover the start coordinate of an interval from the array of instances
+                        end_coord = inter[3][slice(2, len(inter[3]), 3)]
+                        #iterate through the retreived information and store it in prior_read_infos only for subsequent reads
+                        for i, r in enumerate(read_id):
+                            if not r <= r_id:
+                                start = start_coord[i] + k
+                                end = end_coord[i]
+                                tuple_for_data_structure = (name, start, end)
+                                prior_read_infos[r-1].append(tuple_for_data_structure)
+            #if the information for the interval was not yet found in a previous read(should only happen for read 1)
+            else:
+                #print("else")
+                nodelist = []
+                # add a node into nodes_for_graph
+                name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
+                # add the read information for the node
+                nodelist.append((r_id, inter[0], inter[1]))
+                nodes_for_graph[name] = nodelist
+                DG.add_node(name)
+                # keep known_intervas up to date
+                known_intervals[r_id - 1].append((inter[0], name, inter[1]))
+                # connect the node to the previous one
+                DG.add_edge(previous_node, name)
                 read_id = inter[3][slice(0, len(inter[3]),
                                          3)]  # recover the read id from the array of instances which was delivered with all_intervals_for_graph
                 start_coord = inter[3][slice(1, len(inter[3]),
                                              3)]  # recover the start coordinate of an interval from the array of instances
                 end_coord = inter[3][slice(2, len(inter[3]), 3)]
-                reads_at_node_list = []
-                #reads_at_node_list.append((r_id,inter[0],inter[1]))
-                # adds the instance to each read's overview list
+                # iterate through the retreived information and store it in prior_read_infos only for subsequent reads
                 for i, r in enumerate(read_id):
-                    # As not all keys may have been added to the dictionary previously, we add the rest of keys now
-                    #if not r in known_intervals:
-                    #    known_intervals[r] = []
-                    # while the start pos stored in inter[0] has the right position the start positions in the list of instances are at pos-k
-                    coord = start_coord[i] + k
-                    end = end_coord[i]
-                    # generate a tuple having the least amount of information needed to properly build up the graph, denoting one minimizer interval and add it to known_intervals
-                    tuple = (coord, name, end)
-                    known_intervals[r-1].append(tuple)
-                    # print("ReadID "+str(r)+" from "+str(start_coord[i])+" to "+str(end_coord[i]))
-                    # DONE: Try to find out what to do with all the edges to be added ->main idea: add edge as soon as node was added.
-                    # if node is new: Add edges from previous intervals (Where to get this info?), else:
-                    reads_at_node_list.append((r,coord,end))
-                if not DG.has_node(name):
-                    reads_at_node_string = listToString(reads_at_node_list)
-                    DG.add_node(name, reads=reads_at_node_list)
-                    # print("Node " + name + " is added to the graph.")
-                # add edge between current node and previous node
-                if DG.has_node(name) and DG.has_node(previous_node):
-                    DG.add_edge(previous_node, name)  # weight=weightval
-            # if the node was already added to the graph, we still have to find out, whether more edges need to be added to the graph
-            else:
-                #name = str(inter[0]) + ", " + str(inter[1])# + ", " + str(r_id)
-                #self loops occur, as tup is the same twice(this is due the structure of known intervals i suppose)
-                tup = res[0]
-                name = tup[1]
-                # print("Node "+name+" already present in the graph.")
-                # see if previous node and this node are connected by an edge. If not add an edge dedicated to fulfill this need
-                if not DG.has_edge(previous_node, name):
-                    #Here wrongly self-loops are added to the graph, not sure yet why that happens
-                    if DG.has_node(name) and DG.has_node(previous_node):
-                        #rule out self loops as they mess up the outcoming graph
-                        if not(previous_node == name):
-                            #print("wanting to add edge from " +previous_node+" to node "+ name)
-                            DG.add_edge(previous_node, name)
-            # whatever we did before, we have to set previous_node to the node we looked at in this iteration to keep going
+                    if not r <= r_id:
+                        start = start_coord[i] + k
+                        end = end_coord[i]
+                        tuple_for_data_structure = (name, start, end)
+                        prior_read_infos[r - 1].append(tuple_for_data_structure)
+            #set the previous node for the next iteration
             previous_node = name
-            # weightval = r_id
-        # the last node of a path is connected to the sink node t
-        # if DG.has_node("t") and DG.has_node(previous_node):
-        DG.add_edge(previous_node, "t")  # weight=weightval
-
-    #for key, value in known_intervals.items():
-    #    print(key, value)
+        #add an edge from name to "t" as name was the last node in the read
+        if not DG.has_edge(name, "t"):
+        # print("I have no idea what I'm doing here!")
+            DG.add_edge(name,"t")
+        #delete the entry of prior_read_infos just to save some space (set to empty list to keep coordinates correct
+        prior_read_infos[r_id-1]=[]
+    #print("Nodes for graph")
+        #print(nodes_for_graph)
+    #print(nodes_for_graph)
+    #set the node attributes to be nodes_for_graph, very convenient way of solving this
+    nx.set_node_attributes(DG,nodes_for_graph,name="reads")
+    #return DG and known_intervals as this makes some operations easier
     result = (DG, known_intervals)
-    print("Known_intervals")
-    print(known_intervals)
-    print("Known_intervals done")
-    with open('known_intervals.txt', 'wb') as file:
-        file.write(pickle.dumps(known_intervals))
     return result
 
 def check_graph_correctness(known_intervals,all_intervals_for_graph):
