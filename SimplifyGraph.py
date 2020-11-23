@@ -1,5 +1,43 @@
 import networkx as nx
 from collections import Counter
+
+"""
+function to find cycles in the graph (, which denote repetitive regions)
+INPUT: DG Directed Graph
+OUTPUT: List_of_cycles: A list holding all cycles present in DG
+"""
+def find_repetative_regions(DG):
+    # collect the cycles in the graph (denoting repetative regions) using the builtin networkx function
+    altcyc = nx.simple_cycles(DG)
+    print("Alternative cycles:")
+    print(altcyc)
+    #data structure which holds all the cycles in the graph
+    list_of_cycles = []
+    #iterate over the cycles to retrive all nodes which are part of the cycles
+    for comp in altcyc:
+        #if len(comp) > 1:
+        intermediate_cycle = []
+        #iterate over the nodes in each cycle to get a better output format (start, nodename,end)
+        for node_i in comp:
+            intermediate = tuple(map(int, node_i.split(', ')))
+            print(intermediate)
+            # print(type(intermediate))
+            intermediate_cycle.append((node_i,intermediate))
+            # real_cycles.append(intermediate_sorted)
+            # print(intermediate_sorted)
+            #if not node_i in cycle_nodes:
+            #    cycle_nodes.append(node_i)
+            #sort the nodes in a cycle by start coordinates to simplify the resolving of cycles later on
+        cycle_sorted = sorted(intermediate_cycle, key=lambda x: x[0])
+        #print("Cycle_sorted type")
+        #print(str(type(cycle_sorted)))
+        #print(cycle_sorted)
+        list_of_cycles.append(cycle_sorted)
+    if list_of_cycles:
+        print("Found repetative region in reads")
+        for cyc in list_of_cycles:
+            print(cyc)
+    return (list_of_cycles)
 def iterate_edges_to_add_nodes(DG,delta_len,list_of_cycles):
     print(delta_len)
     edgesView=DG.edges.data()
@@ -80,39 +118,7 @@ def add_nodes(startnode,startlist,endnode,endlist,delta_len,cycle_nodes):
         start_r_id = starttuple[0]
         endtuple_list = [tup for tup in endlist if tup[0] == start_r_id]
 
-"""
-function to find cycles in the graph (, which denote repetitive regions)
-INPUT: DG Directed Graph
-OUTPUT: List_of_cycles: A list holding all cycles present in DG
-"""
-def find_repetative_regions(DG):
-    altcyc = nx.simple_cycles(DG)
-    print("Alternative cycles:")
-    list_of_cycles = []
-    cycle_nodes=[]
-    # collect the cycles in the graph (denoting repetative regions)
-    for comp in altcyc:
-        if len(comp) > 1:
-            intermediate_cycle = []
-            for node_i in comp:
-                intermediate = tuple(map(int, node_i.split(', ')))
-                print(intermediate)
-                # print(type(intermediate))
-                intermediate_cycle.append((node_i,intermediate))
-                # real_cycles.append(intermediate_sorted)
-                # print(intermediate_sorted)
-                #if not node_i in cycle_nodes:
-                #    cycle_nodes.append(node_i)
-            cycle_sorted = sorted(intermediate_cycle, key=lambda x: x[0])
-            print("Cycle_sorted type")
-            print(str(type(cycle_sorted)))
-            print(cycle_sorted)
-            list_of_cycles.append(cycle_sorted)
-    if list_of_cycles:
-        print("Found repetative region in reads")
-        for cyc in list_of_cycles:
-            print(cyc)
-    return (list_of_cycles)
+
 
 """
 Method used to break the cycles which are present in the graph
@@ -213,7 +219,7 @@ def simplifyGraph(DG,max_bubblesize,delta_len):
     print("self loops")
     print(list(nx.selfloop_edges(DG)))
     #DG.remove_edges_from(nx.selfloop_edges(DG))
-    #list_of_cycles=find_repetative_regions(DG)
+    list_of_cycles=find_repetative_regions(DG)
     #resolve_cycles(list_of_cycles,DG)
     #iterate_edges_to_add_nodes(DG,delta_len,cycle_nodes)
     paths = list(nx.all_simple_paths(DG, source="s", target="t"))

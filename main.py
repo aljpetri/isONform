@@ -1121,7 +1121,7 @@ def main(args):
                 # print(opt_indicies)
                 intervals_to_correct = get_intervals_to_correct(opt_indicies[::-1], all_intervals)
                 all_intervals_for_graph[r_id] = intervals_to_correct
-                # if r_id == 60:
+                #if r_id == 2:
                 #    print("Intervals to correct read 60:")
                 #    print(intervals_to_correct)
                 #    print("Intervals to correct done")
@@ -1137,19 +1137,19 @@ def main(args):
         # print(type(intervals_to_correct))
         with open('all_intervals.txt', 'wb') as file:
             file.write(pickle.dumps(all_intervals_for_graph))
-        for r_id,intervals_to_correct in all_intervals_for_graph.items():
-            if(r_id==2):
-                print("intervals to correct")
-                print(intervals_to_correct)
-                print("intervals to correct done")
+        #for r_id,intervals_to_correct in all_intervals_for_graph.items():
+            #if(r_id==2):
+                #print("intervals to correct")
+                #print(intervals_to_correct)
+                #print("intervals to correct done")
         DG, known_intervals = generateGraphfromIntervals(all_intervals_for_graph, k_size)
-        DG_old, known_intervals_old = generateGraphfromIntervals_old(all_intervals_for_graph, k_size)
+        #DG_old, known_intervals_old = generateGraphfromIntervals_old(all_intervals_for_graph, k_size)
         check_graph_correctness(known_intervals,all_intervals_for_graph)
-        #DG.nodes(data=True)
-        #print("Number of Nodes for DG:" + str(len(DG)))
-        #nodelist = list(DG.nodes)
-
-        #print("number of edges in DG:" + str(DG.number_of_edges()))
+        DG.nodes(data=True)
+        print("Number of Nodes for DG:" + str(len(DG)))
+        nodelist = list(DG.nodes)
+        print(nodelist)
+        print("number of edges in DG:" + str(DG.number_of_edges()))
         #for node in nodelist:
         #    print(node)
 
