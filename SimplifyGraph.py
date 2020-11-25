@@ -1,6 +1,6 @@
 import networkx as nx
 from collections import Counter
-
+from main import draw_Graph
 """
 function to find cycles in the graph (, which denote repetitive regions)
 INPUT: DG Directed Graph
@@ -63,7 +63,6 @@ def iterate_edges_to_add_nodes(DG,delta_len,list_of_cycles):
         #print(startlist)
         add_nodes(startnode,startlist,endnode,endlist,delta_len,list_of_cycles)
 def add_nodes(startnode,startlist,endnode,endlist,delta_len,cycle_nodes):
-    #TODO: Find out whether tuple is in a cycle. If yes take the positions with the minimum distance to measure if over delta_len
     startnode_in_cyc=False
     endnode_in_cyc = False
     print(cycle_nodes)
@@ -123,8 +122,9 @@ def add_nodes(startnode,startlist,endnode,endlist,delta_len,cycle_nodes):
 """
 Method used to break the cycles which are present in the graph
 INPUT: DG Directed Graph
-OUTPUT: DG Directed Graph altered to not contain cycles anymore
+OUTPUT: DG Directed Graph altered to not contain cycles anymore(this means that nodes which occur more then once are split )
 """
+#TODO: Add resolving method for self cycles (directly repeating intervals)
 def resolve_cycles(list_of_cycles,DG):
     #print(cycle_nodes)
     for cycle in list_of_cycles:
@@ -132,6 +132,7 @@ def resolve_cycles(list_of_cycles,DG):
         print(cycle)
         reads_in_cycle=[]
         cycle_nodes=[]
+        #generate a set reads_in_cycle which contains sets of node-names and the reads which the node contains
         for node in cycle:
             readlist = (node[0],DG.nodes[node[0]]['reads'])
             reads_in_cycle.append(readlist)
@@ -139,6 +140,7 @@ def resolve_cycles(list_of_cycles,DG):
                 cycle_nodes.append(node[0])
         print("Cycle_Nodes:")
         print(cycle_nodes)
+        #iterate through all nodes of all cycles in the graph
     for i,readlist in enumerate(reads_in_cycle):
         node=readlist[0]
         list_of_reads=readlist[1]
@@ -225,13 +227,47 @@ def simplifyGraph(DG,max_bubblesize,delta_len):
     paths = list(nx.all_simple_paths(DG, source="s", target="t"))
     #print(list(paths))
     print("Found "+str(len(paths))+ "simple paths")
+    startnode = 's'
+    endnode = '70, 101, 1'
+    print("merging of nodes")
+    DG=merge_nodes(DG)
+    draw_Graph(DG)
+    print("number of nodes after merge_nodes:")
+    print("Number of Nodes for DG:" + str(len(DG)))
+    nodelist = list(DG.nodes)
+    print(nodelist)
+    edgelist=list(DG.edges.data())
+    print(edgelist)
+    print("number of edges in DG:" + str(DG.number_of_edges()))
 
+"""function to merge consecutive nodes, if they contain the same reads to simplify the graph
+    INPUT: DG Directed Graph
+    OUTPUT: DG: Directed Graph with merged nodes
+"""
+def merge_nodes(DG):
+    #iterate over the edges to find all pairs of nodes
+    edgesView=DG.edges.data()
+    for ed_ge in edgesView:
+        startnode = ed_ge[0]
+        endnode = ed_ge[1]
+        #we only need to know the out degree of the start node and the end degree of the end node
+        start_out_degree = DG.out_degree(startnode)
+        end_in_degree = DG.in_degree(endnode)
+        #if the degrees are both equal to 1 and if none of the nodes is s or t
+        if(start_out_degree==end_in_degree==1and startnode!="s"and endnode!="t"):
+            print("Merging nodes "+startnode+" and "+endnode)
+            #use the builtin function to merge nodes, not yet sure whether this is the correct way of merging nodes
+            DG=nx.contracted_nodes(DG, startnode,endnode)
+    return DG
 
-def find_bubbles(DG,max_bubblesize,delta_len):
-    """
-            Method to simplify the graph. In the first step the cycles in the graph are looked up and the cyles are told apart from the bubbles
-
+""" Method to simplify the graph. In the first step the cycles in the graph are looked up and the cyles are told apart from the bubbles
+    INPUT:  DG  Directed Graph
+            max_bubblesize  parameter giving the maximum size of a bubble to still pop it (TODO: properly define max_bubblesize
+            delta_len   parameter giving the maximum length difference between two paths to still pop the bubble
+    OUTPUT: DG Directed Graph without bubbles
         """
+def find_bubbles(DG,max_bubblesize,delta_len):
+
     UG=DG.to_undirected()
     #otherfun=list(nx.simple_cycles(DG))
     #print("other functions' cycles:\n")

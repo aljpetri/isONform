@@ -198,6 +198,7 @@ def main():
     max_bubblesize=4
     DG,known_intervals = generateGraphfromIntervals(all_intervals_for_graph, k_size)
     check_graph_correctness(known_intervals,all_intervals_for_graph)
+    print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     simplifyGraph(DG,max_bubblesize,delta_len)
     #DG.nodes(data=True)
     #print("Number of Nodes for DG:" + str(len(DG)))
@@ -218,7 +219,7 @@ def main():
     #simplifyGraph(DG,args.max_bubblesize,args.delta_len)
     # att = nx.get_node_attributes(DG, reads)
     # print("749,762 attributes: " + str(att))
-    print("#Nodes for DG: "+str(DG.number_of_nodes())+" , #Edges for DG: "+str(DG.number_of_edges( )))
+
     nodelist = list(DG.nodes(data=True))
     print(nodelist)
     print("#Nodes for DG2: " + str(DG2.number_of_nodes()) + " , #Edges for DG: " + str(DG2.number_of_edges()))

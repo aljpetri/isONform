@@ -679,7 +679,7 @@ def check_graph_correctness(known_intervals,all_intervals_for_graph):
 # draws a directed Graph DG
 def draw_Graph(DG):
     # defines the graph layout to use spectral_layout. Pos gives the position for each node
-    pos = nx.spectral_layout(DG)
+    pos = nx.spectral_layout(DG,scale=50)
     # draws the network in the given layout. Only nodes are labeled, the edges are directed but not labeled
     nx.draw_networkx(DG, pos, font_weight='bold')
     # add labels for the edges and draw them into the graph
@@ -1162,8 +1162,8 @@ def main(args):
         nodelist = list(DG.nodes)
         print(nodelist)
         print("number of edges in DG:" + str(DG.number_of_edges()))
-        #for node in nodelist:
-        #    print(node)
+        for node in nodelist:
+            print(node)
 
         #print("Number of Nodes for DG_old:" + str(len(DG_old)))
         #nodelist_old = list(DG_old.nodes)
