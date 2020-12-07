@@ -201,6 +201,7 @@ def main():
     print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     edgelist = list(DG.edges.data())
     print(edgelist)
+    draw_Graph(DG)
     simplifyGraph(DG,max_bubblesize,delta_len)
     #DG.nodes(data=True)
     #print("Number of Nodes for DG:" + str(len(DG)))
@@ -227,7 +228,7 @@ def main():
     #print("#Nodes for DG2: " + str(DG2.number_of_nodes()) + " , #Edges for DG: " + str(DG2.number_of_edges()))
     #print()
     #print()
-    #draw_Graph(DG)
+    draw_Graph(DG)
     # draw_Graph(DG2)
     # writes the graph in GraphML format into a file. Makes it easier to work with the graph later on
     #nx.write_graphml_lxml(DG, "outputgraph.graphml")

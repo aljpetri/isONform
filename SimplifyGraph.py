@@ -130,26 +130,26 @@ def generate_correct_edges(in_edges,out_edges,DG,new_nodes,node):
     print("Generate_correct_edges")
     #TODO: iterate over all nodes and get needed info to test which edge is connected to which node
     original_node_positions=DG.nodes[node]['reads']
-    print("OriginalNodeInfos")
-    print(original_node_positions)
+    #print("OriginalNodeInfos")
+    #print(original_node_positions)
     new_node_positions = {}
     edges_to_remove=[]
     #iterate through the new nodes and retreive the information of which reads have which positions in the node
     for nnode in new_nodes:
-        print("Nnode")
-        print(nnode)
+        #print("Nnode")
+        #print(nnode)
         infos_nnode=DG.nodes[nnode[0]]['reads']
         new_node_positions[nnode[0]]=infos_nnode
-    print("Othernode_positions:")
-    print(new_node_positions)
-    pos_distances_in = []
+    #print("Othernode_positions:")
+    #print(new_node_positions)
+    pos_distances_in = {}
     #Implementation copied from out_edges TODO: Fix everything to apply to in_edges
-    """
+
     for edge in in_edges:
         othernode = edge[0]
         print(othernode)
         other_infos = DG.nodes[othernode]['reads']
-
+        pos_distances_in[othernode] = []
         # generate the distances for the initial node to have a reference for the new nodes
         for tuple in other_infos:
             r_id = tuple[0]
@@ -159,18 +159,35 @@ def generate_correct_edges(in_edges,out_edges,DG,new_nodes,node):
             endpos = origin_tuple[2]
             distance = abs(startpos - endpos)
             distance_tuple = (node, r_id, distance, startpos)
-            pos_distances_in.append(distance_tuple)
+            pos_distances_in[othernode].append(distance_tuple)
         # iterate through the entries in new_node_positions (all entries appointed to new nodes)
         for node_id, read_infos in new_node_positions.items():
             # iterate through the entries for one node
             for r_info_tuple in read_infos:
-                dist_tup = [item for item in pos_distances_in if item[1] == r_info_tuple[0]]
-                if dist_tup:
+                dist_tupl = [item for item in pos_distances_in[othernode] if item[1] == r_info_tuple[0]]
+                for dist_tup in dist_tupl:
                     distance = abs(dist_tup[3] - r_info_tuple[2])
                     if distance < dist_tup[2]:
-                        pos_distances_in.remove(dist_tup)
+                        pos_distances_in[othernode].remove(dist_tup)
                         new_dist_tup = (node_id, r_info_tuple[0], distance, dist_tup[3])
-                        pos_distances_in.append(new_dist_tup)"""
+                        pos_distances_in[othernode].append(new_dist_tup)
+    #print("New Output")
+    for node_dist_id, node_distance_infos in pos_distances_in.items():
+        print("Node ID")
+        print(node_dist_id)
+        print("infos")
+        print(node_distance_infos[0][0])
+        startcount_list = list(Counter(elem[0] for elem in node_distance_infos))
+        print(startcount_list)
+        if not (node in startcount_list):
+            print("Removing edge " + node_dist_id + ";" + node)
+            DG.remove_edge(node_dist_id,node)
+        for id in startcount_list:
+            if not id == node:
+                print("Adding edge " + node_dist_id+ ";" + id)
+                DG.add_edge(node_dist_id,id)
+        for distance_tuple in node_distance_infos:
+            print(distance_tuple)
     #First and hopefully correct implementation
     pos_distances_out = {}
     for edge in out_edges:
@@ -204,14 +221,21 @@ def generate_correct_edges(in_edges,out_edges,DG,new_nodes,node):
                         pos_distances_out[othernode].remove(dist_tup)
                         new_dist_tup=(node_id,r_info_tuple[0],distance,dist_tup[3])
                         pos_distances_out[othernode].append(new_dist_tup)
-    print("New Output")
+    print("New Input")
     for node_dist_id,node_distance_infos in pos_distances_out.items():
         print("Node ID")
         print(node_dist_id)
         print("infos")
         print(node_distance_infos[0][0])
-        endcount_list = Counter(elem[0] for elem in node_distance_infos)
+        endcount_list = list(Counter(elem[0] for elem in node_distance_infos))
         print(endcount_list)
+        if not(node in endcount_list):
+            print("Removing edge "+node+";"+node_dist_id)
+            DG.remove_edge(node, node_dist_id)
+        for id in endcount_list:
+            if not id==node:
+                print("Adding edge " + id + ";" + node_dist_id)
+                DG.add_edge(id, node_dist_id)
         for distance_tuple in node_distance_infos:
             print(distance_tuple)
 
@@ -299,8 +323,6 @@ def resolve_cycles(list_of_cycles,DG):
                 multi_info[one_multi_read]=mult_read_pos
             for i in range(0,max_count):
                 if i>0:
-                    #print("Firstmultread")
-                    #print(multi_info)
                     node_info=[]
                     naming =None
                     for key,value in multi_info.items():
