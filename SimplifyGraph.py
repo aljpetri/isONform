@@ -242,23 +242,6 @@ def generate_correct_edges(in_edges,out_edges,DG,new_nodes,node):
 
     print("Pos_distances_out")
     print(pos_distances_out)
-        # TODO:iterate over pos_distances_out and pos_distances_in, delete and add actual edges
-        #print("Edges done")
-        # print(cycle_nodes[-1])
-        # print("Firstmultread")
-        # print(multi_info)
-        # DG.addNode()
-        #print("In edges:")
-        #print(DG.in_edges(node))
-
-        #print(type(in_edges))
-        #print(in_edges[-1])
-        # find the edges which close the cycle by pointing INTO the repeating node
-    #           for edge in in_edges:
-
-    #              if edge[0] in cycle_nodes:
-    #                  in_edge_new_node=edge
-    #                  DG.remove_edge(edge)
 """
 Method used to break the cycles which are present in the graph
 INPUT: DG Directed Graph
@@ -366,7 +349,7 @@ def simplifyGraph(DG,max_bubblesize,delta_len):
     print(list(nx.selfloop_edges(DG)))
     #DG.remove_edges_from(nx.selfloop_edges(DG))
     list_of_cycles=find_repetative_regions(DG)
-    resolve_cycles(list_of_cycles,DG)
+    #resolve_cycles(list_of_cycles,DG)
     #iterate_edges_to_add_nodes(DG,delta_len,cycle_nodes)
     #paths = list(nx.all_simple_paths(DG, source="s", target="t"))
     #print(list(paths))
