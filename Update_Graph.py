@@ -89,8 +89,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
             read_id_list= collections.Counter(read_id)
             for key,value in read_id_list.items():
                 if value>=2:
-                        if not key in repetative_reads:
-                            repetative_reads[key]=r_id
+                    if not key in repetative_reads:
+                        repetative_reads[key]=r_id
                             #print(read_id_list)
 
             #if repetative_reads:
@@ -118,8 +118,18 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
                             for i,occurrence in enumerate(known_tuples):
                                 print("Occurrence")
                                 print(occurrence)
-                    #known_tuples is a list of tuples, but should only contain 1 element
-                    name = known_tuples[0][0]
+                    #known_tuples is a list of tuples
+                    if len(known_tuples)<2:
+                        name = known_tuples[0][0]
+                    else:
+                        for i,tuple in enumerate(known_tuples):
+                            if i>1:
+                                name=tuple[0]
+                                old_name=known_tuples[i-1][0]
+                                old_cycle=known_intervals
+                                known_occurrences=[item for item in known_intervals[r_id-1] if item[1] == name]
+                                if not known_occurrences:
+                                    break
 
                     this_len = inter[0] - previous_end
                     if this_len < 0:
