@@ -8,7 +8,7 @@ OUTPUT: List_of_cycles: A list holding all cycles present in DG
 """
 def find_repetative_regions(DG):
     # collect the cycles in the graph (denoting repetative regions) using the builtin networkx function
-    altcyc = nx.simple_cycles(DG)
+    altcyc = list(nx.simple_cycles(DG))
     print("Alternative cycles:")
     print(altcyc)
     #data structure which holds all the cycles in the graph
@@ -37,6 +37,8 @@ def find_repetative_regions(DG):
         print("Found repetative region in reads")
         for cyc in list_of_cycles:
             print(cyc)
+    else:
+        print("No cycles found in the graph")
     return (list_of_cycles)
 def iterate_edges_to_add_nodes(DG,delta_len,list_of_cycles):
     print(delta_len)
@@ -364,26 +366,6 @@ def simplifyGraph(DG,max_bubblesize,delta_len):
     #edgelist=list(DG.edges.data())
     #print(edgelist)
 
-
-"""function to merge consecutive nodes, if they contain the same reads to simplify the graph
-    INPUT: DG Directed Graph
-    OUTPUT: DG: Directed Graph with merged nodes
-"""
-def merge_nodes(DG):
-    #iterate over the edges to find all pairs of nodes
-    edgesView=DG.edges.data()
-    for ed_ge in edgesView:
-        startnode = ed_ge[0]
-        endnode = ed_ge[1]
-        #we only need to know the out degree of the start node and the end degree of the end node
-        start_out_degree = DG.out_degree(startnode)
-        end_in_degree = DG.in_degree(endnode)
-        #if the degrees are both equal to 1 and if none of the nodes is s or t
-        if(start_out_degree==end_in_degree==1and startnode!="s"and endnode!="t"):
-            #print("Merging nodes "+startnode+" and "+endnode)
-
-            #use the builtin function to merge nodes, prohibiting self_loops decreases the amount of final edges
-            DG=nx.contracted_nodes(DG, startnode,endnode,self_loops=False)
 
 """ Method to simplify the graph. In the first step the cycles in the graph are looked up and the cyles are told apart from the bubbles
     INPUT:  DG  Directed Graph
