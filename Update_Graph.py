@@ -323,7 +323,9 @@ def main():
     #DG.nodes(data=True)
     #print("Number of Nodes for DG:" + str(len(DG)))
     #nodelist = list(DG.nodes)
-    generate_isoforms(DG, reads_list)
+
+    #generate_isoforms(DG, reads_list)
+    
     #print("number of edges in DG:" + str(DG.number_of_edges()))
     #for node in nodelist:
     #    print(node)
