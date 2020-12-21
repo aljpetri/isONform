@@ -101,6 +101,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
     #generate a dictionary key:nodeid,value:[(alternative_node_id, length_difference)]
     alternative_nodes={}
     repetative_reads = {}
+    repetative_infos={}
     # iterate through the different reads stored in all_intervals_for_graph. For each read one path is built up from source to sink if the nodes needed for that are not already present
     for r_id, intervals_for_read in all_intervals_for_graph.items():  # intervals_for_read holds all intervals which make up the solution for the WIS of a read
         print(r_id)
@@ -112,16 +113,26 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
         # the name of each node is defined to be startminimizerpos , endminimizerpos
         # iterate over all intervals, which are in the solution of a certain read
         for inter in intervals_for_read:
+            inter_infos={}
             info_tuple=(r_id,inter[0],inter[1])
+            read_id = inter[3][slice(0, len(inter[3]),
+                                     3)]  # recover the read id from the array of instances which was delivered with all_intervals_for_graph
+            read_id_list= collections.Counter(read_id)
+            if not all(value == 1 for value in read_id_list.values()):
+                start_coord = inter[3][slice(1, len(inter[3]),
+                                             3)]  # recover the start coordinate of an interval from the array of instances
+                end_coord = inter[3][slice(2, len(inter[3]), 3)]
+                for i,read in enumerate(read_id):
+                    if not read in inter_infos:
+                        inter_infos[read]=(start_coord[i],end_coord[i])
+                    else:
+                        rep_tuple=(read,start_coord[i],end_coord[i])
+                        repetative_infos[rep_tuple]=[]
+                for key,value in read_id_list.items():
+                    if value>=2:
+                        if not key in repetative_reads:
+                            repetative_reads[key]=(r_id)
 
-            #read_id = inter[3][slice(0, len(inter[3]),
-            #                         3)]  # recover the read id from the array of instances which was delivered with all_intervals_for_graph
-            #read_id_list= collections.Counter(read_id)
-            #for key,value in read_id_list.items():
-            #    if value>=2:
-            #        if not key in repetative_reads:
-            #            repetative_reads[key]=r_id
-                            #print(read_id_list)
 
             #if repetative_reads:
             #    print(repetative_reads)
@@ -176,7 +187,9 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
                 else:
                     #print(previous_node,name)
                     prev_len = DG[previous_node][name]["length"]
+                    #print("Prev_len:"+str(prev_len))
                     len_difference = abs(this_len - prev_len)
+                    #print("Len_difference:"+str(len_difference))
                     if len_difference < delta_len:
                         # update the read information of node name
                         prev_nodelist = nodes_for_graph[name]
@@ -222,20 +235,20 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
 
             # if the information for the interval was not yet found in a previous read (meaning the interval is new)
             else:
-                        nodelist = []
-                        # add a node into nodes_for_graph
-                        name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
-                        #add the read information for the node
-                        nodelist.append((r_id, inter[0], inter[1]))
-                        nodes_for_graph[name] = nodelist
-                        DG.add_node(name)
-                        #keep known_intervals up to date
-                        known_intervals[r_id - 1].append((inter[0], name, inter[1]))
-                        # get the length between the previous end and this nodes start
-                        length = inter[0] - previous_end
-                        #connect the node to the previous one
-                        DG.add_edge(previous_node, name,length=length)
-                        prior_read_infos=add_prior_read_infos(inter,r_id,prior_read_infos,name,k)
+                nodelist = []
+                # add a node into nodes_for_graph
+                name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
+                #add the read information for the node
+                nodelist.append((r_id, inter[0], inter[1]))
+                nodes_for_graph[name] = nodelist
+                DG.add_node(name)
+                #keep known_intervals up to date
+                known_intervals[r_id - 1].append((inter[0], name, inter[1]))
+                # get the length between the previous end and this nodes start
+                length = inter[0] - previous_end
+                #connect the node to the previous one
+                DG.add_edge(previous_node, name,length=length)
+                prior_read_infos=add_prior_read_infos(inter,r_id,prior_read_infos,name,k)
 
             #set the previous node for the next iteration
             previous_node = name
@@ -251,6 +264,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
     #print(nodes_for_graph)
     #set the node attributes to be nodes_for_graph, very convenient way of solving this
     nx.set_node_attributes(DG,nodes_for_graph,name="reads")
+    print("Repetative Infos")
+    print(repetative_infos)
     #print repetative reads
     print("Repetative reads")
     print(repetative_reads)
@@ -258,7 +273,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
     print("Alternative nodes")
     print(alternative_nodes)
     #return DG and known_intervals as this makes some operations easier
-    result = (DG, known_intervals,reads_for_isoforms)
+    result = (DG, known_intervals,reads_for_isoforms,reads_at_startend_list)
     return result
 
 def check_graph_correctness(known_intervals,all_intervals_for_graph):
@@ -293,22 +308,22 @@ def main():
     file = open('all_intervals.txt', 'rb')
     all_intervals_for_graph = pickle.load(file)
     file.close()
-    delta_len=3
+    delta_len=1
     max_bubblesize=4
     print(all_intervals_for_graph[4])
-    DG,known_intervals,reads_for_isoforms = generateGraphfromIntervals(all_intervals_for_graph, k_size,delta_len)
+    DG,known_intervals,reads_for_isoforms,reads_list = generateGraphfromIntervals(all_intervals_for_graph, k_size,delta_len)
     print(known_intervals)
     check_graph_correctness(known_intervals,all_intervals_for_graph)
     print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #edgelist = list(DG.edges.data())
     #print(edgelist)
     #simplifyGraph(DG, max_bubblesize, delta_len)
-    draw_Graph(DG)
+    #draw_Graph(DG)
     #generate_isoforms(DG,reads_for_isoforms)
     #DG.nodes(data=True)
     #print("Number of Nodes for DG:" + str(len(DG)))
     #nodelist = list(DG.nodes)
-
+    generate_isoforms(DG, reads_list)
     #print("number of edges in DG:" + str(DG.number_of_edges()))
     #for node in nodelist:
     #    print(node)
