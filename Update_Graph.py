@@ -33,21 +33,29 @@ def generateSimpleGraphfromIntervals(all_intervals_for_graph):
         G.add_edge(previous_node, "t")
 
     return G
-# Function to convert a list into a string to enable the writing of a graph (Taken from https://www.geeksforgeeks.org/python-program-to-convert-a-list-to-string/)
+"""
+Function to convert a list into a string to enable the writing of a graph (Taken from https://www.geeksforgeeks.org/python-program-to-convert-a-list-to-string/)
+
+INPUT: s:   list of elements to be converted into a string
+OUTPUT: the string object derived from the list
+"""
 def listToString(s):
     # initialize an empty string
     str1 = " "
 
     # return string
     return (str1.join(str(s)))
-def generateGraph_no_prev_info():
-    print("Hello world")
-"""function to add read information of the current interval to prior_read_infos, if they do not exist there yet
+
+
+"""
+Function to add read information of the current interval to prior_read_infos, if they do not exist there yet
+
 INPUT:      inter:              the current interval holding the information
             r_id:               the read we are looking at
             prior_read_infos:   information about other reads
             name:               name of the node we appoint the information to
             k:                  minimizer length
+            
 OUTPUT:     prior_read_infos:   information about other reads extended by this intervals infos
 """
 def add_prior_read_infos(inter,r_id,prior_read_infos,name,k):
@@ -66,13 +74,48 @@ def add_prior_read_infos(inter,r_id,prior_read_infos,name,k):
                 prior_read_infos[tuple_for_data_structure] = name
 
     return prior_read_infos
+
+"""Helper method to convert the array delivered with all_intervals_for_graph into a hash value to more efficiently look up occurence
+This method additionally deletes the first three entries of the array as they contain the infos about this interval occurence, which changes in between instances
+INPUT:  info_array: The array, which was delivered with the interval to indicate where the interval occurs in other reads
+OUTPUT: hash(tup):  A has value of the tuple the shortened interval was converted into. This hash makes it easy to see whether the interval is already present in the read
+"""
+
+def convert_array_to_hash(info_array):
+
+    #preprocessing: Delete the first three elements from the array, as they contain the information about this occurrence
+    for x in range(0, 3):
+       info_array.pop(0)
+
+    tup=tuple(info_array)
+    return(hash(tup))
+
+
+"""Function to get all nodes which are part of a cycle
+    
+    INPUT:  current_read_state: The current state of known_intervals[r_id-1] (known_intervals of the current read)
+            cycle_start:        The last occurence of the repeating node before the cycle starts
+    OUTPUT: cycle_nodes:        A list of entries indicating which nodes are in the cycle, having the following form: (startpos, node_id, endpos)
+
+
+"""
+def record_cycle(current_read_state,cycle_start):
+    cycle_nodes=[]
+    indices = [i for i, tupl in enumerate(current_read_state) if tupl[1] == cycle_start]
+    index=indices[0]
+    for element in range(index,len(current_read_state)):
+        cycle_nodes.append(current_read_state[element])
+
+    return(cycle_nodes)
+
+
 """ generates a networkx graph from the intervals given in all_intervals_for_graph.
 # INPUT: all_intervals_for_graph: A dictonary holding lists of minimizer intervals.
 
 
 TODO:   add dictionary to store infos about known instances 
         revisit structure of the method and introduce subroutines
-        
+
 """
 def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
     DG = nx.DiGraph()
@@ -85,10 +128,9 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
         reads_for_isoforms.append(i)
     # a source and a sink node are added to the graph in order to have a well-defined start and end for the paths
     DG.add_node("s",reads=reads_at_startend_list)
-    # print("Node s is added to the graph.")
     DG.add_node("t",reads=reads_at_startend_list)
-    # print("Node t is added to the graph.")
-    # holds the r_id as key and a list of tuples as value: For identification of reads
+
+    # holds the r_id as key and a list of tuples as value: For identification of reads, also used to ensure correctness of graph
     known_intervals = []
     #adds an empty list for each r_id to known_intervals. To those lists, tuples, representing the intervals are added
     for _ in itertools.repeat(None, len(all_intervals_for_graph)):
@@ -100,78 +142,36 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
     #    prior_read_infos.append([])
     #generate a dictionary key:nodeid,value:[(alternative_node_id, length_difference)]
     alternative_nodes={}
-    repetative_reads = {}
-    repetative_infos={}
+    witnesses = {}
+    cycle_in_reads={}
     # iterate through the different reads stored in all_intervals_for_graph. For each read one path is built up from source to sink if the nodes needed for that are not already present
     for r_id, intervals_for_read in all_intervals_for_graph.items():  # intervals_for_read holds all intervals which make up the solution for the WIS of a read
         print(r_id)
+        containscycle=False
         #if not r_id in known_intervals:
         #    known_intervals[r_id] = []
         # set previous_node to be s. This is the node all subsequent nodes are going to have edges with
         previous_node = "s"
         previous_end=0
+        #read_hashs is a dictionary storing hash values as keys and the respective node ids as values
+        #TODO:If a node occurs more than twice in a read this, however, could yield issues
+        read_hashs={}
+        #is_repetative=False
         # the name of each node is defined to be startminimizerpos , endminimizerpos
         # iterate over all intervals, which are in the solution of a certain read
         for inter in intervals_for_read:
-            inter_infos={}
-            info_tuple=(r_id,inter[0],inter[1])
-            read_id = inter[3][slice(0, len(inter[3]),
-                                     3)]  # recover the read id from the array of instances which was delivered with all_intervals_for_graph
-            read_id_list= collections.Counter(read_id)
-            if not all(value == 1 for value in read_id_list.values()):
-                start_coord = inter[3][slice(1, len(inter[3]),
-                                             3)]  # recover the start coordinate of an interval from the array of instances
-                end_coord = inter[3][slice(2, len(inter[3]), 3)]
-                for i,read in enumerate(read_id):
-                    if not read in inter_infos:
-                        inter_infos[read]=(start_coord[i],end_coord[i])
-                    else:
-                        rep_tuple=(read,start_coord[i],end_coord[i])
-                        repetative_infos[rep_tuple]=[]
-                for key,value in read_id_list.items():
-                    if value>=2:
-                        if not key in repetative_reads:
-                            repetative_reads[key]=(r_id)
+            info_tuple = (r_id, inter[0], inter[1])
+            #generate hash value of the intervals' infos
+            curr_hash=convert_array_to_hash(inter[3])
 
-
-            #if repetative_reads:
-            #    print(repetative_reads)
-            #print("Inter")
-            #print (inter)
-            #read_id = inter[3][slice(0, len(inter[3]),3)]
-            #read_count_list = {i:read_id.count(i) for i in read_id}
-            #print(read_count_list)
-
-            #access prior_read_infos, if any reads are already known
+            #access prior_read_infos, if the same interval was already found in previous reads
+            #TODO: use cycle_in_reads to figure out, whether a repeating node can be added to a cycle node. If not create new node.
+            #TODO pt2: Think about what happens with self_cycles
             if info_tuple in prior_read_infos:
                 name=prior_read_infos[info_tuple]
-            #if prior_read_infos[r_id-1]:
-                #list comprehension magic to find out whether a read with start at inter[0] and end at inter[1] exists in prior_info
-
-                        #witness=repetative_reads.get(r_id)
-                        #print("Repetative node")
-                        #print(known_intervals[r_id-1])
-                        #print(known_tuples)
-                #if such an element exists
-                #if known_tuples:
-                #    if len(known_tuples)>1:
-                #        if r_id in repetative_reads:
-                #            for i,occurrence in enumerate(known_tuples):
-                #                print("Occurrence")
-                #                print(occurrence)
-                    #known_tuples is a list of tuples
-                #    if len(known_tuples)<2:
-                #        name = known_tuples[0][0]
-                #    else:
-                #        for i,tuple in enumerate(known_tuples):
-                #            if i>1:
-                #                name=tuple[0]
-                #                old_name=known_tuples[i-1][0]
-                #                start_of_cyc=known_intervals.index(old_name)
-                #                old_cycle=known_intervals
-                #                known_occurrences=[item for item in known_intervals[r_id-1] if item[1] == name]
-                #                if not known_occurrences:
-                #                    break
+                #if info_tuple in repetative_infos:
+                #    print("This interval is repetative:")
+                #    print(info_tuple)
 
                 this_len = inter[0] - previous_end
                 if this_len < 0:
@@ -253,6 +253,23 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
             #set the previous node for the next iteration
             previous_node = name
             previous_end=inter[1]
+            #find out whether the current hash has already been added to read_hashs
+            if curr_hash not in read_hashs:
+                #if the current hash was not yet present in read_hashs: Add it
+                read_hashs[curr_hash]=[]
+                read_hashs[curr_hash].append(name)
+            #If the current hash was already present in read_hashs: This node is the second occurance of a node, forming a cycle. We have  to record the cycle to make sure other reads can be added if possible
+            else:
+                cycle_start=read_hashs[curr_hash][-1]
+                current_read_state=known_intervals[r_id-1]
+                newcyc=record_cycle(current_read_state,cycle_start)
+                #TODO: Think about what to use as key for cycle_in_reads. Is dict even feasible?
+                cycle_in_reads
+                print("Current hash already found in the interval.")
+                print(info_tuple)
+                read_hashs[curr_hash].append(name)
+                containscycle=True
+        cycle_in_reads[r_id]=containscycle
         #add an edge from name to "t" as name was the last node in the read
         if not DG.has_edge(name, "t"):
         # print("I have no idea what I'm doing here!")
@@ -264,11 +281,11 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
     #print(nodes_for_graph)
     #set the node attributes to be nodes_for_graph, very convenient way of solving this
     nx.set_node_attributes(DG,nodes_for_graph,name="reads")
-    print("Repetative Infos")
-    print(repetative_infos)
+    #print("Repetative Infos")
+    #print(repetative_infos)
     #print repetative reads
-    print("Repetative reads")
-    print(repetative_reads)
+    #print("Repetative reads")
+    #print(repetative_reads)
     #print alternative_nodes
     print("Alternative nodes")
     print(alternative_nodes)
@@ -325,7 +342,7 @@ def main():
     #nodelist = list(DG.nodes)
 
     #generate_isoforms(DG, reads_list)
-    
+
     #print("number of edges in DG:" + str(DG.number_of_edges()))
     #for node in nodelist:
     #    print(node)
