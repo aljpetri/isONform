@@ -1,64 +1,84 @@
 consensus1
-['transcript_475_support_14_16_2.7853968732079244e19_229_S', 'transcript_474_support_151_213_not_tested_213_', 'transcript_460_support_171_244_4.931357632762699e172_338_I', 'transcript_461_support_18_28_2.7538823207787075e35_291_S']
-consensus2
-['transcript_488_support_63_72_3.699645663996281e79_89_I']
-consensus3
-['transcript_178_support_4_9_2.678832883058809e07_279_S', 'transcript_350_support_102_215_2.2506066640039725e08_849_D', 'transcript_295_support_17_17_4.040764937563097e17_653_S', 'transcript_162_support_175_228_2.623752942550709e177_306_I', 'transcript_182_support_98_106_8.634747194009749e192_747_S', 'transcript_343_support_170_354_1.141735806186126e08_1547_D', 'transcript_271_support_29_28_1.3092908126821584e23_1222_S', 'transcript_36_support_3_3_not_tested_3_', 'transcript_298_support_432_618_0.0_640_S', 'transcript_273_support_714_1171_0.0_1198_S', 'transcript_35_support_6_8_not_tested_8_']
+['transcript_475_support_14_16_2.7853968732079244e19_229_S', 'transcript_461_support_18_28_2.7538823207787075e35_291_S']
+consensus11
+['transcript_474_support_151_213_not_tested_213_', 'transcript_460_support_171_244_4.931357632762699e172_338_I']
 consensus4
 ['transcript_477_support_25_25_1.3653814878621004e65_44_S', 'transcript_462_support_19_28_8.590422207305233e70_41_S']
-consensus5
-['transcript_262_support_30_32_4.627418744139545e35_58_I', 'transcript_265_support_15_10_2.18316841801549e05_1202_S', 'transcript_153_support_207_346_0.0_411_S']
-consensus7
-['transcript_492_support_45_53_2.9973100643629405e91_86_S']
-consensus9
-['transcript_109_support_4_6_2.593261298336897e30_21_SS', 'transcript_102_support_17_17_6.161222331405051e70_38_SS']
-consensus10
-['transcript_241_support_2_2_2.465494800796927e27_5_SSSSSS', 'transcript_146_support_10_12_1.2610471983165886e26_17_S', 'transcript_248_support_11_19_1.2378250930096949e34_28_S', 'transcript_144_support_5_10_6.284306045791773e13_15_S', 'transcript_240_support_4_5_1.4154227615021973e12_8_S']
-consensus12
-['transcript_319_support_10_3_1.0769783944960056e08_8_S']
-consensus13
-['transcript_454_support_19_40_5.595664412735434e48_119_S', 'transcript_453_support_225_317_0.0_375_S']
-consensus17
-['transcript_411_support_20_16_4.4071493360773237e60_25_SI']
-consensus18
-['transcript_518_support_32_32_3.950355137217066e45_110_S']
-consensus19
-['transcript_101_support_67_95_1.6172808158088225e218_102_S']
-consensus20
-['transcript_413_support_8_11_5.398149132019713e30_14_S']
-consensus23
-['transcript_246_support_23_12_2.0292740496871315e23_27_S']
-consensus24
-['transcript_410_support_16_15_7.158588427719199e51_23_DDDDD']
-consensus25
-['transcript_470_support_14_18_2.16953574397375e39_44_S', 'transcript_456_support_7_10_4.929790127556789e23_41_S']
-consensus30
-['transcript_163_support_16_23_3.1681981057099445e93_31_SS']
-consensus31
-['transcript_250_support_18_29_1.8734940341406434e68_34_S']
-consensus32
-['transcript_110_support_13_13_2.0722759276211275e48_21_SS', 'transcript_103_support_21_18_7.486617938630926e76_38_SS']
-consensus34
-['transcript_302_support_19_16_2.1343746018954292e44_18_S', 'transcript_164_support_3_5_2.6761923340793583e11_21_S', 'transcript_281_support_18_16_9.354925471957613e47_21_S', 'transcript_184_support_2_4_2.9484448120443136e10_20_S']
-consensus35
-['transcript_491_support_10_12_2.084837805335648e48_72_SS']
-consensus36
-['transcript_183_support_13_16_1.5826344517550088e78_22_SS']
 consensus39
 ['transcript_448_support_9_27_1.8747539629510054e18_369_DD']
-consensus44
-['transcript_97_support_22_21_1.9621554299764906e84_121_SS']
-consensus48
-['transcript_467_support_149_230_0.0_248_S', 'transcript_468_support_26_24_2.484044273231408e27_272_S']
-consensus50
-['transcript_108_support_22_28_1.8160411545666335e74_35_S']
-consensus52
-['transcript_129_support_11_10_1.5336157152280373e14_30_S']
-consensus54
-['transcript_412_support_2_3_8.987210687229348e08_14_S']
-consensus55
-['transcript_107_support_7_9_4.1466952828840725e37_39_SS']
+consensus13
+['transcript_454_support_19_40_5.595664412735434e48_119_S', 'transcript_468_support_26_24_2.484044273231408e27_272_S']
+consensus38
+['transcript_453_support_225_317_0.0_375_S', 'transcript_467_support_149_230_0.0_248_S']
+consensus29
+['transcript_456_support_7_10_4.929790127556789e23_41_S']
+consensus25
+['transcript_470_support_14_18_2.16953574397375e39_44_S']
+consensus2
+['transcript_488_support_63_72_3.699645663996281e79_89_I', 'transcript_492_support_45_53_2.9973100643629405e91_86_S']
+consensus35
+['transcript_491_support_10_12_2.084837805335648e48_72_SS']
+consensus18
+['transcript_518_support_32_32_3.950355137217066e45_110_S']
+consensus24
+['transcript_410_support_16_15_7.158588427719199e51_23_DDDDD']
+consensus17
+['transcript_411_support_20_16_4.4071493360773237e60_25_SI', 'transcript_413_support_8_11_5.398149132019713e30_14_S']
 consensus59
 ['transcript_409_support_6_5_5.611166030863804e37_12_SSS']
-consensus60
-['transcript_172_support_167_252_0.0_274_S', 'transcript_291_support_15_32_5.396979683264357e41_303_S']
+consensus54
+['transcript_412_support_2_3_8.987210687229348e08_14_S']
+consensus52
+['transcript_129_support_11_10_1.5336157152280373e14_30_S']
+consensus23
+['transcript_246_support_23_12_2.0292740496871315e23_27_S', 'transcript_250_support_18_29_1.8734940341406434e68_34_S']
+consensus21
+['transcript_248_support_11_19_1.2378250930096949e34_28_S']
+consensus45
+['transcript_298_support_432_618_0.0_640_S', 'transcript_273_support_714_1171_0.0_1198_S']
+consensus14
+['transcript_295_support_17_17_4.040764937563097e17_653_S', 'transcript_271_support_29_28_1.3092908126821584e23_1222_S']
+consensus5
+['transcript_262_support_30_32_4.627418744139545e35_58_I', 'transcript_291_support_15_32_5.396979683264357e41_303_S']
+consensus8
+['transcript_265_support_15_10_2.18316841801549e05_1202_S']
+consensus56
+['transcript_281_support_18_16_9.354925471957613e47_21_S']
+consensus34
+['transcript_302_support_19_16_2.1343746018954292e44_18_S']
+consensus10
+['transcript_241_support_2_2_2.465494800796927e27_5_SSSSSS', 'transcript_240_support_4_5_1.4154227615021973e12_8_S']
+consensus12
+['transcript_319_support_10_3_1.0769783944960056e08_8_S']
+consensus6
+['transcript_350_support_102_215_2.2506066640039725e08_849_D', 'transcript_343_support_170_354_1.141735806186126e08_1547_D']
+consensus16
+['transcript_146_support_10_12_1.2610471983165886e26_17_S', 'transcript_144_support_5_10_6.284306045791773e13_15_S']
+consensus15
+['transcript_162_support_175_228_2.623752942550709e177_306_I', 'transcript_182_support_98_106_8.634747194009749e192_747_S']
+consensus3
+['transcript_178_support_4_9_2.678832883058809e07_279_S']
+consensus37
+['transcript_153_support_207_346_0.0_411_S', 'transcript_172_support_167_252_0.0_274_S']
+consensus40
+['transcript_164_support_3_5_2.6761923340793583e11_21_S']
+consensus30
+['transcript_163_support_16_23_3.1681981057099445e93_31_SS']
+consensus57
+['transcript_184_support_2_4_2.9484448120443136e10_20_S']
+consensus36
+['transcript_183_support_13_16_1.5826344517550088e78_22_SS']
+consensus19
+['transcript_101_support_67_95_1.6172808158088225e218_102_S', 'transcript_108_support_22_28_1.8160411545666335e74_35_S']
+consensus44
+['transcript_97_support_22_21_1.9621554299764906e84_121_SS', 'transcript_107_support_7_9_4.1466952828840725e37_39_SS']
+consensus58
+['transcript_103_support_21_18_7.486617938630926e76_38_SS']
+consensus49
+['transcript_102_support_17_17_6.161222331405051e70_38_SS']
+consensus32
+['transcript_110_support_13_13_2.0722759276211275e48_21_SS']
+consensus9
+['transcript_109_support_4_6_2.593261298336897e30_21_SS']
+consensus43
+['transcript_36_support_3_3_not_tested_3_', 'transcript_35_support_6_8_not_tested_8_']

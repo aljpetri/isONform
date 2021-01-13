@@ -6,6 +6,8 @@ import itertools
 import matplotlib.pyplot as plt
 from SimplifyGraph import *
 from IsoformGeneration import *
+import tempfile
+import shutil
 
 def generateSimpleGraphfromIntervals(all_intervals_for_graph):
     G = nx.DiGraph()
@@ -245,6 +247,11 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
                             # only add a new edge if the edge was not present before
                             length = this_len
                             DG.add_edge(previous_node, name, length=length)
+                        else:
+                            # update the read information of node name
+                            prev_nodelist = nodes_for_graph[name]
+                            prev_nodelist.append((r_id, inter[0], inter[1]))
+                            nodes_for_graph[name] = prev_nodelist
                     #TODO:Verify that this is sufficient to generate a new node for DG
                     else:
                         nodelist = []
@@ -404,10 +411,17 @@ def draw_Graph(DG):
     plt.show()
 
 def main():
+    reads=62
+    work_dir = tempfile.mkdtemp()
+    print("Temporary workdirektory:", work_dir)
     k_size=9
+    outfolder="out"
     file = open('all_intervals.txt', 'rb')
     all_intervals_for_graph = pickle.load(file)
     file.close()
+    file2 = open('all_reads.txt', 'rb')
+    all_reads = pickle.load(file2)
+    file2.close()
     delta_len=1
     max_bubblesize=4
     print(all_intervals_for_graph[4])
@@ -419,7 +433,8 @@ def main():
     #print(edgelist)
     #simplifyGraph(DG, max_bubblesize, delta_len)
     draw_Graph(DG)
-    generate_isoforms(DG,reads_for_isoforms)
+    #generate_isoforms(DG,reads_for_isoforms)
+    generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa=200)
     #DG.nodes(data=True)
     #print("Number of Nodes for DG:" + str(len(DG)))
     #nodelist = list(DG.nodes)
@@ -453,6 +468,7 @@ def main():
     #nx.write_graphml_lxml(DG, "outputgraph.graphml")
     # nx.write_graphml_lxml(DG2, "outputgraph2.graphml")
     #print("finding the reads, which make up the isoforms")
-
+    print("removing temporary workdir")
+    shutil.rmtree(work_dir)
 if __name__ == "__main__":
     main()

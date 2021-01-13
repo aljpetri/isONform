@@ -2,6 +2,8 @@ import _pickle as pickle
 import collections
 from sys import stdout
 import networkx as nx
+import subprocess
+import os, sys
 import itertools
 import matplotlib.pyplot as plt
 """Method to generate the final isoforms by iterating through the graph structure
@@ -9,7 +11,7 @@ INPUT:      DG          Directed Graph
             reads       list of reads 
 OUPUT:      filename    file which contains all the final isoforms
 """
-def generate_isoforms(DG,reads):
+def compute_equal_reads(DG,reads):
     startnode = 's'
     #startreads=DG._node['s']['reads']
     #print(startreads)
@@ -18,7 +20,6 @@ def generate_isoforms(DG,reads):
     reads_for_isoforms=reads
     visited_nodes=[]
     isoforms= {}
-
     #while still reads have to be assigned to an isoform
     while(reads_for_isoforms):
         current_node=startnode
@@ -65,7 +66,7 @@ def generate_isoforms(DG,reads):
             #print("supporting_edge")
             #print(supporting_edge)
             current_node=supporting_edge[1]
-            print("Current Node: "+current_node)
+            #print("Current Node: "+current_node)
         isoforms[supported_reads[0]]=supported_reads
         print(reads_for_isoforms)
         for sup_read in supported_reads:
@@ -76,8 +77,94 @@ def generate_isoforms(DG,reads):
         #    node_att_prev=DG._node[vis_node]["reads"]
         #    print("Node att prev")
         #    print(node_att_prev)
-    print("Final Isoforms:")
-    print(isoforms)
+    return isoforms
+
+    """calls spoa and returns the consensus sequence for the given reads"""
+
+def run_spoa(reads, spoa_out_file, spoa_path):
+    with open(spoa_out_file, "w") as output_file:
+        # print('Running spoa...', end=' ')
+        stdout.flush()
+        null = open("/dev/null", "w")
+        subprocess.check_call(["/home/alexanderpetri/spoa/build/bin/spoa", reads, "-l", "0", "-r", "0", "-g", "-2"],
+                                  stdout=output_file, stderr=null)
+        # print('Done.')
+        stdout.flush()
+    output_file.close()
+    l = open(spoa_out_file, "r").readlines()
+    consensus = l[1].strip()
+    del l
+    output_file.close()
+    null.close()
+    return consensus
+
+    # generates the sequences which are to be aligned using spoa and writes the consensus into a file
+    """
+        curr_best_seqs is an array with q_id, pos1, pos2
+        the current read is on index 0 in curr_best_seqs array
+    """
+def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_seqs_to_spoa=200):
+
+
+    mapping = {}
+    consensus_file = open(os.path.join(outfolder, "spoa.fa"), 'w')
+
+    #curr_best_seqs = curr_best_seqs[0:3]
+    for key,value in curr_best_seqs.items():
+    #for equalreads in curr_best_seqs:
+        name = 'consensus' + str(value[0])
+        #name = 'consensus' + str(equalreads[0])
+        mapping[name] = []
+        reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
+        #if len(equalreads) == 1:
+        if len(value) == 1:
+            #rid = equalreads[0]
+            rid = key
+            singleread = reads[rid]
+            # print(singleread)
+            seq = singleread[1]
+            # name='consensus'+str(rid)
+            mapping[name].append(singleread[0])
+            consensus_file.write(">{0}\n{1}\n".format(name, seq))
+        else:
+            #print("Equalreads has different size")
+            #for i, q_id in enumerate(equalreads):
+            for i, q_id in enumerate(value):
+                singleread = reads[q_id]
+                seq = singleread[1]
+                #print(seq)
+                mapping[name].append(singleread[0])
+                if i > max_seqs_to_spoa:
+                    break
+                reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
+            reads_path.close()
+            spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
+            #print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
+            consensus_file.write(">{0}\n{1}\n".format(name, spoa_ref))
+    # print(mapping)
+
+    # print("Mapping has length "+str(len(mapping)))
+    mappingfile = open(os.path.join(outfolder, "mapping.txt"), "w")
+    for id, seq in mapping.items():
+        mappingfile.write("{0}\n{1}\n".format(id, seq))
+    mappingfile.close()
+    # consensus_file.write(">{0}\n{1}\n".format('consensus', spoa_ref))
+
+    consensus_file.close()
+    # for i, (q_id, pos1, pos2) in  enumerate(grouper(curr_best_seqs, 3)):
+    #    seq = reads[q_id][1][pos1: pos2 + k_size]
+    #    if i > max_seqs_to_spoa:
+    #        break
+    #    reads_path.write(">{0}\n{1}\n".format(str(q_id), seq))
+    # reads_path.close()
+    print("Isoforms generated")
+
+
+"""Wrapper method used for the isoform generation
+"""
+def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,max_seqs_to_spoa=200):
+    equal_reads=compute_equal_reads(DG,reads)
+    generate_isoform_using_spoa(equal_reads,all_reads, work_dir,outfolder, max_seqs_to_spoa=200)
 
 
 
@@ -101,22 +188,5 @@ def generate_isoforms(DG,reads):
     Solve isoform by using spoa.
     """
 
-"""function to merge consecutive nodes, if they contain the same reads to simplify the graph
-    INPUT: DG Directed Graph
-    OUTPUT: DG: Directed Graph with merged nodes
-"""
-def merge_nodes(DG):
-    #iterate over the edges to find all pairs of nodes
-    edgesView=DG.edges.data()
-    for ed_ge in edgesView:
-        startnode = ed_ge[0]
-        endnode = ed_ge[1]
-        #we only need to know the out degree of the start node and the end degree of the end node
-        start_out_degree = DG.out_degree(startnode)
-        end_in_degree = DG.in_degree(endnode)
-        #if the degrees are both equal to 1 and if none of the nodes is s or t
-        if(start_out_degree==end_in_degree==1and startnode!="s"and endnode!="t"):
-            #print("Merging nodes "+startnode+" and "+endnode)
-            #use the builtin function to merge nodes, prohibiting self_loops decreases the amount of final edges
-            DG=nx.contracted_nodes(DG, startnode,endnode,self_loops=False)
+
 
