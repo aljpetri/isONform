@@ -434,8 +434,11 @@ def main():
     DG=simplifyGraph(DG, max_bubblesize, delta_len)
     print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     draw_Graph(DG)
-    #generate_isoforms(DG,reads_for_isoforms)
-    generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa=200)
+    #The call for the isoform generation (deprecated during implementation)
+    #TODO: invoke isoform_generation again
+    #generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa=200)
+
+
     #DG.nodes(data=True)
     #print("Number of Nodes for DG:" + str(len(DG)))
     #nodelist = list(DG.nodes)
