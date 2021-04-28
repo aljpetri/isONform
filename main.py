@@ -500,11 +500,13 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
     # print("Node s is added to the graph.")
     DG.add_node("t",reads=reads_at_startend_list)
     # print("Node t is added to the graph.")
+    nodelist=[]
     # holds the r_id as key and a list of tuples as value: For identification of reads
     known_intervals = []
     #adds an empty list for each r_id to known_intervals. To those lists, tuples, representing the intervals are added
     for _ in itertools.repeat(None, len(all_intervals_for_graph)):
         known_intervals.append([])
+        nodelist.append([])
     #print(known_intervals)
     nodes_for_graph = {}
     prior_read_infos = []
@@ -540,6 +542,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
                             DG.add_edge(previous_node, name)
                         #keep known_intervals up to date
                         known_intervals[r_id-1].append((inter[0],name,inter[1]))
+                        nodelist[r_id-1].append(name)
 
                 # if the information for the interval was not yet found in a previous read (meaning the interval is new)
                 else:
@@ -553,6 +556,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
                         DG.add_node(name)
                         #keep known_intervas up to date
                         known_intervals[r_id - 1].append((inter[0], name, inter[1]))
+                        nodelist.append(name)
                         #connect the node to the previous one
                         DG.add_edge(previous_node, name)
                         read_id = inter[3][slice(0, len(inter[3]),
@@ -579,6 +583,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
                 DG.add_node(name)
                 # keep known_intervas up to date
                 known_intervals[r_id - 1].append((inter[0], name, inter[1]))
+                nodelist.append(name)
                 # connect the node to the previous one
                 DG.add_edge(previous_node, name)
                 read_id = inter[3][slice(0, len(inter[3]),
@@ -607,7 +612,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k):
     #set the node attributes to be nodes_for_graph, very convenient way of solving this
     nx.set_node_attributes(DG,nodes_for_graph,name="reads")
     #return DG and known_intervals as this makes some operations easier
-    result = (DG, known_intervals)
+    result = (DG, known_intervals,nodelist)
     return result
 
 def check_graph_correctness(known_intervals,all_intervals_for_graph):
@@ -807,21 +812,22 @@ def main(args):
         # print(type(intervals_to_correct))
         with open('all_intervals.txt', 'wb') as file:
             file.write(pickle.dumps(all_intervals_for_graph))
+        print("All_intervals were written into file")
         #for r_id,intervals_to_correct in all_intervals_for_graph.items():
             #if(r_id==2):
                 #print("intervals to correct")
                 #print(intervals_to_correct)
                 #print("intervals to correct done")
-        DG, known_intervals = generateGraphfromIntervals(all_intervals_for_graph, k_size)
+        #DG, known_intervals = generateGraphfromIntervals(all_intervals_for_graph, k_size)
         #DG_old, known_intervals_old = generateGraphfromIntervals_old(all_intervals_for_graph, k_size)
-        check_graph_correctness(known_intervals,all_intervals_for_graph)
-        DG.nodes(data=True)
-        print("Number of Nodes for DG:" + str(len(DG)))
-        nodelist = list(DG.nodes)
-        print(nodelist)
-        print("number of edges in DG:" + str(DG.number_of_edges()))
-        for node in nodelist:
-            print(node)
+        #check_graph_correctness(known_intervals,all_intervals_for_graph)
+        #DG.nodes(data=True)
+        #print("Number of Nodes for DG:" + str(len(DG)))
+        #nodelist = list(DG.nodes)
+        #print(nodelist)
+        #print("number of edges in DG:" + str(DG.number_of_edges()))
+        #for node in nodelist:
+        #    print(node)
 
         #print("Number of Nodes for DG_old:" + str(len(DG_old)))
         #nodelist_old = list(DG_old.nodes)
@@ -829,12 +835,12 @@ def main(args):
         #print("number of edges in DG:" + str(DG_old.number_of_edges()))
         #for node in nodelist_old:
         #    print(node)
-        DG2 = generateSimpleGraphfromIntervals(all_intervals_for_graph)
+        #DG2 = generateSimpleGraphfromIntervals(all_intervals_for_graph)
         #add_Nodes(DG,args.delta_len)
         #simplifyGraph(DG,args.max_bubblesize,args.delta_len)
         # att = nx.get_node_attributes(DG, reads)
         # print("749,762 attributes: " + str(att))
-        draw_Graph(DG)
+        #draw_Graph(DG)
         # draw_Graph(DG2)
         # writes the graph in GraphML format into a file. Makes it easier to work with the graph later on
         #nx.write_graphml_lxml(DG, "outputgraph.graphml")
