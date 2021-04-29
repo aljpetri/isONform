@@ -896,7 +896,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--k', type=int, default=9, help='Kmer size')
     parser.add_argument('--w', type=int, default=10, help='Window size')
-    parser.add_argument('--xmin', type=int, default=14, help='Upper interval length')
+    parser.add_argument('--xmin', type=int, default=18, help='Upper interval length')
     parser.add_argument('--xmax', type=int, default=80, help='Lower interval length')
     parser.add_argument('--T', type=float, default=0.1, help='Minimum fraction keeping substitution')
     # parser.add_argument('--C', type=float, default=0.05, help='Minimum fraction of keeping alternative refernece contexts')
