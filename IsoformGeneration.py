@@ -43,7 +43,15 @@ def clean_graph(DG,visited_nodes,supported_reads):
         else:
             print("Removing node "+str(node))
             DG.remove_node(node)
+"""
+Method to make sure that an isoform only contains reads which do actually end with this node
 
+INPUT   edgelist            list of edges starting at current node
+        DG                  Networkx DigraphObject
+        supported_reads     List of reads which support the path up to this point
+
+OUTPUT: supported_reads:    List of reads which support the path and do not have any further nodes before t
+"""
 def subtract_wrong_reads(edgelist,supported_reads,DG):
     #supported_reads_t=supported_reads.copy()
     print("Subtracting wrong reads from ")
