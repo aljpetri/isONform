@@ -44,7 +44,32 @@ def clean_graph(DG,visited_nodes,supported_reads):
             print("Removing node "+str(node))
             DG.remove_node(node)
 
-
+def subtract_wrong_reads(edgelist,supported_reads,DG):
+    #supported_reads_t=supported_reads.copy()
+    print("Subtracting wrong reads from ")
+    print(supported_reads)
+    reads_to_remove=[]
+    for edge in edgelist:
+        other_node = edge[1]
+        if not other_node == 't':
+            print(other_node)
+            other_node_reads = DG._node[other_node]['reads']
+            print(other_node_reads)
+            for read in supported_reads:
+                print(read)
+                # if a read is in both the current node and the subsequent node we are currently looking at
+                if read in other_node_reads.keys():
+                    print("Deleting read ")
+                    print(read)
+                    reads_to_remove.append(read)
+    print("Reads to remove:")
+    print(reads_to_remove)
+    for remread in reads_to_remove:
+        if remread in supported_reads:
+            supported_reads.remove(remread)
+    print("Supported reads after")
+    print(supported_reads)
+    return supported_reads
 """
 Method to find the edge, which is supported by the maximum amount of nodes, used to tell which node we look into next
 
@@ -58,7 +83,9 @@ OUTPUT: next_node:          the node which has the maximum support
 """
 def get_best_supported_edge_node(DG,current_node,supported_reads,delta_len):
     edgelist = list(DG.out_edges(current_node))
+
     #print(current_node)
+    print("Edgelist")
     print(edgelist)
     #print("initial supported reads")
     #print(supported_reads)
@@ -82,7 +109,7 @@ def get_best_supported_edge_node(DG,current_node,supported_reads,delta_len):
             #print(other_node_reads)
             #iterate over all reads which make up the path up to current_node
             for read in supported_reads:
-                print(read)
+                #print(read)
                 #if a read is in both the current node and the subsequent node we are currently looking at
                 if read in other_node_reads.keys():
                     #print("Current node"+current_node)
@@ -106,14 +133,19 @@ def get_best_supported_edge_node(DG,current_node,supported_reads,delta_len):
                         eq_obj = EqualityObject(other_node,len,0,read)
                         one_next_node.append(eq_obj)
         else:
-            next_node = "t"
-            return(next_node,supported_reads)
+            supported_reads_t=supported_reads.copy()
+            supported_reads_t=subtract_wrong_reads(edgelist,supported_reads_t,DG )
+            print(supported_reads_t)
+            if supported_reads_t:
+                print("Next node: t")
+                next_node = "t"
+                return(next_node,supported_reads_t)
         for node in one_next_node:
             next_node_eq.append(node)
     max_support=-1
     #print("Next node eq")
     for eq_obj in next_node_eq:
-        print(eq_obj)
+        #print(eq_obj)
         #print("max_support "+str(max_support))
         cur_equality=eq_obj.get_equality()
         #print("cur_eq"+str(cur_equality))
@@ -132,8 +164,8 @@ OUPUT:      filename    file which contains all the final isoforms
 def compute_equal_reads(DG,reads,delta_len):
     startnode = 's'
     startreads=DG._node['s']['reads']
-    print("Startreads")
-    print(startreads)
+    #print("Startreads")
+    #print(startreads)
     #endnode='t'
     supported_reads=[]
     reads_for_isoforms=reads
@@ -150,14 +182,14 @@ def compute_equal_reads(DG,reads,delta_len):
             visited_nodes.append(current_node)
             #print("supporting_edge")
             #print(supporting_edge)
-            print("CurrnodebefMethod")
-            print(current_node)
+            #print("CurrnodebefMethod")
+            #print(current_node)
             current_node,supported_reads=get_best_supported_edge_node(DG,current_node,supported_reads,delta_len)
             if current_node=="t":
                 reached_t=True
             #print(support_list)
-            print("after")
-            print(current_node)
+            #print("after")
+            #print(current_node)
             #if(support_list):
             #supported_reads=list(support_list)
             #print("Current Node: "+current_node)

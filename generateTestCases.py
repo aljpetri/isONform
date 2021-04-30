@@ -1,4 +1,10 @@
-#this file was taken from https://github.com/ksahlin/isONcorrect/blob/master/scripts/exon_experiment/simulate_reads.py and has been altered after consulting the author to fulfill my needs
+"""
+This file was taken from https://github.com/ksahlin/isONcorrect/blob/master/scripts/exon_experiment/simulate_reads.py and has been altered after consulting the author to fulfill my needs
+Run with: python generateTestCases.py --ref location/of/Isoform_Test_data.fa --sim_genome_len 1344 --nr_reads 10 --outfolder testout --coords 50 100 150 200 250 300 350 400 450 500 --probs 0.4 0.4 0.4 0.4 0.4
+
+
+"""
+
 import os, sys
 import random
 import itertools

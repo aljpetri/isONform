@@ -447,10 +447,7 @@ def main():
     print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #draw_Graph(DG)
     #print(DG.nodes["s"]["reads"])
-    print("infos for 1188, 1258, 1:")
-    print(DG.nodes["1188, 1258, 1"]["reads"])
-    print("infos for 1258, 1278, 1:")
-    print(DG.nodes["1258, 1278, 1"]["reads"])
+
     print("ReadNodes")
     print(node_overview_read)
     #print("knownintervals")
@@ -462,7 +459,7 @@ def main():
     print(list(DG))
     #print(known_intervals)
 
-    #DG.nodes(data=True)
+    DG.nodes(data=True)
     #print("Number of Nodes for DG:" + str(len(DG)))
     #nodelist = list(DG.nodes)
 
@@ -489,7 +486,7 @@ def main():
     #print("#Nodes for DG2: " + str(DG2.number_of_nodes()) + " , #Edges for DG: " + str(DG2.number_of_edges()))
     #print()
     #print()
-    #draw_Graph(DG)
+    draw_Graph(DG)
     # draw_Graph(DG2)
     # writes the graph in GraphML format into a file. Makes it easier to work with the graph later on
     #nx.write_graphml_lxml(DG, "outputgraph.graphml")
