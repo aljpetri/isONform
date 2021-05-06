@@ -50,7 +50,7 @@ def readfq(fp):  # this is a generator function
                 yield name, (seq, None)  # yield a fasta record instead
                 break
 
-
+#checks whether the given set of arguments matches the expected ones
 def check_valid_args(args, ref):
     # assert args.start < args.stop and args.start < min(args.coords)
     # assert args.stop > args.start and args.stop > max(args.coords)
@@ -59,7 +59,7 @@ def check_valid_args(args, ref):
     print(args.coords, args.probs)
     assert (len(args.coords) - 1) == len(args.probs)
 
-
+#adds mutation to the reads
 def simulate_reads(args, isoforms):
     outfile = open(os.path.join(args.outfolder, "reads.fq"), "w")
     is_fastq = True  # if outfile[-1] == "q" else False
@@ -180,7 +180,8 @@ def simulate_reads(args, isoforms):
             outfile.write(">{0}\n{1}\n".format(acc, read_seq))
 
     outfile.close()
-
+"""
+Method stub for a possible isoform writer"""
 def write_isoforms(args,isoforms):
     outfile = open(os.path.join(args.outfolder, "reads.fq"), "w")
     is_fastq = True  # if outfile[-1] == "q" else False
@@ -202,7 +203,10 @@ def mkdir_p(path):
         else:
             raise
 
-
+"""
+Generates Isoforms from the given Sequence, the number of isoforms can be influenced via the n_isoforms argument
+"""
+#TODO add automated exon borders(See master project), add parameter to have offsets for splicing
 def generate_isoforms(args, ref_path):
     isoforms_out = open(os.path.join(args.outfolder, "isoforms.fa"), "w")
     ref = {acc: seq for acc, (seq, qual) in readfq(open(ref_path, 'r'))}
@@ -230,16 +234,18 @@ def generate_isoforms(args, ref_path):
         #generate the actual isoform sequence
         isoform = "".join([ex for ex in exonlist])
         #test whether we already know this isoform(if yes start again to generate something different)
-        if not isoform in known_isoforms:
+        if not isoform in known_isoforms or not isoform:
             actual_isoforms += 1
             isoforms_out.write(">sim|sim|{0}\n{1}\n".format(actual_isoforms, isoform))
             known_isoforms.append(isoform)
             #now we want to make sure that we also have some equal isoforms in the data(to make sure we get the correct amount of isoforms)
-            double_seed=random.random()
-            if double_seed>0.7:
-                #name the second instance of an isoform so that we can identify it in the final output
-                name=str(actual_isoforms)+".1"
-                isoforms_out.write(">sim|sim|{0}\n{1}\n".format(name, isoform))
+            double_seed=random.randrange(1,10)
+            #TODO change this part. We always want isoforms to be supported by 1-10 reads
+            if double_seed>1:
+                for i in range(1,double_seed):
+                    #name the second instance of an isoform so that we can identify it in the final output
+                    name=str(actual_isoforms)+"."+str(i)
+                    isoforms_out.write(">sim|sim|{0}\n{1}\n".format(name, isoform))
     print(str(actual_isoforms)+" isoforms generated")
     isoforms_out.close()
 

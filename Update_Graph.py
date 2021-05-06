@@ -233,8 +233,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
                 is_repetative=False
 
             #access prior_read_infos, if the same interval was already found in previous reads
-
-            #TODO pt2: Think about what happens with self_cycles
             if info_tuple in prior_read_infos:
 
                 #if the interval repeats during this read
@@ -312,6 +310,10 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
                             old_node=name
                             # add a node into nodes_for_graph
                             name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
+                            DG.add_node(name)
+                            nodelist[r_id] = (inter[0], inter[1])
+                            nodes_for_graph[name] = nodelist
+                            DG.add_edge(previous_node,name,length=this_len)
                             alt_info_tuple=(name,previous_node,prev_len)
                             #add old node as key for alternative nodes: This is to find the alternative nodes for this one easily
                             if not(old_node in alternative_nodes):
@@ -360,6 +362,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
 
                 DG.add_node(name)
                 # connect the node to the previous one
+                print("Adding edge from "+previous_node+" to "+name)
                 DG.add_edge(previous_node, name, length=length)
 
             #set the previous node for the next iteration
@@ -436,7 +439,7 @@ def main():
     file2.close()
     delta_len=3
     max_bubblesize=4
-    print(all_intervals_for_graph[4])
+    print(all_intervals_for_graph)
     DG,known_intervals,node_overview_read,reads_for_isoforms,reads_list = generateGraphfromIntervals(all_intervals_for_graph, k_size,delta_len)
     print(known_intervals)
     #check_graph_correctness(known_intervals,all_intervals_for_graph)
@@ -450,6 +453,9 @@ def main():
 
     print("ReadNodes")
     print(node_overview_read)
+    print("all edges for the graph")
+    print([e for e in DG.edges])
+    draw_Graph(DG)
     #print("knownintervals")
     #print(known_intervals)
     #The call for the isoform generation (deprecated during implementation)
@@ -486,7 +492,7 @@ def main():
     #print("#Nodes for DG2: " + str(DG2.number_of_nodes()) + " , #Edges for DG: " + str(DG2.number_of_edges()))
     #print()
     #print()
-    draw_Graph(DG)
+
     # draw_Graph(DG2)
     # writes the graph in GraphML format into a file. Makes it easier to work with the graph later on
     #nx.write_graphml_lxml(DG, "outputgraph.graphml")
