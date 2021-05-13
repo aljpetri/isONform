@@ -85,13 +85,13 @@ Method to find the edge, which is supported by the maximum amount of nodes, used
 INPUT   DG                  Networkx DigraphObject
         current_node        The current start node
         supported_reads     List of reads which support the path up to this point
-        delta_len           Parameter to distinguish isoforms by length differences
+        edge_attr           Dict holding all edges as key and their respective support as values
 
 OUTPUT: next_node:          the node which has the maximum support
         support_list:       List of supporting reads
 """
 #TODO:rewrite to take edge_support into account (should make the code simpler)
-def get_best_supported_edge_node(DG,current_node,supported_reads,delta_len,edge_attr):
+def get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr):
     edgelist = list(DG.out_edges(current_node))
     #print("now at")
     #print(current_node)
@@ -125,7 +125,7 @@ INPUT:      DG          Directed Graph
             reads       list of reads 
 OUPUT:      filename    file which contains all the final isoforms
 """
-def compute_equal_reads(DG,reads,delta_len):
+def compute_equal_reads(DG,reads):
     startnode = 's'
     startreads=DG._node['s']['reads']
     #print("Startreads")
@@ -151,7 +151,7 @@ def compute_equal_reads(DG,reads,delta_len):
             #print(supporting_edge)
             #print("CurrnodebefMethod")
             #print(current_node)
-            current_node,supported_reads=get_best_supported_edge_node(DG,current_node,supported_reads,delta_len,edge_attr)
+            current_node,supported_reads=get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr)
             if current_node=="t":
                 reached_t=True
             #print("Still supported")
@@ -258,9 +258,9 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_se
 """
 Wrapper method used for the isoform generation
 """
-def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,delta_len,max_seqs_to_spoa=200):
-    equal_reads=compute_equal_reads(DG,reads,delta_len)
-    generate_isoform_using_spoa(equal_reads,all_reads, work_dir,outfolder, max_seqs_to_spoa=200)
+def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,max_seqs_to_spoa=200):
+    equal_reads=compute_equal_reads(DG,reads)
+    generate_isoform_using_spoa(equal_reads,all_reads, work_dir,outfolder, max_seqs_to_spoa)
 
 
 

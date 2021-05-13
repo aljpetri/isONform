@@ -464,6 +464,7 @@ def draw_Graph(DG):
 
 def main():
     reads=62
+    max_seqs_to_spoa=200
     work_dir = tempfile.mkdtemp()
     print("Temporary workdirektory:", work_dir)
     k_size=9
@@ -472,7 +473,11 @@ def main():
     all_intervals_for_graph = pickle.load(file)
     file.close()
     file2 = open('all_reads.txt', 'rb')
+
     all_reads = pickle.load(file2)
+    print("Allreads type")
+    print(type(all_reads))
+    print(all_reads)
     file2.close()
     delta_len=3
     max_bubblesize=4
@@ -485,7 +490,7 @@ def main():
     print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #edgelist = list(DG.edges.data())
     #print(edgelist)
-    #DG=simplifyGraph(DG, max_bubblesize, delta_len)
+    DG=simplifyGraph(DG, max_bubblesize, delta_len)
     print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #draw_Graph(DG)
     #print(DG.nodes["s"]["reads"])
@@ -499,7 +504,7 @@ def main():
     #print(known_intervals)
     #The call for the isoform generation (deprecated during implementation)
     #TODO: invoke isoform_generation again
-    generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder,delta_len, max_seqs_to_spoa=200)
+    generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa)
 
     print(list(DG))
     #print(known_intervals)

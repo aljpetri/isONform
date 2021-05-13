@@ -1,6 +1,5 @@
 import networkx as nx
 from collections import Counter
-from main import draw_Graph
 
 # TODO find out how to find bubbles->implement pop_bubbles
 """function to merge consecutive nodes, if they contain the same reads to simplify the graph
