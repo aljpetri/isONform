@@ -35,18 +35,18 @@ def main():
     #intervals_to_correct=[(10,47,62),(47,67,20)]
     #DG=generateGraphfromIntervals(intervals_to_correct)
     #DG2=nx.read_graphml("outputgraph2.graphml")
-    DG=nx.read_graphml("outputgraph.graphml")
-    print("Number of Nodes for DG:"+str(len(DG)))
-    nodelist=list(DG.nodes)
-    for node in nodelist:
-        print(node)
-    print("Number of Edges for DG:"+str(DG.number_of_edges()))
+    #DG=nx.read_graphml("outputgraph.graphml")
+    #print("Number of Nodes for DG:"+str(len(DG)))
+    #nodelist=list(DG.nodes)
+    #for node in nodelist:
+    #    print(node)
+    #print("Number of Edges for DG:"+str(DG.number_of_edges()))
 #    print("Number of Nodes for DG2:" + str(len(DG2)))
 #    print("Number of Edges for DG2:" + str(DG2.number_of_edges()))
     #att=nx.get_node_attributes(DG)
     #print("749,762 attributes: "+str(att))
 
-    draw_Graph(DG)
+    #draw_Graph(DG)
 #    draw_Graph(DG2)
     #print("Simple paths for DG:")
     #for i,path in enumerate(nx.all_simple_paths(DG,"s","t")):
@@ -56,13 +56,23 @@ def main():
     #for path in nx.all_simple_paths(DG2, "s", "t"):
     #    print(path)
 
-    #G = nx.Graph()
+    G = nx.Graph()
     #i = 1
-    #G.add_node(i, pos=(i, i))
-    #G.add_node("2", pos=("2", 2))
-    #G.add_node(3, pos=(1, 0))
-    #G.add_edge(1, 2, weight=0.5)
-    #G.add_edge(1, 3, weight=9.8)
+    edge_att={}
+    infos=[]
+    G.add_node("2", pos=("2", 2))
+    G.add_node("s", pos=(1, 0))
+    G.add_node("t", pos=(3, 0))
+    G.add_edge("2", "s", weight=0.5)
+    edge_att["2","s"]="Hello"
+    G.add_edge("s", "t", weight=9.8)
+    edge_att["s", "t"] = "World"
+    infos.append(edge_att["s","t"])
+    infos.append("!")
+    edge_att["s", "t"]=infos
+    nx.set_edge_attributes(G,edge_att,name="edge_att")
+    print(edge_att)
+    print(G["s"]["t"]["edge_att"])
     #pos = nx.get_node_attributes(G, 'pos')
     #nx.draw(G, pos)
     #labels = nx.get_edge_attributes(G, 'weight')

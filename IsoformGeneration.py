@@ -25,6 +25,7 @@ def remove_reads_from_node(DG,node,supported_reads):
     return reads
 def remove_edges_for_node(DG,node):
     print("Removing edges from graph")
+    #TODO clean edge attributes from reads that are not in the graph anymore
 def clean_graph(DG,visited_nodes,supported_reads):
     print("cleaning the graph")
     print("Visited nodes")
@@ -89,81 +90,36 @@ INPUT   DG                  Networkx DigraphObject
 OUTPUT: next_node:          the node which has the maximum support
         support_list:       List of supporting reads
 """
-def get_best_supported_edge_node(DG,current_node,supported_reads,delta_len):
+#TODO:rewrite to take edge_support into account (should make the code simpler)
+def get_best_supported_edge_node(DG,current_node,supported_reads,delta_len,edge_attr):
     edgelist = list(DG.out_edges(current_node))
-
+    #print("now at")
     #print(current_node)
-    print("Edgelist")
-    print(edgelist)
+    #print("Edgelist")
+    #print(edgelist)
     #print("initial supported reads")
     #print(supported_reads)
-    next_node=None
-    curr_node_reads = DG._node[current_node]['reads']
-
+    final_support=[]
     #print("CurrnodeREads")
     #print(curr_node_reads)
-    next_node_eq = []
+    similarity_val=-1
+    next_node=""
     #iterate over all possible next nodes (other_node)
     for edge in edgelist:
-        other_node = edge[1]
-        one_next_node=[]
-        #print("OTHERNode")
-        #print(other_node)
-        if not other_node == 't':
-            #print(other_node)
-
-            other_node_reads = DG._node[other_node]['reads']
-
-            #print(other_node_reads)
-            #iterate over all reads which make up the path up to current_node
-            for read in supported_reads:
-                #print(read)
-                #if a read is in both the current node and the subsequent node we are currently looking at
-                if read in other_node_reads.keys():
-                    #print("Current node"+current_node)
-                    start_tup = curr_node_reads[read]
-                    end_tup = other_node_reads[read]
-                    len=end_tup[0]-start_tup[1]
-                    len_found=False
-                    if one_next_node:
-                        for eq_obj in one_next_node:
-                            cur_len=eq_obj.get_length()
-                            if abs(len-cur_len)< delta_len:
-                                eq_obj.add_supported_read(read)
-                                eq_obj.increment_eq()
-                                #print(eq_obj)
-                                #eq_obj.print_readlist()
-                                len_found=True
-                        if not len_found:
-                            eq_obj = EqualityObject(other_node,len, 0, read)
-                            one_next_node.append(eq_obj)
-                    else:
-                        eq_obj = EqualityObject(other_node,len,0,read)
-                        one_next_node.append(eq_obj)
-        else:
-            supported_reads_t=supported_reads.copy()
-            supported_reads_t=subtract_wrong_reads(edgelist,supported_reads_t,DG )
-            print(supported_reads_t)
-            if supported_reads_t:
-                print("Next node: t")
-                next_node = "t"
-                return(next_node,supported_reads_t)
-        for node in one_next_node:
-            next_node_eq.append(node)
-    max_support=-1
-    #print("Next node eq")
-    for eq_obj in next_node_eq:
-        #print(eq_obj)
-        #print("max_support "+str(max_support))
-        cur_equality=eq_obj.get_equality()
-        #print("cur_eq"+str(cur_equality))
-        if cur_equality>max_support:
-            max_support=cur_equality
-            supported_reads=eq_obj.get_support()
-            next_node=eq_obj.get_node()
-    #print("Sup")
-    #print(supported_reads)
-    return (next_node,supported_reads)
+        supp_reads=supported_reads
+        #print(edge)
+        edge_reads=edge_attr[edge]
+        #print(edge_reads)
+        shared_reads=list(set(supp_reads).intersection(edge_reads))
+        #print("Shared REads")
+        #print(shared_reads)
+        if len(shared_reads)>similarity_val:
+                similarity_val=len(shared_reads)
+                final_support=shared_reads
+                next_node=edge[1]
+    #print("New Supported reads")
+    #print(final_support)
+    return (next_node,final_support)
 """Method to generate the final isoforms by iterating through the graph structure
 INPUT:      DG          Directed Graph
             reads       list of reads 
@@ -178,6 +134,9 @@ def compute_equal_reads(DG,reads,delta_len):
     supported_reads=[]
     reads_for_isoforms=reads
     isoforms= {}
+    edge_attr=nx.get_edge_attributes(DG,"edge_supp")
+    #print("EdgeAttri")
+    #print(edge_attr)
     #while still reads have to be assigned to an isoform
     while(reads_for_isoforms):
         current_node=startnode
@@ -192,26 +151,27 @@ def compute_equal_reads(DG,reads,delta_len):
             #print(supporting_edge)
             #print("CurrnodebefMethod")
             #print(current_node)
-            current_node,supported_reads=get_best_supported_edge_node(DG,current_node,supported_reads,delta_len)
+            current_node,supported_reads=get_best_supported_edge_node(DG,current_node,supported_reads,delta_len,edge_attr)
             if current_node=="t":
                 reached_t=True
-            #print(support_list)
+            #print("Still supported")
+            #print(*supported_reads)
             #print("after")
             #print(current_node)
             #if(support_list):
             #supported_reads=list(support_list)
             #print("Current Node: "+current_node)
-        print("Cleaning graph")
+        #print("Cleaning graph")
         clean_graph(DG,visited_nodes,supported_reads)
         isoforms[supported_reads[0]]=supported_reads
-        print(reads_for_isoforms)
+        #print(reads_for_isoforms)
         for sup_read in supported_reads:
-            print(sup_read)
+            #print(sup_read)
             reads_for_isoforms.remove(sup_read)
-        print("Isoforms")
-        print(isoforms)
-        print("VisitedNodes")
-        print(visited_nodes)
+        #print("Isoforms")
+        #print(isoforms)
+        #print("VisitedNodes")
+        #print(visited_nodes)
     return isoforms
 
     """calls spoa and returns the consensus sequence for the given reads"""

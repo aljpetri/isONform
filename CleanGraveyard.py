@@ -1,3 +1,6 @@
+import networkx as nx
+
+
 def iterate_edges_to_add_nodes(DG,delta_len,list_of_cycles):
     print(delta_len)
     edgesView=DG.edges.data()
@@ -499,3 +502,228 @@ def get_read_difference(known_intervals,r_id1,r_id2,max_interval_delta,delta_len
     #list_difference[r_id2]=difference2
     return (False,read_ids_for_differences,False)
 
+"""
+Method to find the edge, which is supported by the maximum amount of nodes, used to tell which node we look into next
+
+INPUT   DG                  Networkx DigraphObject
+        current_node        The current start node
+        supported_reads     List of reads which support the path up to this point
+        delta_len           Parameter to distinguish isoforms by length differences
+
+OUTPUT: next_node:          the node which has the maximum support
+        support_list:       List of supporting reads
+"""
+def get_best_supported_edge_node(DG,current_node,supported_reads,delta_len):
+    edgelist = list(DG.out_edges(current_node))
+    print(current_node)
+    print(edgelist)
+    print(supported_reads)
+    maximum_support = 0
+    next_node=None
+    curr_node_reads = DG._node[current_node]['reads']
+    next_node_eq={}
+    print("CurrnodeREads")
+    print(curr_node_reads)
+    read_dict={}
+    #iterate over all possible next nodes (other_node)
+    for edge in edgelist:
+        # print(edge)
+        equality_counter = 0
+        other_node = edge[1]
+        if not other_node == 't':
+            other_node_reads = DG._node[other_node]['reads']
+            print(other_node_reads)
+            support_list = []
+            cur_len=None
+            support=None
+            #iterate over all reads which make up the path up to current_node
+            for read in supported_reads:
+                print(read)
+                #if a read is in both the current node and the subsequent node we are currently looking at
+                if read in other_node_reads.keys():
+                    #TODO store all possibilities in different entities: Maybe a dict would be good
+                    start_tup = curr_node_reads[read]
+                    end_tup = other_node_reads[read]
+                    if cur_len:
+                        len=end_tup[0]-start_tup[1]
+                        print("REad "+str(read))
+                        print("Len "+str(len))
+                        print("Curlen "+str(cur_len))
+                        if abs(len-cur_len)< delta_len:
+                            equality_counter = equality_counter + 1
+                            print("Equality " + str(equality_counter))
+                            support_list.append(read)
+                            print(support_list)
+                        else:
+                            found_sup_node=False
+                            next_node_eq[cur_len]=(next_node,equality_counter,support_list)
+                            for key,value in next_node_eq.items():
+                                if abs(key-len)<delta_len:
+                                    found_sup_node=True
+                                    equality_counter=value[1]
+                                    support_list=value[2]
+                                    equality_counter=equality_counter+1
+                                    support_list.append(read)
+                            if not found_sup_node:
+                                cur_len = end_tup[0] - start_tup[1]
+                                equality_counter = 0
+                                support_list.append(read)
+                    else:
+                        cur_len=end_tup[0]-start_tup[1]
+                        equality_counter=0
+                        support_list.append(read)
+                if equality_counter > maximum_support:
+                    maximum_support = equality_counter
+                    next_node=edge[1]
+                    #support_list.append(read)
+                read_dict[edge[1]] = (equality_counter, support_list)
+        else:
+            next_node = "t"
+            supported_reads=support_list
+            break
+    print("Sup")
+    print(support_list)
+    return (next_node,support_list)
+
+"""
+Method to find the edge, which is supported by the maximum amount of nodes, used to tell which node we look into next
+
+INPUT   DG                  Networkx DigraphObject
+        current_node        The current start node
+        supported_reads     List of reads which support the path up to this point
+        delta_len           Parameter to distinguish isoforms by length differences
+
+OUTPUT: next_node:          the node which has the maximum support
+        support_list:       List of supporting reads
+"""
+#TODO:rewrite to take edge_support into account (should make the code simpler)
+def get_best_supported_edge_node(DG,current_node,supported_reads,delta_len,edge_attr):
+    edgelist = list(DG.out_edges(current_node))
+
+    #print(current_node)
+    print("Edgelist")
+    print(edgelist)
+    #print("initial supported reads")
+    #print(supported_reads)
+    next_node=None
+    curr_node_reads = DG._node[current_node]['reads']
+
+    #print("CurrnodeREads")
+    #print(curr_node_reads)
+    next_node_eq = []
+    #iterate over all possible next nodes (other_node)
+    for edge in edgelist:
+
+        other_node = edge[1]
+        one_next_node=[]
+        #print("OTHERNode")
+        #print(other_node)
+        if not other_node == 't':
+            #print(other_node)
+
+            other_node_reads = DG._node[other_node]['reads']
+
+            #print(other_node_reads)
+            #iterate over all reads which make up the path up to current_node
+            for read in supported_reads:
+                #print(read)
+                #if a read is in both the current node and the subsequent node we are currently looking at
+                if read in other_node_reads.keys():
+                    #print("Current node"+current_node)
+                    start_tup = curr_node_reads[read]
+                    end_tup = other_node_reads[read]
+                    len=end_tup[0]-start_tup[1]
+                    len_found=False
+                    if one_next_node:
+                        for eq_obj in one_next_node:
+                            cur_len=eq_obj.get_length()
+                            if abs(len-cur_len)< delta_len:
+                                eq_obj.add_supported_read(read)
+                                eq_obj.increment_eq()
+                                #print(eq_obj)
+                                #eq_obj.print_readlist()
+                                len_found=True
+                        if not len_found:
+                            eq_obj = EqualityObject(other_node,len, 0, read)
+                            one_next_node.append(eq_obj)
+                    else:
+                        eq_obj = EqualityObject(other_node,len,0,read)
+                        one_next_node.append(eq_obj)
+        else:
+            supported_reads_t=supported_reads.copy()
+            supported_reads_t=subtract_wrong_reads(edgelist,supported_reads_t,DG )
+            print(supported_reads_t)
+            if supported_reads_t:
+                print("Next node: t")
+                next_node = "t"
+                return(next_node,supported_reads_t)
+        for node in one_next_node:
+            next_node_eq.append(node)
+    max_support=-1
+    #print("Next node eq")
+    for eq_obj in next_node_eq:
+        #print(eq_obj)
+        #print("max_support "+str(max_support))
+        cur_equality=eq_obj.get_equality()
+        #print("cur_eq"+str(cur_equality))
+        if cur_equality>max_support:
+            max_support=cur_equality
+            supported_reads=eq_obj.get_support()
+            next_node=eq_obj.get_node()
+    #print("Sup")
+    #print(supported_reads)
+    return (next_node,supported_reads)
+
+"""Method to generate the final isoforms by iterating through the graph structure
+INPUT:      DG          Directed Graph
+            reads       list of reads 
+OUPUT:      filename    file which contains all the final isoforms
+"""
+#TODO: Change to work with edge_attr
+def compute_equal_reads(DG,reads,delta_len):
+    startnode = 's'
+    startreads=DG._node['s']['reads']
+    #print("Startreads")
+    #print(startreads)
+    #endnode='t'
+    supported_reads=[]
+    reads_for_isoforms=reads
+    isoforms= {}
+    edge_attr=nx.get_edge_attributes(DG,"edge_supp")
+    print("EdgeAttri")
+    print(edge_attr)
+    #while still reads have to be assigned to an isoform
+    while(reads_for_isoforms):
+        current_node=startnode
+        supported_reads=reads_for_isoforms
+        reached_t=False
+        visited_nodes = []
+        #While the end of the read was not reached, iterate over subsequent nodes
+        while(not reached_t):
+            #add current node to the list of visited_nodes
+            visited_nodes.append(current_node)
+            #print("supporting_edge")
+            #print(supporting_edge)
+            #print("CurrnodebefMethod")
+            #print(current_node)
+            current_node,supported_reads=get_best_supported_edge_node(DG,current_node,supported_reads,delta_len,edge_attr)
+            if current_node=="t":
+                reached_t=True
+            print(*supported_reads)
+            #print("after")
+            #print(current_node)
+            #if(support_list):
+            #supported_reads=list(support_list)
+            #print("Current Node: "+current_node)
+        print("Cleaning graph")
+        clean_graph(DG,visited_nodes,supported_reads)
+        isoforms[supported_reads[0]]=supported_reads
+        print(reads_for_isoforms)
+        for sup_read in supported_reads:
+            print(sup_read)
+            reads_for_isoforms.remove(sup_read)
+        print("Isoforms")
+        print(isoforms)
+        print("VisitedNodes")
+        print(visited_nodes)
+    return isoforms
