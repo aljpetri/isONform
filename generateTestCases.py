@@ -59,24 +59,28 @@ def check_valid_args(args, ref):
     print(args.coords, args.probs)
     assert (len(args.coords) - 1) == len(args.probs)
 
-#adds mutation to the reads
+#adds mutation to the reads TODO: Read Isoforms, add the shuffle
 def simulate_reads(args, isoforms):
+    shuffle=True
+    print("Isoforms")
+    print(isoforms)
     outfile = open(os.path.join(args.outfolder, "reads.fq"), "w")
     is_fastq = True  # if outfile[-1] == "q" else False
     middle_exon_frequnecy = args.probs[1]
-    no_middel_exon = [(isoforms[0][0] + "_{0}".format(i), isoforms[0][1]) for i in
-                      range(int(round(args.nr_reads * (1 - args.probs[1]))))]
-    has_middel_exon = [(isoforms[1][0] + "_{0}".format(i), isoforms[1][1]) for i in
-                       range(int(round(args.nr_reads * args.probs[1])))]
-    isoforms_generated = has_middel_exon + no_middel_exon
+    #l = open(spoa_out_file, "r").readlines()
+    #no_middel_exon = [(isoforms[0][0] + "_{0}".format(i), isoforms[0][1]) for i in
+      #                range(int(round(args.nr_reads * (1 - args.probs[1]))))]
+    #has_middel_exon = [(isoforms[1][0] + "_{0}".format(i), isoforms[1][1]) for i in
+     #                  range(int(round(args.nr_reads * args.probs[1])))]
+    #isoforms_generated = has_middel_exon + no_middel_exon
 
-    isoforms_abundance_out = open(os.path.join(args.outfolder, "isoforms_abundance.fa"), "w")
-    for i_acc, isoform in isoforms_generated:
-        isoforms_abundance_out.write(">{0}\n{1}\n".format(i_acc, isoform))
-    isoforms_abundance_out.close()
+    #isoforms_abundance_out = open(os.path.join(args.outfolder, "isoforms_abundance.fa"), "w")
+    #for i_acc, isoform in isoforms_generated:
+    #    isoforms_abundance_out.write(">{0}\n{1}\n".format(i_acc, isoform))
+    #isoforms_abundance_out.close()
 
     # print(len(has_middel_exon), len(no_middel_exon), args.nr_reads)
-    assert len(isoforms_generated) == args.nr_reads
+    #assert len(isoforms_generated) == args.nr_reads
     # seq, acc = isoforms[list(isoforms.items())
     # seq = seq.upper()
 
@@ -93,28 +97,21 @@ def simulate_reads(args, isoforms):
     # sys.exit()
     reads = {}
     error_lvls = [0.6, 0.7, 0.8, 0.9, 0.92, 0.94, 0.96, 0.98, 0.99, 0.995]
-    for i, (i_acc, isoform) in enumerate(isoforms_generated):
+
+    for i_acc, isoform in isoforms.items():
+        #print(i_acc)
         read = []
         qual = []
-        # for j, e in enumerate(exons):
-        # r = random.uniform(0,1)
-        # if r > middle_exon_frequnecy:
-        #     # has_exon = 0
-        #     i_acc, isoform = isoforms[1]
-        #     # continue
-        # else:
-        #     i_acc, isoform = isoforms[0]
-
-        #     # has_exon = 1
-
         was_del = False
+        overall_change = 0
+        #iterate through the sequence
         for l, n in enumerate(isoform):
-            if l <= 15 or l >= len(isoform) - 15:  # no errors first and last 15 bases
-                p_correct_reading = 1.0
-                p_error = 1.0 - 0.995
-            else:
-                p_correct_reading = random.choice(error_lvls)
-                p_error = 1.0 - p_correct_reading
+            #if l <= 15 or l >= len(isoform) - 15:  # no errors first and last 15 bases
+             #   p_correct_reading = 1.0
+             #   p_error = 1.0 - 0.995
+            #else:
+            p_correct_reading = random.choice(error_lvls)
+            p_error = 1.0 - p_correct_reading
 
             # print(round(10**(-math.log(p_correct_reading))), p_error, -math.log(p_error,10)*10)
 
@@ -126,19 +123,23 @@ def simulate_reads(args, isoforms):
 
             if error:
                 r = random.uniform(0, 1)
-                if r < 0.6:  # deletion
+                if r < 0.4:  # deletion(those values depend on current base caller )
                     was_del = p_error
                     pass
-                elif 0.6 <= r < 0.9:
-                    read.append(random.choice("ACGT"))
+                elif 0.4 <= r < 0.7: #substitution
+                    #we do not want to substitute the same base, so we drop the current base from sub_possibilities
+                    sub_possibilities="ACGT".replace(n,'')
+                    read.append(random.choice(sub_possibilities))
                     qual.append(round(-math.log(p_error, 10) * 10))
 
-                else:
+                else: #insertion
                     read.append(n)
                     qual.append(round(-math.log(p_error, 10) * 10))
 
                     r_ins = random.uniform(0, 1)
+                    ins_len=1
                     while r_ins >= 0.7:
+                        ins_len += 1
                         read.append(random.choice("ACGT"))
                         r_ins = random.uniform(0, 1)
                         qual.append(round(-math.log(0.7, 10) * 10))
@@ -162,24 +163,44 @@ def simulate_reads(args, isoforms):
                     read.append(n)
                     qual.append(round(-math.log(p_error, 10) * 10))
                 was_del = False
-
         if not read:
             continue
         read_seq = "".join([n for n in read])
         qual_seq = "".join([chr(q + 33) for q in qual])
-        reads[str(i_acc) + "_" + str(i)] = (read_seq, qual_seq)
-        return(reads)
-        # print(read_seq)
-        # print(qual_seq)
-
-    if is_fastq:
-        for acc, (read_seq, qual_seq) in sorted(reads.items(), key=lambda x: len(x[1]), reverse=True):
-            outfile.write("@{0}\n{1}\n{2}\n{3}\n".format(acc, read_seq, "+", qual_seq))
+        #reads[str(i_acc) + "_" + str(i)] = (read_seq, qual_seq)
+        #return(reads)
+        #print(read_seq)
+        #print(qual_seq)
+        reads[i_acc]=(read_seq, qual_seq)
+    read_ids=list(reads.keys())
+    if shuffle:
+        if is_fastq:
+            while read_ids:
+                random_read_nr = random.randrange(0, len(read_ids))
+                curr_acc=read_ids.pop(random_read_nr)
+                (out_read_seq,out_qual_seq)=reads[curr_acc]
+        #for acc, (read_seq, qual_seq) in sorted(reads.items(), key=lambda x: len(x[1]), reverse=True):
+                outfile.write("@sim|err|{0}\n{1}\n{2}\n{3}\n".format(curr_acc, out_read_seq, "+", out_qual_seq))
+        else:
+            while read_ids:
+                random_read_nr = random.randrange(0, len(read_ids))
+                curr_acc=read_ids.pop(random_read_nr)
+                (out_read_seq, out_qual_seq) = reads[curr_acc]
+            #for acc, (read_seq, qual_seq) in sorted(reads.items(), key=lambda x: len(x[1]), reverse=True):
+                outfile.write(">{0}\n{1}\n".format(curr_acc, out_read_seq))
     else:
-        for acc, (read_seq, qual_seq) in sorted(reads.items(), key=lambda x: len(x[1]), reverse=True):
-            outfile.write(">{0}\n{1}\n".format(acc, read_seq))
+        if is_fastq:
+            #while read_ids:
+                #random_read_nr = random.randrange(0, len(read_ids))
+                #curr_acc=read_ids.pop(random_read_nr)
+            for acc, (read_seq, qual_seq) in sorted(reads.items(), key=lambda x: len(x[1]), reverse=True):
+                outfile.write("@sim|err|{0}\n{1}\n{2}\n{3}\n".format(acc, read_seq, "+", qual_seq))
+        else:
+            for acc, (read_seq, qual_seq) in sorted(reads.items(), key=lambda x: len(x[1]), reverse=True):
+                outfile.write(">{0}\n{1}\n".format(acc, read_seq))
 
     outfile.close()
+    return(reads)
 """
 Method stub for a possible isoform writer"""
 def write_isoforms(args,isoforms):
@@ -215,9 +236,11 @@ def generate_isoforms(args, ref_path):
     exons = [seq[j_start: j_stop] for (j_start, j_stop) in exon_coords]
     print("Exons")
     print(exons)
+    isoforms={}
     #We want to return an isoform which contains all exons which we found in the sequence, which we call full
     isoform = "".join([ex for ex in exons])
     isoforms_out.write(">sim|sim|{0}\n{1}\n".format("full", isoform))
+    isoforms["full"]=[isoform]
     #known_isoforms stores the list of already used isoforms( we do not want to have the same isoform twice)
     known_isoforms=[]
     #actual_isoforms stores the count of the actual number of different isoforms which were generated
@@ -236,6 +259,7 @@ def generate_isoforms(args, ref_path):
         #test whether we already know this isoform(if yes start again to generate something different)
         if not isoform in known_isoforms or not isoform:
             actual_isoforms += 1
+            isoforms[actual_isoforms]=isoform
             isoforms_out.write(">sim|sim|{0}\n{1}\n".format(actual_isoforms, isoform))
             known_isoforms.append(isoform)
             #now we want to make sure that we also have some equal isoforms in the data(to make sure we get the correct amount of isoforms)
@@ -245,10 +269,11 @@ def generate_isoforms(args, ref_path):
                 for i in range(1,double_seed):
                     #name the second instance of an isoform so that we can identify it in the final output
                     name=str(actual_isoforms)+"."+str(i)
+                    isoforms[name]=isoform
                     isoforms_out.write(">sim|sim|{0}\n{1}\n".format(name, isoform))
     print(str(actual_isoforms)+" isoforms generated")
     isoforms_out.close()
-
+    return isoforms
     # # all combinations
     # for i in range(1, len(exons)+1):
     #     for j, e in enumerate(itertools.combinations(exons,i)):
@@ -264,11 +289,14 @@ def generate_isoforms_def_start_end(args, ref_path):
     exons = [seq[j_start: j_stop] for (j_start, j_stop) in exon_coords]
     print("Exons")
     print(exons)
+    isoforms={}
     #We want to return an isoform which contains all exons which we found in the sequence, which we call full
     isoform = "".join([ex for ex in exons])
     isoforms_out.write(">sim|sim|{0}\n{1}\n".format("full", isoform))
-    #known_isoforms stores the list of already used isoforms( we do not want to have the same isoform twice)
-    known_isoforms=[]
+    isoforms["full"]=isoform
+    # known_isoforms stores the list of already used isoforms( we do not want to have the same isoform twice)
+    known_isoforms = []
+    known_isoforms.append(isoform)
     #actual_isoforms stores the count of the actual number of different isoforms which were generated
     actual_isoforms=1
     #as we want to generate a certain number of isoforms, we have to use a while loop to regenerate an isoform which was equal to a known isoform
@@ -290,6 +318,7 @@ def generate_isoforms_def_start_end(args, ref_path):
         if not isoform in known_isoforms or not isoform:
             actual_isoforms += 1
             isoforms_out.write(">sim|sim|{0}\n{1}\n".format(actual_isoforms, isoform))
+            isoforms[actual_isoforms]=isoform
             known_isoforms.append(isoform)
             #now we want to make sure that we also have some equal isoforms in the data(to make sure we get the correct amount of isoforms)
             double_seed=random.randrange(1,10)
@@ -299,19 +328,23 @@ def generate_isoforms_def_start_end(args, ref_path):
                     #name the second instance of an isoform so that we can identify it in the final output
                     name=str(actual_isoforms)+"."+str(i)
                     isoforms_out.write(">sim|sim|{0}\n{1}\n".format(name, isoform))
+                    isoforms[name]=isoform
     print(str(actual_isoforms)+" isoforms generated")
     isoforms_out.close()
-
+    return isoforms
+#TODO: add
 def main(args):
     mkdir_p(args.outfolder)
-
+    print("Generating "+str(args.n_isoforms)+" different Isoforms")
     if args.sim_genome_len > 0:
         genome_out = open(os.path.join(args.outfolder, "reference.fa"), "w")
         genome_out.write(
             ">{0}\n{1}\n".format("ref", "".join([random.choice("ACGT") for i in range(args.sim_genome_len)])))
         genome_out.close()
-        #generate_isoforms(args, genome_out.name)
-        generate_isoforms_def_start_end(args,genome_out.name)
+        #isoforms=generate_isoforms(args, genome_out.name)
+        isoforms=generate_isoforms_def_start_end(args,genome_out.name)
+        if args.e==True:
+            simulate_reads(args,isoforms)
         sys.exit()
     #else:
         #isoforms = [(acc, seq) for acc, (seq, qual) in readfq(open(args.isoforms, 'r'))]
@@ -338,6 +371,7 @@ if __name__ == '__main__':
                         help='Probability for each exon to be sampled. For example, --p 1.0, 0.2, 1.0 includes first and third exon in all reads and second exon is, on average, included in 1/5 of the reads.')
     parser.add_argument('--sim_genome_len', type=int, default=0, help='Length if simulation of genome')
     parser.add_argument('--n_isoforms', type=int, default=2, help='Number of Isoforms generated by the script')
+    parser.add_argument('--e',type=bool,default=True,help='indicating whether the script adds error/mutations to the isoforms')
     # parser.add_argument('--start', type=int, help='Start sequencing coordinate, Has to be smaller than smallest jcoord and stop. ')
     # parser.add_argument('--stop', type=int, help='Stop sequencing coordinate, Has to be larger than largest jcoord and start.')
 

@@ -15,23 +15,23 @@ OUPUT:      reads:              dictionary, which does not contain the read info
 """
 def remove_reads_from_node(DG,node,supported_reads):
     reads=DG.nodes[node]['reads']
-    print("Before")
-    print(reads)
+    #print("Before")
+    #print(reads)
     for read in supported_reads:
         if read in reads.keys():
             del reads[read]
-        else:
-            print("ERROR: "+str(read)+" is not in "+str(reads))
+        #else:
+            #print("ERROR: "+str(read)+" is not in "+str(reads))
     return reads
 def remove_edges_for_node(DG,node):
     print("Removing edges from graph")
     #TODO clean edge attributes from reads that are not in the graph anymore
 def clean_graph(DG,visited_nodes,supported_reads):
-    print("cleaning the graph")
-    print("Visited nodes")
-    print(visited_nodes)
-    print("supported_reads")
-    print(supported_reads)
+    #print("cleaning the graph")
+    #print("Visited nodes")
+    #print(visited_nodes)
+    #print("supported_reads")
+    #print(supported_reads)
     update_dict={}
     for node in visited_nodes:
         new_reads=remove_reads_from_node(DG, node, supported_reads)
@@ -39,10 +39,10 @@ def clean_graph(DG,visited_nodes,supported_reads):
             update_dict[node]=new_reads
             nx.set_node_attributes(DG,update_dict,'reads')
             new_reads=DG.nodes[node]['reads']
-            print("after")
-            print(new_reads)
+            #print("after")
+            #print(new_reads)
         else:
-            print("Removing node "+str(node))
+            #print("Removing node "+str(node))
             DG.remove_node(node)
 """
 Method to make sure that an isoform only contains reads which do actually end with this node
@@ -55,29 +55,29 @@ OUTPUT: supported_reads:    List of reads which support the path and do not have
 """
 def subtract_wrong_reads(edgelist,supported_reads,DG):
     #supported_reads_t=supported_reads.copy()
-    print("Subtracting wrong reads from ")
-    print(supported_reads)
+    #print("Subtracting wrong reads from ")
+    #print(supported_reads)
     reads_to_remove=[]
     for edge in edgelist:
         other_node = edge[1]
         if not other_node == 't':
-            print(other_node)
+            #print(other_node)
             other_node_reads = DG._node[other_node]['reads']
-            print(other_node_reads)
+            #print(other_node_reads)
             for read in supported_reads:
-                print(read)
+                #print(read)
                 # if a read is in both the current node and the subsequent node we are currently looking at
                 if read in other_node_reads.keys():
-                    print("Deleting read ")
-                    print(read)
+                    #print("Deleting read ")
+                    #print(read)
                     reads_to_remove.append(read)
-    print("Reads to remove:")
-    print(reads_to_remove)
+    #print("Reads to remove:")
+    #print(reads_to_remove)
     for remread in reads_to_remove:
         if remread in supported_reads:
             supported_reads.remove(remread)
-    print("Supported reads after")
-    print(supported_reads)
+    #print("Supported reads after")
+    #print(supported_reads)
     return supported_reads
 """
 Method to find the edge, which is supported by the maximum amount of nodes, used to tell which node we look into next
@@ -185,7 +185,7 @@ def run_spoa(reads, spoa_out_file, spoa_path):
                                   stdout=output_file, stderr=null)
         # print('Done.')
         stdout.flush()
-    output_file.close()
+    #output_file.close()
     l = open(spoa_out_file, "r").readlines()
     consensus = l[1].strip()
     del l

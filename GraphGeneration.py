@@ -210,7 +210,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
     # iterate through the different reads stored in all_intervals_for_graph. For each read one path is built up from source to sink if the nodes needed for that are not already present
     # intervals_for_read holds all intervals which make up the solution for the WIS of a read
     for r_id, intervals_for_read in all_intervals_for_graph.items():
-        print(r_id)
+        #print(r_id)
         containscycle=False
         #if not r_id in known_intervals:
         #    known_intervals[r_id] = []
@@ -237,10 +237,10 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
 
                 #if the interval repeats during this read
                 if is_repetative:
-                    print(info_tuple)
-                    print("Repetative")
-                    print(known_cycles)
-                    print(inter[3])
+                    #print(info_tuple)
+                    #print("Repetative")
+                    #print(known_cycles)
+                    #print(inter[3])
                     #use find_next_node to access all previously recorded cycles and find the one matching with the current cycle
                     foundnode,merge_address=find_next_node(inter[0],inter[3],known_cycles,known_intervals[r_id-1],k,cycle_start,previous_end,DG,delta_len)
 
@@ -388,7 +388,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
 
                 DG.add_node(name)
                 # connect the node to the previous one
-                print("Adding edge from "+previous_node+" to "+name)
+                #print("Adding edge from "+previous_node+" to "+name)
                 DG.add_edge(previous_node, name, length=length)
                 edge_support[previous_node, name] = []
                 edge_support[previous_node, name].append(r_id)
@@ -424,8 +424,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
             if not r_id in edge_info:
                 edge_info.append(r_id)
                 edge_support[name,"t"] = edge_info
-        print("Finished for read "+str(r_id))
-        print(edge_support[name,"t"])
+        #print("Finished for read "+str(r_id))
+        #print(edge_support[name,"t"])
     #set the node attributes to be nodes_for_graph, very convenient way of solving this
     nx.set_node_attributes(DG,nodes_for_graph,name="reads")
     nx.set_edge_attributes(DG,edge_support,name='edge_supp')
