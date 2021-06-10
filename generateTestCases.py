@@ -60,10 +60,10 @@ def check_valid_args(args, ref):
     assert (len(args.coords) - 1) == len(args.probs)
 
 #adds mutation to the reads TODO: Read Isoforms, add the shuffle
-def simulate_reads(args, isoforms):
+def simulate_reads_with_normal(args, isoforms):
     shuffle=True
-    print("Isoforms")
-    print(isoforms)
+    #print("Isoforms")
+    #print(isoforms)
     outfile = open(os.path.join(args.outfolder, "reads.fq"), "w")
     is_fastq = True  # if outfile[-1] == "q" else False
     middle_exon_frequnecy = args.probs[1]
@@ -96,8 +96,154 @@ def simulate_reads(args, isoforms):
 
     # sys.exit()
     reads = {}
-    error_lvls = [0.6, 0.7, 0.8, 0.9, 0.92, 0.94, 0.96, 0.98, 0.99, 0.995]
+    #error_lvls = [0.6, 0.7, 0.8, 0.9, 0.92, 0.94, 0.96, 0.98, 0.99, 0.995]
+    error_lvls=[0.9,0.95,0.96,0.98,0.99,0.995]#3.94%error rate
+    error_lvls=[0.8, 0.875,0.9,0.92,0.96,0.98,0.99,0.995]#7%error rate
+    for i_acc, isoform in isoforms.items():
+        if "." in i_acc:
+            #print(i_acc)
+            read = []
+            qual = []
+            was_del = False
+            overall_change = 0
+            #iterate through the sequence
+            for l, n in enumerate(isoform):
+                #if l <= 15 or l >= len(isoform) - 15:  # no errors first and last 15 bases
+                #   p_correct_reading = 1.0
+                #   p_error = 1.0 - 0.995
+                #else:
+                p_correct_reading = random.choice(error_lvls)
+                p_error = 1.0 - p_correct_reading
 
+                # print(round(10**(-math.log(p_correct_reading))), p_error, -math.log(p_error,10)*10)
+
+                r = random.uniform(0, 1)
+                if r > p_correct_reading:
+                    error = True
+                else:
+                    error = False
+
+                if error:
+                    r = random.uniform(0, 1)
+                    if r < 0.4:  # deletion(those values depend on current base caller )
+                        was_del = p_error
+                        pass
+                    elif 0.4 <= r < 0.7: #substitution
+                        #we do not want to substitute the same base, so we drop the current base from sub_possibilities
+                        sub_possibilities="ACGT".replace(n,'')
+                        read.append(random.choice(sub_possibilities))
+                        qual.append(round(-math.log(p_error, 10) * 10))
+
+                    else: #insertion
+                        read.append(n)
+                        qual.append(round(-math.log(p_error, 10) * 10))
+
+                        r_ins = random.uniform(0, 1)
+                        ins_len=1
+                        while r_ins >= 0.7:
+                            ins_len += 1
+                            read.append(random.choice("ACGT"))
+                            r_ins = random.uniform(0, 1)
+                            qual.append(round(-math.log(0.7, 10) * 10))
+
+                    # if r < 0.84:
+                    #     read.append(n)
+                    # elif 0.84 <= r <= 0.96:
+                    #     pass
+                    # else:
+                    #     read.append(n)
+                    #     read.append(random.choice("ACGT"))
+                    #     r_ins = random.uniform(0,1)
+                    #     while r_ins >= 0.96:
+                    #         read.append(random.choice("ACGT"))
+                    #         r_ins = random.uniform(0,1)
+                else:
+                    if was_del:  # adding uncertainty from previous deleted base
+                        read.append(n)
+                        qual.append(round(-math.log(was_del, 10) * 10))
+                    else:
+                        read.append(n)
+                        qual.append(round(-math.log(p_error, 10) * 10))
+                        was_del = False
+            if not read:
+                continue
+            read_seq = "".join([n for n in read])
+            qual_seq = "".join([chr(q + 33) for q in qual])
+            #reads[str(i_acc) + "_" + str(i)] = (read_seq, qual_seq)
+            #return(reads)
+            #print(read_seq)
+            #print(qual_seq)
+            reads[i_acc]=(read_seq, qual_seq)
+        read_ids=list(reads.keys())
+    if shuffle:
+        if is_fastq:
+            while read_ids:
+                random_read_nr = random.randrange(0, len(read_ids))
+                curr_acc=read_ids.pop(random_read_nr)
+                (out_read_seq,out_qual_seq)=reads[curr_acc]
+        #for acc, (read_seq, qual_seq) in sorted(reads.items(), key=lambda x: len(x[1]), reverse=True):
+                outfile.write("@sim|err|{0}\n{1}\n{2}\n{3}\n".format(curr_acc, out_read_seq, "+", out_qual_seq))
+        else:
+            while read_ids:
+                random_read_nr = random.randrange(0, len(read_ids))
+                curr_acc=read_ids.pop(random_read_nr)
+                (out_read_seq, out_qual_seq) = reads[curr_acc]
+            #for acc, (read_seq, qual_seq) in sorted(reads.items(), key=lambda x: len(x[1]), reverse=True):
+                outfile.write(">{0}\n{1}\n".format(curr_acc, out_read_seq))
+    else:
+        if is_fastq:
+            #while read_ids:
+                #random_read_nr = random.randrange(0, len(read_ids))
+                #curr_acc=read_ids.pop(random_read_nr)
+            for acc, (read_seq, qual_seq) in sorted(reads.items(), key=lambda x: len(x[1]), reverse=True):
+                outfile.write("@sim|err|{0}\n{1}\n{2}\n{3}\n".format(acc, read_seq, "+", qual_seq))
+        else:
+            for acc, (read_seq, qual_seq) in sorted(reads.items(), key=lambda x: len(x[1]), reverse=True):
+                outfile.write(">{0}\n{1}\n".format(acc, read_seq))
+
+    outfile.close()
+    return(reads)
+
+#adds mutation to the reads TODO: Read Isoforms, add the shuffle
+def simulate_reads(args, isoforms):
+    shuffle=True
+    #print("Isoforms")
+    #print(isoforms)
+    outfile = open(os.path.join(args.outfolder, "reads.fq"), "w")
+    is_fastq = True  # if outfile[-1] == "q" else False
+    middle_exon_frequnecy = args.probs[1]
+    #l = open(spoa_out_file, "r").readlines()
+    #no_middel_exon = [(isoforms[0][0] + "_{0}".format(i), isoforms[0][1]) for i in
+      #                range(int(round(args.nr_reads * (1 - args.probs[1]))))]
+    #has_middel_exon = [(isoforms[1][0] + "_{0}".format(i), isoforms[1][1]) for i in
+     #                  range(int(round(args.nr_reads * args.probs[1])))]
+    #isoforms_generated = has_middel_exon + no_middel_exon
+
+    #isoforms_abundance_out = open(os.path.join(args.outfolder, "isoforms_abundance.fa"), "w")
+    #for i_acc, isoform in isoforms_generated:
+    #    isoforms_abundance_out.write(">{0}\n{1}\n".format(i_acc, isoform))
+    #isoforms_abundance_out.close()
+
+    # print(len(has_middel_exon), len(no_middel_exon), args.nr_reads)
+    #assert len(isoforms_generated) == args.nr_reads
+    # seq, acc = isoforms[list(isoforms.items())
+    # seq = seq.upper()
+
+    # exons = [seq[j_start: j_stop] for (j_start, j_stop) in zip(range(0,300, 50), range(50, 301, 50)) ]
+    # exons_probs = [1.0, 0.2, 1.0, 1.0, 0.2, 1.0]
+
+    # exon_coords = [(start, stop) for start, stop in zip(args.coords[:-1], args.coords[1:]) ]
+    # exons = [seq[j_start: j_stop] for (j_start, j_stop) in exon_coords ]
+    # exons_probs = args.probs
+    # print(exon_coords)
+    # print(exons)
+    # print(exons_probs)
+
+    # sys.exit()
+    reads = {}
+    #error_lvls = [0.6, 0.7, 0.8, 0.9, 0.92, 0.94, 0.96, 0.98, 0.99, 0.995]
+    error_lvls=[0.9,0.95,0.96,0.98,0.99,0.995]#3.94%error rate
+    error_lvls=[0.8, 0.875,0.9,0.92,0.96,0.98,0.99,0.995]#7%error rate
     for i_acc, isoform in isoforms.items():
         #print(i_acc)
         read = []
@@ -234,8 +380,8 @@ def generate_isoforms(args, ref_path):
     seq = ref[list(ref.keys())[0]]
     exon_coords = [(start, stop) for start, stop in zip(args.coords[:-1], args.coords[1:])]
     exons = [seq[j_start: j_stop] for (j_start, j_stop) in exon_coords]
-    print("Exons")
-    print(exons)
+    #print("Exons")
+    #print(exons)
     isoforms={}
     #We want to return an isoform which contains all exons which we found in the sequence, which we call full
     isoform = "".join([ex for ex in exons])
@@ -271,7 +417,7 @@ def generate_isoforms(args, ref_path):
                     name=str(actual_isoforms)+"."+str(i)
                     isoforms[name]=isoform
                     isoforms_out.write(">sim|sim|{0}\n{1}\n".format(name, isoform))
-    print(str(actual_isoforms)+" isoforms generated")
+    #print(str(actual_isoforms)+" isoforms generated")
     isoforms_out.close()
     return isoforms
     # # all combinations
@@ -287,8 +433,8 @@ def generate_isoforms_def_start_end(args, ref_path):
     seq = ref[list(ref.keys())[0]]
     exon_coords = [(start, stop) for start, stop in zip(args.coords[:-1], args.coords[1:])]
     exons = [seq[j_start: j_stop] for (j_start, j_stop) in exon_coords]
-    print("Exons")
-    print(exons)
+    #print("Exons")
+    #print(exons)
     isoforms={}
     #We want to return an isoform which contains all exons which we found in the sequence, which we call full
     isoform = "".join([ex for ex in exons])
@@ -329,7 +475,7 @@ def generate_isoforms_def_start_end(args, ref_path):
                     name=str(actual_isoforms)+"."+str(i)
                     isoforms_out.write(">sim|sim|{0}\n{1}\n".format(name, isoform))
                     isoforms[name]=isoform
-    print(str(actual_isoforms)+" isoforms generated")
+    #print(str(actual_isoforms)+" isoforms generated")
     isoforms_out.close()
     return isoforms
 #TODO: add
@@ -345,6 +491,7 @@ def main(args):
         isoforms=generate_isoforms_def_start_end(args,genome_out.name)
         if args.e==True:
             simulate_reads(args,isoforms)
+            #print("Simulating reads")
         sys.exit()
     #else:
         #isoforms = [(acc, seq) for acc, (seq, qual) in readfq(open(args.isoforms, 'r'))]

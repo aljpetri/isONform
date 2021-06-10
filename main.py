@@ -368,21 +368,21 @@ def main(args):
     # read the file
     all_reads = {i + 1: (acc, seq, qual) for i, (acc, (seq, qual)) in
                  enumerate(help_functions.readfq(open(args.fastq, 'r')))}
-    eprint("Total cluster of {0} reads.".format(len(all_reads)))
+    #eprint("Total cluster of {0} reads.".format(len(all_reads)))
     max_seqs_to_spoa = args.max_seqs_to_spoa
     if len(all_reads) <= args.exact_instance_limit:
         args.exact = True
     if args.set_w_dynamically:
         args.w = args.k + min(7, int(len(all_reads) / 500))
 
-    eprint("ARGUMENT SETTINGS:")
-    for key, value in args.__dict__.items():
-        eprint("{0}: {1}".format(key, value))
+    #eprint("ARGUMENT SETTINGS:")
+    #for key, value in args.__dict__.items():
+     #   eprint("{0}: {1}".format(key, value))
         # setattr(self, key, value)
-    eprint()
+    #eprint()
 
     work_dir = tempfile.mkdtemp()
-    print("Temporary workdirektory:", work_dir)
+    #print("Temporary workdirektory:", work_dir)
 
     # start = time()
     # corrected_reads = {}
@@ -407,8 +407,8 @@ def main(args):
                                                                               x_high)
         # quality_values_database = get_qvs(reads)
         # print(minimizer_database)
-        if args.verbose:
-            eprint("done creating minimizer combinations")
+        #if args.verbose:
+         #   eprint("done creating minimizer combinations")
 
         # print( [ (xx, len(reads_to_M2[xx])) for xx in reads_to_M2 ])
         # sys.exit()
@@ -440,13 +440,13 @@ def main(args):
                 [tmp_pos for tmp_p1, tmp_p2, w_tmp, _ in previously_corrected_regions[r_id] for tmp_pos in
                  range(tmp_p1, tmp_p2)])
 
-            if args.verbose:
-                if read_previously_considered_positions:
-                    eprint("not corrected:", [(p1_, p2_) for p1_, p2_ in
-                                              zip(sorted(read_previously_considered_positions)[:-1],
-                                                  sorted(read_previously_considered_positions)[1:]) if p2_ > p1_ + 1])
-                else:
-                    eprint("not corrected: entire read", )
+            #if args.verbose:
+             #   if read_previously_considered_positions:
+             #       eprint("not corrected:", [(p1_, p2_) for p1_, p2_ in
+                #                              zip(sorted(read_previously_considered_positions)[:-1],
+                 #                                 sorted(read_previously_considered_positions)[1:]) if p2_ > p1_ + 1])
+              #  else:
+              #      eprint("not corrected: entire read", )
 
             if previously_corrected_regions[r_id]:
                 read_previously_considered_positions = set(
@@ -529,15 +529,15 @@ def main(args):
                 # all_intervals = []
 
         print()
-        print("Done with batch_id:", batch_id)
-        print("Took {0} seconds.".format(time() - batch_start_time))
+        #print("Done with batch_id:", batch_id)
+        #print("Took {0} seconds.".format(time() - batch_start_time))
         # eval_sim2(corrected_seq, seq, qual, tot_errors_before, tot_errors_after)
         # if r_id == 10:
         #     sys.exit()
         # print(type(intervals_to_correct))
         with open('all_intervals.txt', 'wb') as file:
             file.write(pickle.dumps(all_intervals_for_graph))
-        print("All_intervals were written into file")
+        #print("All_intervals were written into file")
         #for r_id,intervals_to_correct in all_intervals_for_graph.items():
             #if(r_id==2):
                 #print("intervals to correct")
@@ -570,25 +570,25 @@ def main(args):
         # writes the graph in GraphML format into a file. Makes it easier to work with the graph later on
         #nx.write_graphml_lxml(DG, "outputgraph.graphml")
         # nx.write_graphml_lxml(DG2, "outputgraph2.graphml")
-        print("Type of Allreads")
-        print(type(all_reads))
+        #print("Type of Allreads")
+        #print(type(all_reads))
         DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
             all_intervals_for_graph, k_size, delta_len)
-        print("Known intervals")
-        print(known_intervals)
-        print("edges with attributes:")
-        print(DG.edges(data=True))
-        print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
+        #print("Known intervals")
+        #print(known_intervals)
+        #print("edges with attributes:")
+        #print(DG.edges(data=True))
+        #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         # edgelist = list(DG.edges.data())
         # print(edgelist)
         DG = simplifyGraph(DG, max_bubblesize, delta_len)
-        print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
+        #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         #draw_Graph(DG)
-        print("finding the reads, which make up the isoforms")
+        #print("finding the reads, which make up the isoforms")
         generate_isoforms(DG,all_reads,reads_for_isoforms,work_dir,outfolder,max_seqs_to_spoa)
         isoform = []
         # for iso in isoform_reads:
-        print("hello")
+        #print("hello")
         #with open('all_reads.txt', 'wb') as file:
         #    file.write(pickle.dumps(all_reads))
         #for key,value in all_reads.items():
@@ -620,7 +620,7 @@ def main(args):
     #    outfile.write("@{0}\n{1}\n+\n{2}\n".format(acc, seq, qual))
     # outfile.close()
 
-    print("removing temporary workdir")
+    #print("removing temporary workdir")
     shutil.rmtree(work_dir)
 
 

@@ -38,12 +38,11 @@ def clean_graph(DG,visited_nodes,supported_reads):
         if new_reads:
             update_dict[node]=new_reads
             nx.set_node_attributes(DG,update_dict,'reads')
-            new_reads=DG.nodes[node]['reads']
-            #print("after")
-            #print(new_reads)
+            #new_reads=DG.nodes[node]['reads']
         else:
             #print("Removing node "+str(node))
             DG.remove_node(node)
+    return DG
 """
 Method to make sure that an isoform only contains reads which do actually end with this node
 
@@ -90,7 +89,7 @@ INPUT   DG                  Networkx DigraphObject
 OUTPUT: next_node:          the node which has the maximum support
         support_list:       List of supporting reads
 """
-#TODO:rewrite to take edge_support into account (should make the code simpler)
+#TODO:find bug in this method
 def get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr):
     edgelist = list(DG.out_edges(current_node))
     #print("now at")
@@ -102,21 +101,31 @@ def get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr):
     final_support=[]
     #print("CurrnodeREads")
     #print(curr_node_reads)
-    similarity_val=-1
+    similarity_val=0
     next_node=""
     #iterate over all possible next nodes (other_node)
     for edge in edgelist:
+        #print("current node")
+        #print(current_node)
         supp_reads=supported_reads
-        #print(edge)
+        #print("Initial supp")
+        #print(supp_reads)
         edge_reads=edge_attr[edge]
         #print(edge_reads)
         shared_reads=list(set(supp_reads).intersection(edge_reads))
         #print("Shared REads")
         #print(shared_reads)
         if len(shared_reads)>similarity_val:
+                #print("SIM")
+                #print(similarity_val)
                 similarity_val=len(shared_reads)
+                #print(similarity_val)
                 final_support=shared_reads
                 next_node=edge[1]
+    #if similarity_val<1:
+        #print("error!!!")
+    #print("Next Node")
+    #print(next_node)
     #print("New Supported reads")
     #print(final_support)
     return (next_node,final_support)
@@ -152,6 +161,10 @@ def compute_equal_reads(DG,reads):
             #print("CurrnodebefMethod")
             #print(current_node)
             current_node,supported_reads=get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr)
+            if not supported_reads:
+                break
+            #print("Supported:")
+            #print(supported_reads)
             if current_node=="t":
                 reached_t=True
             #print("Still supported")
@@ -163,6 +176,7 @@ def compute_equal_reads(DG,reads):
             #print("Current Node: "+current_node)
         #print("Cleaning graph")
         clean_graph(DG,visited_nodes,supported_reads)
+
         isoforms[supported_reads[0]]=supported_reads
         #print(reads_for_isoforms)
         for sup_read in supported_reads:
@@ -199,8 +213,8 @@ def run_spoa(reads, spoa_out_file, spoa_path):
         the current read is on index 0 in curr_best_seqs array
     """
 def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_seqs_to_spoa=200):
-
-
+    #print("reads")
+    #print(reads)
     mapping = {}
     consensus_file = open(os.path.join(outfolder, "spoa.fa"), 'w')
 
@@ -221,6 +235,7 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_se
             # name='consensus'+str(rid)
             mapping[name].append(singleread[0])
             consensus_file.write(">{0}\n{1}\n".format(name, seq))
+            reads_path.close()
         else:
             #print("Equalreads has different size")
             #for i, q_id in enumerate(equalreads):
@@ -252,7 +267,7 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_se
     #        break
     #    reads_path.write(">{0}\n{1}\n".format(str(q_id), seq))
     # reads_path.close()
-    print("Isoforms generated")
+    #print("Isoforms generated")
 
 
 """

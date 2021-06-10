@@ -436,11 +436,11 @@ OUTPUT: DG: Graph after simplification took place    """
 def simplifyGraph(DG, max_bubblesize, delta_len):
     print("Simplifying the Graph (Merging nodes, popping bubbles)")
     # remove edges which yield self loops, not sure yet whether it makes sense to remove or if needed
-    print("self loops")
-    print(list(nx.selfloop_edges(DG)))
+    #print("self loops")
+    #print(list(nx.selfloop_edges(DG)))
     list_of_cycles = find_repetative_regions(DG)
-    print(list_of_cycles)
-    print(DG.edges())
+    #print(list_of_cycles)
+    #print(DG.edges())
     #find_and_pop_bubbles(DG, max_bubblesize, delta_len)
     DG = merge_nodes(DG)
     return DG

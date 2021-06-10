@@ -8,33 +8,12 @@ from SimplifyGraph import *
 from IsoformGeneration import *
 import tempfile
 import shutil
+"""IsONform script containing the methods used to generate the Directed Graph from the Intervals coming from the Weighted Interval Scheduling Problem
+Author: Alexander Petri
 
-def generateSimpleGraphfromIntervals(all_intervals_for_graph):
-    G = nx.DiGraph()
-    # a source and a sink node are added to the graph in order to have a well-defined start and end for the paths
-    G.add_node("s")
-    G.add_node("t")
-    # set previous_node to be s. This is the node all subsequent nodes are going to have edges with
-    previous_node = "s"
-    # iterate through the different reads stored in all_intervals_for_graph. For each read one path is built up from source to sink if the nodes needed are not already present
-    for r_id, intervals_for_read in all_intervals_for_graph.items():  # intervals_for_read holds all intervals which make up the solution for the WIS of a read
-        # set previous_node to be s. This is the node all subsequent nodes are going to have edges with
-        previous_node = "s"
-        # iterate over all intervals, which are in the solution of a certain read
-        for inter in intervals_for_read:
-            # the name of each node is defined to be startminimizerpos , endminimizerpos
-            name = str(inter[0]) + ", " + str(inter[1])  # +str(r_id)
-            if not G.has_node(name):
-                G.add_node(name)
+The main method in this script was used for debugging therefore is not used during IsONforms actual run.
+"""
 
-            # add edge between current node and previous node
-            G.add_edge(previous_node, name)
-            # whatever we did before, we have to set previous_node to the node we looked at in this iteration to keep going
-            previous_node = name
-        # the last node of a path is connected to the sink node t
-        G.add_edge(previous_node, "t")
-
-    return G
 """
 Function to convert a list into a string to enable the writing of a graph (Taken from https://www.geeksforgeeks.org/python-program-to-convert-a-list-to-string/)
 
@@ -303,8 +282,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
                         edge_support[previous_node, name].append(r_id)
                     #if there is an edge connecting previous_node and name: test if length difference is not higher than delta_len
                     else:
-                        edge_infos=edge_support[previous_node, name]
-                        edge_infos.append(r_id)
                         #print(previous_node,name)
                         prev_len = DG[previous_node][name]["length"]
                         #print("Prev_len:"+str(prev_len))
@@ -430,7 +407,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
     nx.set_node_attributes(DG,nodes_for_graph,name="reads")
     nx.set_edge_attributes(DG,edge_support,name='edge_supp')
     #use the known_intervals data structure to be able to verify the number of nodes appointed to each read
-    check_graph_correctness(known_intervals,all_intervals_for_graph)
+    #check_graph_correctness(known_intervals,all_intervals_for_graph)
     #return DG and known_intervals, used to
     result = (DG, known_intervals,node_overview_read,reads_for_isoforms,reads_at_startend_dict)
     return result
@@ -451,7 +428,12 @@ def check_graph_correctness(known_intervals,all_intervals_for_graph):
         print("Graph built up correctly")
     else:
         print("ERROR - Incorrect Graph")
-# draws a directed Graph DG
+
+"""
+Plots the given Directed Graph via Matplotlib
+Input: DG   Directed Graph
+"""
+
 def draw_Graph(DG):
     # defines the graph layout to use spectral_layout. Pos gives the position for each node
     pos = nx.spectral_layout(DG)
@@ -461,12 +443,14 @@ def draw_Graph(DG):
     # labels = nx.get_edge_attributes(DG, 'weight')
     # nx.draw_networkx_edge_labels(DG,pos, edge_labels=labels)
     plt.show()
-
+"""
+USED FOR DEBUGGING ONLY-deprecated in IsONform
+"""
 def main():
     reads=62
     max_seqs_to_spoa=200
     work_dir = tempfile.mkdtemp()
-    print("Temporary workdirektory:", work_dir)
+    #print("Temporary workdirektory:", work_dir)
     k_size=9
     outfolder="out"
     file = open('all_intervals.txt', 'rb')
@@ -475,31 +459,31 @@ def main():
     file2 = open('all_reads.txt', 'rb')
 
     all_reads = pickle.load(file2)
-    print("Allreads type")
-    print(type(all_reads))
-    print(all_reads)
+    #print("Allreads type")
+    #print(type(all_reads))
+    #print(all_reads)
     file2.close()
     delta_len=3
     max_bubblesize=4
-    print(all_intervals_for_graph)
+    #print(all_intervals_for_graph)
     DG,known_intervals,node_overview_read,reads_for_isoforms,reads_list = generateGraphfromIntervals(all_intervals_for_graph, k_size,delta_len)
     print(known_intervals)
     print("edges with attributes:")
     print(DG.edges(data=True))
     #check_graph_correctness(known_intervals,all_intervals_for_graph)
-    print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
+    #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #edgelist = list(DG.edges.data())
     #print(edgelist)
     DG=simplifyGraph(DG, max_bubblesize, delta_len)
-    print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
+    #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #draw_Graph(DG)
     #print(DG.nodes["s"]["reads"])
-
-    print("ReadNodes")
-    print(node_overview_read)
-    print("all edges for the graph")
-    print([e for e in DG.edges])
-    draw_Graph(DG)
+    print(list(DG.nodes(data=True)))
+   # print("ReadNodes")
+   # print(node_overview_read)
+   # print("all edges for the graph")
+   # print([e for e in DG.edges])
+    #draw_Graph(DG)
     #print("knownintervals")
     #print(known_intervals)
     #The call for the isoform generation (deprecated during implementation)
@@ -510,39 +494,10 @@ def main():
     #print(known_intervals)
 
     DG.nodes(data=True)
-    #print("Number of Nodes for DG:" + str(len(DG)))
-    #nodelist = list(DG.nodes)
 
-    #generate_isoforms(DG, reads_list)
 
-    #print("number of edges in DG:" + str(DG.number_of_edges()))
-    #for node in nodelist:
-    #    print(node)
-
-    #print("Number of Nodes for DG_old:" + str(len(DG_old)))
-    #nodelist_old = list(DG_old.nodes)
-
-    #print("number of edges in DG:" + str(DG_old.number_of_edges()))
-    #for node in nodelist_old:
-    #    print(node)
-    #DG2 = generateSimpleGraphfromIntervals(all_intervals_for_graph)
-    #add_Nodes(DG,args.delta_len)
-    #simplifyGraph(DG,args.max_bubblesize,args.delta_len)
-    # att = nx.get_node_attributes(DG, reads)
-    # print("749,762 attributes: " + str(att))
-
-    #nodelist = list(DG.nodes(data=True))
-    #print(nodelist)
-    #print("#Nodes for DG2: " + str(DG2.number_of_nodes()) + " , #Edges for DG: " + str(DG2.number_of_edges()))
-    #print()
-    #print()
-
-    # draw_Graph(DG2)
-    # writes the graph in GraphML format into a file. Makes it easier to work with the graph later on
-    #nx.write_graphml_lxml(DG, "outputgraph.graphml")
-    # nx.write_graphml_lxml(DG2, "outputgraph2.graphml")
-    #print("finding the reads, which make up the isoforms")
-    print("removing temporary workdir")
+    #TODO put back in!!!
+    #print("removing temporary workdir")
     shutil.rmtree(work_dir)
 if __name__ == "__main__":
     main()
