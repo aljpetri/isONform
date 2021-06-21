@@ -201,9 +201,10 @@ def run_spoa(reads, spoa_out_file, spoa_path):
         stdout.flush()
     #output_file.close()
     l = open(spoa_out_file, "r").readlines()
+    output_file.close()
     consensus = l[1].strip()
     del l
-    output_file.close()
+
     null.close()
     return consensus
 

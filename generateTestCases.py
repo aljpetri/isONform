@@ -61,7 +61,7 @@ def check_valid_args(args, ref):
 
 #adds mutation to the reads TODO: Read Isoforms, add the shuffle
 def simulate_reads_with_normal(args, isoforms):
-    shuffle=True
+    shuffle=False
     #print("Isoforms")
     #print(isoforms)
     outfile = open(os.path.join(args.outfolder, "reads.fq"), "w")
@@ -97,8 +97,9 @@ def simulate_reads_with_normal(args, isoforms):
     # sys.exit()
     reads = {}
     #error_lvls = [0.6, 0.7, 0.8, 0.9, 0.92, 0.94, 0.96, 0.98, 0.99, 0.995]
-    error_lvls=[0.9,0.95,0.96,0.98,0.99,0.995]#3.94%error rate
-    error_lvls=[0.8, 0.875,0.9,0.92,0.96,0.98,0.99,0.995]#7%error rate
+    #error_lvls=[0.9,0.95,0.96,0.98,0.99,0.995]#3.94%error rate
+    #error_lvls=[0.8, 0.875,0.9,0.92,0.96,0.98,0.99,0.995]#7%error rate
+    error_lvls=[0.99]#smaller error rate(~1%)
     for i_acc, isoform in isoforms.items():
         if "." in i_acc:
             #print(i_acc)

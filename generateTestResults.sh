@@ -2,7 +2,7 @@
 #Author: Alexander Petri
 #This shell program is used to run longterm tests on the algorithm. For each amount of isoforms, this script performs 5 individual runs of generating test data and running the algorithm on it. To find the remaining bugs the script also outputs the test data files, which the algorithm did not work on correctly
 mkdir -p filedirectory
-outputfile=resultserror7.tsv
+outputfile=resultserror1.tsv
 #if results.tsv already exists 
 if [ -s $outputfile ]
 then 
@@ -32,7 +32,7 @@ do
 echo $i_$j
 outputs=0
 #run the test case generation script with the parameters needed
-python generateTestCases.py --ref /home/alexanderpetri/Desktop/RAWDATA_PhD1/Isoform_Test_data.fa --sim_genome_len 1344 --nr_reads $n_reads --outfolder testout --coords 50 100 150 200 250 300 350 400 450 500 --probs 0.4 0.4 0.4 0.4 0.4 --n_isoforms $i --e True
+python generateTestCases.py --ref /home/alexanderpetri/Desktop/RAWDATA_PhD1/Isoform_Test_data.fa --sim_genome_len 1344 --nr_reads $n_reads --outfolder testout --coords 50 100 150 200 250 300 350 400 450 500 --probs 0.4 0.4 0.4 0.4 0.4 --n_isoforms $i #--e True
 cp ~/PHDProject1/testout/reads.fq filedirectory
 #we want to figure out how many reads were actually generated
 read_amount=$(< ~/PHDProject1/testout/reads.fq wc -l)
@@ -43,7 +43,7 @@ number="${i}_${j}"
 echo $number
 mv ~/PHDProject1/filedirectory/reads.fq ~/PHDProject1/filedirectory/reads_$number.fq
 #run IsONform
-python main.py --fastq ~/PHDProject1/testout/reads.fq --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --max_bubblesize 2 --delta_len 3 --outfolder testout 
+python main.py --fastq ~/PHDProject1/testout/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --max_bubblesize 2 --delta_len 10 --outfolder testout2
 #python main.py --fastq ~/PHDProject1/testout/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --max_bubblesize 2 --delta_len 3 --outfolder testout 
 #we count the lines in mapping.txt, which is an output of IsONform. As we have a fasta file we have to divide this number by 2 to retreive the actual number of isoforms we generated
 res=$(< "$file" wc -l)

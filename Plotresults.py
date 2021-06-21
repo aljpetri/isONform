@@ -35,7 +35,7 @@ def getValsList(dict):
     return dict.values()
 
 def main():
-    filename="resultserror7.tsv"
+    filename="resultserror1.tsv"
     data=load_tsv(filename)
     resultsdict={}
     updatedresultsdict={}
