@@ -156,18 +156,24 @@ TODO:   add dictionary to store infos about known instances
 
 """
 #TODO: find out where the double edges came from (why we have to use 'if not r_id in edge_info:'
-def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
+def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dict):
     DG = nx.DiGraph()
     cycle_nodes={}
     #add the read ids to the startend_list
-    reads_at_startend_dict = {}
+    reads_at_start_dict = {}
+    reads_at_end_dict = {}
     reads_for_isoforms=[]
     for i in range(1,len(all_intervals_for_graph)+1):
-        reads_at_startend_dict[i]=(0,0)
+        reads_at_start_dict[i]=(0,0)
         reads_for_isoforms.append(i)
+    for i in range(1,len(read_len_dict)+1):
+        reads_at_end_dict[i]=(read_len_dict[i],read_len_dict[i])
+        reads_for_isoforms.append(i)
+    print(reads_at_start_dict)
+    print(reads_at_end_dict)
     # a source and a sink node are added to the graph in order to have a well-defined start and end for the paths
-    DG.add_node("s",reads=reads_at_startend_dict)
-    DG.add_node("t",reads=reads_at_startend_dict)
+    DG.add_node("s",reads=reads_at_start_dict)
+    DG.add_node("t",reads=reads_at_end_dict)
 
     # holds the r_id as key and a list of tuples as value: For identification of reads, also used to ensure correctness of graph
     known_intervals = []
@@ -409,7 +415,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len):
     #use the known_intervals data structure to be able to verify the number of nodes appointed to each read
     #check_graph_correctness(known_intervals,all_intervals_for_graph)
     #return DG and known_intervals, used to
-    result = (DG, known_intervals,node_overview_read,reads_for_isoforms,reads_at_startend_dict)
+    result = (DG, known_intervals,node_overview_read,reads_for_isoforms,reads_at_start_dict)
     return result
 
 def check_graph_correctness(known_intervals,all_intervals_for_graph):
@@ -443,6 +449,17 @@ def draw_Graph(DG):
     # labels = nx.get_edge_attributes(DG, 'weight')
     # nx.draw_networkx_edge_labels(DG,pos, edge_labels=labels)
     plt.show()
+def get_read_lengths(all_reads):
+    print(all_reads)
+    readlen_dict={}
+    for r_id,infos in all_reads.items():
+        print(r_id)
+        print(infos)
+        seq=infos[1]
+        seqlen=len(seq)
+        print(seqlen)
+        readlen_dict[r_id]=seqlen
+    return readlen_dict
 """
 USED FOR DEBUGGING ONLY-deprecated in IsONform
 """
@@ -465,8 +482,9 @@ def main():
     file2.close()
     delta_len=3
     max_bubblesize=4
+    read_len_dict=get_read_lengths(all_reads)
     #print(all_intervals_for_graph)
-    DG,known_intervals,node_overview_read,reads_for_isoforms,reads_list = generateGraphfromIntervals(all_intervals_for_graph, k_size,delta_len)
+    DG,known_intervals,node_overview_read,reads_for_isoforms,reads_list = generateGraphfromIntervals(all_intervals_for_graph, k_size,delta_len,read_len_dict)
     print(known_intervals)
     print("edges with attributes:")
     print(DG.edges(data=True))
@@ -474,7 +492,10 @@ def main():
     #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #edgelist = list(DG.edges.data())
     #print(edgelist)
-    DG=simplifyGraph(DG, max_bubblesize, delta_len)
+    print(DG.nodes(data=True))
+    print(type(DG.nodes(data=True)))
+    #draw_Graph(DG)
+    DG=simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
     #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #draw_Graph(DG)
     #print(DG.nodes["s"]["reads"])
