@@ -145,12 +145,13 @@ def find_next_node(thisstartpos,info_array,known_cycles,current_read_state,k,cyc
 # INPUT:    all_intervals_for_graph:    A dictonary holding lists of minimizer intervals.
             k:                          K-mer length  
             delta_len:                  integer holding the maximum lenght difference for two reads to still land in the same Isoform
-
+            readlen_dict:               dictionary holding the read_id as key and the length of the read as value
+            
 #OUTPUT:    result                      a tuple of different output values of the algo
             DG                          The Networkx Graph object 
             known_intervals             A list of intervals used to check the correctness of the algo
             reads_for_isoforms          A dictionary holding the reads which are to be put in the same isoform
-            reads_at_startend_dict      
+            reads_at_start_dict      
 TODO:   add dictionary to store infos about known instances 
         revisit structure of the method and introduce subroutines
 
@@ -449,15 +450,16 @@ def draw_Graph(DG):
     # labels = nx.get_edge_attributes(DG, 'weight')
     # nx.draw_networkx_edge_labels(DG,pos, edge_labels=labels)
     plt.show()
+    """Helper method which extracts the read lengths from all_reads. We will use those during the graph generation to appoint more meaningful information to the node't'
+    INPUT: all_reads: dictionary which holds the overall read infos key: r_id, value tuple(readname, sequence, some info i currently don't care about)
+    OUTPUT: readlen_dict: dictionary holding the read_id as key and the length of the read as value
+    """
 def get_read_lengths(all_reads):
-    print(all_reads)
     readlen_dict={}
     for r_id,infos in all_reads.items():
-        print(r_id)
-        print(infos)
         seq=infos[1]
         seqlen=len(seq)
-        print(seqlen)
+
         readlen_dict[r_id]=seqlen
     return readlen_dict
 """
@@ -495,7 +497,7 @@ def main():
     print(DG.nodes(data=True))
     print(type(DG.nodes(data=True)))
     #draw_Graph(DG)
-    DG=simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
+    simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
     #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #draw_Graph(DG)
     #print(DG.nodes["s"]["reads"])
