@@ -364,7 +364,7 @@ def main(args):
     # start = time()
     delta_len = 3
     max_bubblesize=4
-    outfolder = "out"
+    outfolder = args.outfolder
     # read the file
     all_reads = {i + 1: (acc, seq, qual) for i, (acc, (seq, qual)) in
                  enumerate(help_functions.readfq(open(args.fastq, 'r')))}
@@ -582,7 +582,8 @@ def main(args):
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         # edgelist = list(DG.edges.data())
         # print(edgelist)
-        DG = simplifyGraph(DG, max_bubblesize, delta_len,reads_for_isoforms)
+        #TODO
+        #DG = simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         #draw_Graph(DG)
         #print("finding the reads, which make up the isoforms")

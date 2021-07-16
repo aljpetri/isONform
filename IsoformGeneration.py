@@ -14,35 +14,45 @@ INPUT:      DG                  Directed Graph
 OUPUT:      reads:              dictionary, which does not contain the read information anymore
 """
 def remove_reads_from_node(DG,node,supported_reads):
-    reads=DG.nodes[node]['reads']
-    #print("Before")
-    #print(reads)
+    print("Node",node)
+    reads=DG._node[node]['reads']
     for read in supported_reads:
         if read in reads.keys():
             del reads[read]
-        #else:
-            #print("ERROR: "+str(read)+" is not in "+str(reads))
     return reads
-def remove_edges_for_node(DG,node):
-    print("Removing edges from graph")
-    #TODO clean edge attributes from reads that are not in the graph anymore
-def clean_graph(DG,visited_nodes,supported_reads):
+def remove_reads_from_edge(DG,edge,supported_reads):
+    print("Edge",edge)
+    reads = DG[edge[0]][edge[1]]['edge_supp']
+    print(reads)
+    for read in supported_reads:
+        if read in reads:
+            reads.remove(read)
+    return reads
+def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
     #print("cleaning the graph")
     #print("Visited nodes")
     #print(visited_nodes)
     #print("supported_reads")
     #print(supported_reads)
+    all_edges_dict={}
     update_dict={}
-    for node in visited_nodes:
-        new_reads=remove_reads_from_node(DG, node, supported_reads)
+    edge_update_dict={}
+    for edge in visited_edges:
+        print("visited_edge:",edge)
+        new_reads = remove_reads_from_edge(DG, edge, supported_reads)
+    #for node in visited_nodes:
+     #   print(node)
+      #  new_reads=remove_reads_from_node(DG, node, supported_reads)
+
+        print("New_reads",new_reads)
         if new_reads:
-            update_dict[node]=new_reads
+            print("true")
+            edge_tuple=(edge[0],edge[1])
+            update_dict[edge_tuple]=new_reads
             nx.set_node_attributes(DG,update_dict,'reads')
-            #new_reads=DG.nodes[node]['reads']
         else:
-            #print("Removing node "+str(node))
-            DG.remove_node(node)
-    return DG
+            print("removing edge",edge)
+            DG.remove_edge(edge[0],edge[1])
 """
 Method to make sure that an isoform only contains reads which do actually end with this node
 
@@ -89,7 +99,6 @@ INPUT   DG                  Networkx DigraphObject
 OUTPUT: next_node:          the node which has the maximum support
         support_list:       List of supporting reads
 """
-#TODO:find bug in this method
 def get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr):
     edgelist = list(DG.out_edges(current_node))
     #print("now at")
@@ -122,12 +131,6 @@ def get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr):
                 #print(similarity_val)
                 final_support=shared_reads
                 next_node=edge[1]
-    #if similarity_val<1:
-        #print("error!!!")
-    #print("Next Node")
-    #print(next_node)
-    #print("New Supported reads")
-    #print(final_support)
     return (next_node,final_support)
 """Method to generate the final isoforms by iterating through the graph structure
 INPUT:      DG          Directed Graph
@@ -148,19 +151,25 @@ def compute_equal_reads(DG,reads):
     #print(edge_attr)
     #while still reads have to be assigned to an isoform
     while(reads_for_isoforms):
+        print("RFI",reads_for_isoforms)
         current_node=startnode
+
         supported_reads=reads_for_isoforms
         reached_t=False
         visited_nodes = []
+        visited_edges = []
         #While the end of the read was not reached, iterate over subsequent nodes
         while(not reached_t):
             #add current node to the list of visited_nodes
             visited_nodes.append(current_node)
+            prev_node=current_node
             #print("supporting_edge")
             #print(supporting_edge)
             #print("CurrnodebefMethod")
             #print(current_node)
             current_node,supported_reads=get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr)
+            edge_tup=(prev_node,current_node)
+            visited_edges.append(edge_tup)
             if not supported_reads:
                 break
             #print("Supported:")
@@ -175,8 +184,10 @@ def compute_equal_reads(DG,reads):
             #supported_reads=list(support_list)
             #print("Current Node: "+current_node)
         #print("Cleaning graph")
-        clean_graph(DG,visited_nodes,supported_reads)
-
+        print("visited_edges:",visited_edges)
+        print(DG.edges(data=True))
+        clean_graph(DG,visited_nodes,visited_edges,supported_reads)
+        print(DG.edges(data=True))
         isoforms[supported_reads[0]]=supported_reads
         #print(reads_for_isoforms)
         for sup_read in supported_reads:
@@ -208,7 +219,7 @@ def run_spoa(reads, spoa_out_file, spoa_path):
     null.close()
     return consensus
 
-    # generates the sequences which are to be aligned using spoa and writes the consensus into a file
+    # retreives the sequences which are to be aligned using spoa and writes the consensus into a file
     """
         curr_best_seqs is an array with q_id, pos1, pos2
         the current read is on index 0 in curr_best_seqs array

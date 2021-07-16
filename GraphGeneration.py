@@ -169,7 +169,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
         reads_for_isoforms.append(i)
     for i in range(1,len(read_len_dict)+1):
         reads_at_end_dict[i]=(read_len_dict[i],read_len_dict[i])
-        reads_for_isoforms.append(i)
+        #reads_for_isoforms.append(i)
     print(reads_at_start_dict)
     print(reads_at_end_dict)
     # a source and a sink node are added to the graph in order to have a well-defined start and end for the paths
@@ -496,7 +496,7 @@ def main():
     #print(edgelist)
     print(DG.nodes(data=True))
     print(type(DG.nodes(data=True)))
-    #draw_Graph(DG)
+    draw_Graph(DG)
     simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
     #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #draw_Graph(DG)
@@ -511,8 +511,9 @@ def main():
     #print(known_intervals)
     #The call for the isoform generation (deprecated during implementation)
     #TODO: invoke isoform_generation again
+    print("RFIoutside",reads_for_isoforms)
     generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa)
-
+    print("nodes in DG")
     print(list(DG))
     #print(known_intervals)
 
