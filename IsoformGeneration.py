@@ -30,8 +30,9 @@ def remove_reads_from_edge(DG,edge,supported_reads):
     return reads
 def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
     #print("cleaning the graph")
-    #print("Visited nodes")
-    #print(visited_nodes)
+    print("Visited Edges",visited_edges)
+    print("Visited nodes")
+    print(visited_nodes)
     #print("supported_reads")
     #print(supported_reads)
     all_edges_dict={}
@@ -53,6 +54,10 @@ def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
         else:
             print("removing edge",edge)
             DG.remove_edge(edge[0],edge[1])
+    for node in visited_nodes:
+        if DG.degree(node)==0:
+            DG.remove_node(node)
+            print("removing node", node)
 """
 Method to make sure that an isoform only contains reads which do actually end with this node
 
@@ -103,8 +108,8 @@ def get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr):
     edgelist = list(DG.out_edges(current_node))
     #print("now at")
     #print(current_node)
-    #print("Edgelist")
-    #print(edgelist)
+    print("Edgelist")
+    print(edgelist)
     #print("initial supported reads")
     #print(supported_reads)
     final_support=[]
@@ -117,13 +122,13 @@ def get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr):
         #print("current node")
         #print(current_node)
         supp_reads=supported_reads
-        #print("Initial supp")
-        #print(supp_reads)
+        print("Initial supp")
+        print(supp_reads)
         edge_reads=edge_attr[edge]
-        #print(edge_reads)
+        print("edge_reads",edge_reads)
         shared_reads=list(set(supp_reads).intersection(edge_reads))
-        #print("Shared REads")
-        #print(shared_reads)
+        print("Shared REads")
+        print(shared_reads)
         if len(shared_reads)>similarity_val:
                 #print("SIM")
                 #print(similarity_val)
@@ -168,6 +173,7 @@ def compute_equal_reads(DG,reads):
             #print("CurrnodebefMethod")
             #print(current_node)
             current_node,supported_reads=get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr)
+            print("current node returned by get best supported edge node", current_node)
             edge_tup=(prev_node,current_node)
             visited_edges.append(edge_tup)
             if not supported_reads:

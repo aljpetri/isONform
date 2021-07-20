@@ -33,6 +33,7 @@ def generate_subgraph(DG,bubble):
     #for bubble in bubbles:
         SG=DG.subgraph(bubble)
         draw_Graph(SG)
+
 """Method to reduce the number of nodes in our graph
 INPUT:      DG          Directed Graph 
 
@@ -94,6 +95,98 @@ def find_repetative_regions(DG):
         print("No cycles found in the graph")
     return (list_of_cycles)
 
+"""
+This function was taken from https://networkx.org/documentation/stable/_modules/networkx/algorithms/cycles.html#cycle_basis
+As the original implementation relies on sets and therefore yields nondeterministic results, the code is altered to yield a deterministic behavior.
+"""
+def cycle_basis(G, root=None):
+    """ Returns a list of cycles which form a basis for cycles of G.
+
+    A basis for cycles of a network is a minimal collection of
+    cycles such that any cycle in the network can be written
+    as a sum of cycles in the basis.  Here summation of cycles
+    is defined as "exclusive or" of the edges. Cycle bases are
+    useful, e.g. when deriving equations for electric circuits
+    using Kirchhoff's Laws.
+
+    Parameters
+    ----------
+    G : NetworkX Graph
+    root : node, optional
+       Specify starting node for basis.
+
+    Returns
+    -------
+    A list of cycle lists.  Each cycle list is a list of nodes
+    which forms a cycle (loop) in G.
+
+    Examples
+    --------
+    >>> G = nx.Graph()
+    >>> nx.add_cycle(G, [0, 1, 2, 3])
+    >>> nx.add_cycle(G, [0, 3, 4, 5])
+    >>> print(nx.cycle_basis(G, 0))
+    [[3, 4, 5, 0], [1, 2, 3, 0]]
+
+    Notes
+    -----
+    This is adapted from algorithm CACM 491 [1]_.
+
+    References
+    ----------
+    .. [1] Paton, K. An algorithm for finding a fundamental set of
+       cycles of a graph. Comm. ACM 12, 9 (Sept 1969), 514-518.
+
+    See Also
+    --------
+    simple_cycles
+    """
+    #replaced gnodes to be implemented by a sorted list rather than a set
+    gnodes = sorted(list(G.nodes()))
+    cycles = []
+    while gnodes:  # loop over connected components
+        if root is None:
+            root = gnodes.pop()
+        stack = [root]
+        pred = {root: root}
+        used = {root: list()}#we use a list instead of a set
+        while stack:  # walk the spanning tree finding cycles
+            z = stack.pop()  # use last-in so cycles easier to find
+            zused = used[z]
+            for nbr in G[z]:
+                if nbr not in used:  # new node
+                    pred[nbr] = z
+                    stack.append(nbr)
+                    used[nbr] = {z}
+                elif nbr == z:  # self loops
+                    cycles.append([z])
+                elif nbr not in zused:  # found a cycle
+                    pn = used[nbr]
+                    cycle = [nbr, z]
+                    p = pred[z]
+                    while p not in pn:
+                        cycle.append(p)
+                        p = pred[p]
+                    cycle.append(p)
+                    cycles.append(cycle)
+                    used[nbr].add(z)
+        #altered to work with a list: we only remove the elements which were part of gnodes
+        for i in pred:
+            if i in gnodes:
+                gnodes.remove(i)
+        #gnodes -= sorted(list(pred)) #original code
+        root = None
+    return cycles
+
+def find_bubbles(DG):
+    #draw_Graph(DG)
+    # get undirected version of the graph to find bubbles
+    UG = DG.to_undirected()
+    # collect the bubbles in the graph (Bubbles denote possible mutations in the minimizers)
+    # find all cycles in the undirected graph->bubbles
+    #list_of_bubbles =nx.cycle_basis(UG)
+    list_of_bubbles=cycle_basis(UG)
+    return list_of_bubbles
 
 """Helper method for get_bubble_start_end: This method finds the minimum and maximum nodes in the bubble
 The method iterates through the nodes in a bubble and collects all their out_nodes. For The minimum node there will not be an out_node
@@ -344,7 +437,7 @@ def collect_bubble_nodes(path_nodes,consensus_infos,DG,support_dict):
             distance=0
             for i,s_read in enumerate(shared_reads):
                 pos_tuple=path_node_infos[s_read]
-                print(pos_tuple)
+                print(pos_tuple[0])
                 distance+=pos_tuple[0]
             final_distance=distance/(i+1)
             print("final_distance",final_distance)
@@ -369,6 +462,7 @@ def add_edges(DG,all_nodes,edges_to_delete,consensus_infos,bubble_start,bubble_e
         else:
             path2=path
         counter=counter+1
+
     print(path1)
     print(path2)
     prevnode1 = bubble_start
@@ -385,6 +479,14 @@ def add_edges(DG,all_nodes,edges_to_delete,consensus_infos,bubble_start,bubble_e
         reads_for_node.extend(all_shared)
         print("P1",path1)
         print("P2", path2)
+        new_edge_supp1 = edges_to_delete[prevnode1, nextnode1]['edge_supp']
+        print("ES 1 from ", prevnode1, " to ", nextnode1)
+        print("NES1", new_edge_supp1)
+        new_edge_supp2 = edges_to_delete[prevnode2, nextnode2]['edge_supp']
+        full_edge_supp = new_edge_supp1 + new_edge_supp2
+        full_edge_supp_final = []
+        [full_edge_supp_final.append(x) for x in full_edge_supp if x not in full_edge_supp_final]
+        #if the next node is from path1: pop the node out of path1 and set nextnode1 to the
         if node in path1:
             prevnode1=path1.pop(0)
             if len(path1)<1:
@@ -392,6 +494,7 @@ def add_edges(DG,all_nodes,edges_to_delete,consensus_infos,bubble_start,bubble_e
                 print("Nextnode1", nextnode1)
             else:
                 nextnode1=path1[0]
+                print(nextnode1)
         else:
             prevnode2=path2.pop(0)
             if len(path2)<1:
@@ -399,12 +502,9 @@ def add_edges(DG,all_nodes,edges_to_delete,consensus_infos,bubble_start,bubble_e
                 print("Nextnode2",nextnode2)
             else:
                 nextnode2=path2[0]
-        new_edge_supp1=edges_to_delete[prevnode1,nextnode1]['edge_supp']
-        print("NES1", new_edge_supp1)
-        new_edge_supp2=edges_to_delete[prevnode2,nextnode2]['edge_supp']
-        full_edge_supp=new_edge_supp1+new_edge_supp2
-        full_edge_supp_final =[]
-        [full_edge_supp_final.append(x) for x in full_edge_supp if x not in full_edge_supp_final]
+                print("Nextnode2", nextnode2)
+
+        print("ES 2 from ", prevnode2, " to ", nextnode2)
         print("NES2",new_edge_supp2)
         print(DG.edges(data=True))
         DG.add_edge(prevnode,node,edge_supp=full_edge_supp_final)
@@ -475,17 +575,6 @@ def align_and_linearize_bubble_nodes(DG,bubble_start,bubble_end,delta_len,all_re
         print("Edges aflin",DG.edges(data=True))
     print(score)
     #TODO implement linearize_bubble to alter DG in order to pop the bubble
-
-
-
-def find_bubbles(DG):
-    #draw_Graph(DG)
-    # get undirected version of the graph to find bubbles
-    UG = DG.to_undirected()
-    # collect the bubbles in the graph (Bubbles denote possible mutations in the minimizers)
-    # find all cycles in the undirected graph->bubbles
-    list_of_bubbles =nx.cycle_basis(UG)
-    return list_of_bubbles
 
 """function to find shared reads between the bubble_start and bubble_end. Those reads are the ones we will loook at to figure out how similar the paths are
     INPUT:      DG:              The graph for which the element is to be found
@@ -589,12 +678,12 @@ def get_path_starts(cycle,bubble_start,bubble_end,DG,shared_reads):
     print("Path_starts ",path_starts)
     return path_starts
 """Helper method for find_bubbles: This method figures out which reads belong to which part from bubble source to bubble sink
-INPUT:      cycle:  A list of nodes which make up the bubble(found to be a bubble by being a cycle in an undirected graph
-            min_element: The node deemed to be the starting node of the bubble (given as tuple)
-            max_element: The node deemed to be the end node of the bubble (given as tuple)
-            DG:         the directed graph we want to pop the bubble in
-            contains_s: A boolean value denoting whether the cycle contains node "s"
-            contains_t: A boolean value denoting whether the cycle contains node "t"
+INPUT:      cycle:          A list of nodes which make up the bubble(found to be a bubble by being a cycle in an undirected graph
+            min_element:    The node deemed to be the starting node of the bubble (given as tuple)
+            max_element:    The node deemed to be the end node of the bubble (given as tuple)
+            DG:             the directed graph we want to pop the bubble in
+            contains_s:     A boolean value denoting whether the cycle contains node "s"
+            contains_t:     A boolean value denoting whether the cycle contains node "t"
 
 """
 
@@ -653,7 +742,6 @@ def find_and_pop_bubbles(DG, delta_len,all_reads,work_dir,k_size):
             print("Filtered ",filter_count," bubbles out")
             continue
         # find the nodes which are on either path to be able to tell apart the paths on the bubble
-        #readlen_dict,consensus_infos=get_path_reads_length(bubble_nodes, bubble_start, bubble_end, DG,shared_reads)
         path_starts=get_path_starts(bubble_nodes, bubble_start, bubble_end, DG, shared_reads)
         readlen_dict = {}
         consensus_infos = {}
@@ -676,7 +764,6 @@ def find_and_pop_bubbles(DG, delta_len,all_reads,work_dir,k_size):
             filter_count += 1
             print("Filtered ", filter_count, " bubbles out")
             continue
-        #print("Listof normal",listofnormalnodes)
         print("min",bubble_start)
         print("max",bubble_end)
         #print("readlendict",readlen_dict)
