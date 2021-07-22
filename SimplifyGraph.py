@@ -55,7 +55,7 @@ def merge_nodes(DG):
 
 
 """
-function to find cycles in the graph (, which denote repetitive regions)
+function to find cycles in the graph (which denote repetitive regions)
 INPUT: DG Directed Graph
 OUTPUT: List_of_cycles: A list holding all cycles present in DG
 """
@@ -187,23 +187,62 @@ def find_bubbles(DG):
     #list_of_bubbles =nx.cycle_basis(UG)
     list_of_bubbles=cycle_basis(UG)
     return list_of_bubbles
+"""
+Helper method used to find all the reads which are in startnode and may be part of a bubble(at least the next node is part of the bubble)
 
+INPUT:          listofnodes:  A list of nodes which make up the bubble(found to be a bubble by being a cycle in an undirected graph
+                DG:         the directed graph we want to pop the bubble in
+                startnode: The node deemed to be the starting node of the bubble (given as tuple)  
+OUTPUT:         start_reads: set holding all reads which are supporting startnode and an out_edge which lies in the bubble
+"""
+def get_start_reads(DG,startnode,listofnodes):
+    out_edges=DG.out_edges(startnode)
+    start_reads= set()
+    print("getstartreads")
+    for o_edge in out_edges:
+        print(o_edge)
+        nextnode=o_edge[1]
+        if nextnode in listofnodes:
+            edge_infos=DG[o_edge[0]][nextnode]['edge_supp']
+            print("edge_infos",edge_infos)
+            start_reads.update(edge_infos)
+    print(start_reads)
+    return start_reads
+"""
+Helper method used to find all the reads which are in endnode and may be part of a bubble(at least the previous node is part of the bubble)
+
+INPUT:          listofnodes:  A list of nodes which make up the bubble(found to be a bubble by being a cycle in an undirected graph
+                DG:         the directed graph we want to pop the bubble in
+                endnode: The node deemed to be the ending node of the bubble (given as tuple)  
+OUTPUT:         end_reads: set holding all reads which are supporting endnode and an in_edge which lies in the bubble
+"""
+def get_end_reads(DG, endnode, listofnodes):
+    in_edges = DG.in_edges(endnode)
+    end_reads = set()
+    print("getstartreads")
+    for i_edge in in_edges:
+        if i_edge[1] in listofnodes:
+            end_reads.update(DG[i_edge[0]][i_edge[1]]['edge_supp'])
+    print(end_reads)
+    return end_reads
 """Helper method for get_bubble_start_end: This method finds the minimum and maximum nodes in the bubble
 The method iterates through the nodes in a bubble and collects all their out_nodes. For The minimum node there will not be an out_node
 INPUT:      listofnodes:  A list of nodes which make up the bubble(found to be a bubble by being a cycle in an undirected graph
             DG:         the directed graph we want to pop the bubble in
 OUTPUT:     startnode: The node deemed to be the starting node of the bubble (given as tuple)
+            still_viable: Boolean value denoting whether the cycle is still a contender for being a bubble
+            start_reads: All reads that are supporting the bubble_start_node as well as one edge towards a bubble node
             """
 def find_bubble_start(DG,listofnodes):
     print("fbslistofnodes")
     print(listofnodes)
-    real_bubble=True
+    still_viable=True
     out= set()
     outedges=[]
     for node in listofnodes:
         print(node)
         out_edges_all=DG.out_edges(node)
-        print(out_edges_all)
+        print("Out edges all",out_edges_all)
         for out_edge in out_edges_all:
             if (out_edge[1] in listofnodes):
                 out.add(out_edge[1])
@@ -212,21 +251,26 @@ def find_bubble_start(DG,listofnodes):
     set_b = out
     subtraction=set_a-set_b
     list_of_strings = [str(s) for s in subtraction]
+    print("LOSstart", list_of_strings)
     if len(list_of_strings)>1:
-        real_bubble=False
-    bubble_start_reads=set()
+        still_viable=False
+    bubble_reads=set()
     for out_edge in outedges:
+        print(out_edge)
         edge_infos=DG[out_edge[0]][out_edge[1]]["edge_supp"]
         for entry in edge_infos:
-            bubble_start_reads.add(entry)
+            bubble_reads.add(entry)
     startnode = " ".join(list_of_strings)
-    print("start_reads",bubble_start_reads)
-    return  real_bubble, startnode,bubble_start_reads
+    print("startnode",startnode)
+    start_reads=get_start_reads(DG,startnode,listofnodes)
+    return  still_viable, startnode,start_reads
 """Helper method for get_bubble_start_end: This method finds the maximum node in the bubble
 The method iterates through the nodes in a bubble and collects all their in_nodes. For The maximum node there will not be an in_node
 INPUT:      listofnodes:  A list of nodes which make up the bubble(found to be a bubble by being a cycle in an undirected graph
             DG:         the directed graph we want to pop the bubble in
 OUTPUT:     endnode: The node deemed to be the end node of the bubble (given as tuple)
+            still_viable: Boolean value denoting whether the cycle is still a contender for being a bubble
+            end_reads: All reads that are supporting the bubble_end_node as well as one edge from a bubble node
             """
 def find_bubble_end(DG,listofnodes):
     real_bubble=True
@@ -243,15 +287,17 @@ def find_bubble_end(DG,listofnodes):
     set_b = in_nodes
     subtraction = set_a - set_b
     list_of_strings = [str(s) for s in subtraction]
+    print("LOSend",list_of_strings)
     if len(list_of_strings)>1:
         real_bubble=False
     for in_edge in inedges:
-        if(in_edge[1]==list_of_strings[0]):
+        if(in_edge[1] == list_of_strings[0]):
             edge_infos=DG[in_edge[0]][in_edge[1]]["edge_supp"]
             for entry in edge_infos:
                 bubble_end_reads.add(entry)
     endnode= " ".join(list_of_strings)
-    return real_bubble,endnode,bubble_end_reads
+    end_reads = get_end_reads(DG, endnode, listofnodes)
+    return real_bubble,endnode,end_reads
 
 
 """Helper method for find_bubbles
@@ -273,139 +319,19 @@ def get_bubble_start_end(DG, listofnodes):
     return startnode,endnode,real_bubble,shared_reads
 
 
-"""Method to generate the final isoforms by iterating through the graph structure
-INPUT:      DG          Directed Graph
-            reads       list of reads 
-OUPUT:      filename    file which contains all the final isoforms
-"""
-def compute_equal_reads(DG,reads):
-    startnode = 's'
-    #startreads=DG._node['s']['reads']
-    #print(startreads)
-    #endnode='t'
-    supported_reads=[]
-    reads_for_isoforms=reads
-    visited_nodes=[]
-    isoforms= {}
-    #while still reads have to be assigned to an isoform
-    while(reads_for_isoforms):
-        current_node=startnode
-        supported_reads=reads_for_isoforms
-        reached_t=False
-        #While the end of the read was not reached iterate over subsequent nodes
-        while(not reached_t):
-            edgelist=list(DG.out_edges(current_node))
-            #print(edgelist)
-            maximum_support = 0
-            #supporting_edge=None
-            #current_node_reads=DG.nodes[current_node]['reads']
-            visited_nodes.append(current_node)
-            for edge in edgelist:
-                #print(edge)
-                equality_counter=0
-                other_node=edge[1]
-                if not other_node=='t':
-                    other_node_reads=DG.nodes[other_node]['reads']
-                    #print("other node reads")
-                    #print(other_node_reads)
-                    support_list=[]
-                    #print("Supported Reads")
-                    #print(supported_reads)
-                    for read in supported_reads:
-                        read_id=read
-                        #print("ReadID:"+str(read_id))
-                        read_id_both_reads=[item for item in other_node_reads if item[0] == read_id]
-                        if read_id_both_reads:
-                            equality_counter=equality_counter+1
-                            #print(equality_counter)
-                            support_list.append(read_id)
 
-                    if equality_counter>maximum_support:
-                        maximum_support=equality_counter
-                        supporting_edge=edge
-                        #print("supporting_edge")
-                        #print(supporting_edge)
-                        supported_reads = support_list
-                else:
-                    current_node="t"
-                    reached_t=True
-                    break
-            #print("supporting_edge")
-            #print(supporting_edge)
-            current_node=supporting_edge[1]
-
-"""Helper method which is used to find the distance of a node to the start node. This is done by using the read information for both nodes
-    INPUT:          DG      Our directed Graph
-                    bubble_start        The start node of our bubble
-                    path_node           The node for which we would like to retreive the distance
-                    path_reads:         The reads which we are looking at to get the distances
-    OUTPUT:         dist_to_start:      mean distance between the two nodes (we only look at the path_reads)
-"""
-def get_distance_to_start(DG,bubble_start, path_node,path_reads):
-    actual_reads = [a_tuple[0] for a_tuple in path_reads]
-    print("actual_reads",actual_reads)
-    sum=0
-    #we iterate over actural_reads (the read ids we got from path_reads)
-    for i,read in enumerate(actual_reads):
-        start_infos=DG.nodes[bubble_start]['reads']
-        print("startinfos",start_infos)
-        start_tuple=start_infos[read]
-        print("starttuple",start_tuple)
-        start_pos=start_tuple[1]
-        node_infos=DG.nodes[path_node]['reads']
-        end_tuple=node_infos[read]
-        end_pos=end_tuple[0]
-        sum+=end_pos-start_pos
-    dist_to_start=sum/(i+1)
-    return dist_to_start
-"""
-Helper method utilized by linearize bubbles which removes the edges we have to get rid of(all edges which connect 2 nodes which are part of the current bubble
-    INPUT:      DG      Our directed Graph
-                path_reads:         The reads which we are looking at to get the distances
-                bubble_start        The start node of our bubble
-                bubble_end:         The end node of our bubble
-                path_nodes          A list of nodes which make up a path in our bubble
-                
-    OUTPUT:     edges_to_delete         A dictionary holding all edges which we want to delete and their respective attributes (needed for adding edges)
-"""
-def remove_edges(DG,path_reads,bubble_start,bubble_end,path_nodes):
-    print("Path nodes", path_nodes)
-    print("PAth_reads",path_reads)
-    tup_list=[]
-    #we store all the infos for the deleted edges into edges_to_delete
-    edges_to_delete= {}
-    #we have to delete the edges which connect the nodes that are inside the bubble
-    for startnode_id,path_node_list in path_nodes.items():
-        print(path_node_list)
-        #we delete the edge bubble_start-path_node_list[0] and add its infos to edges_to_delete
-        edges_to_delete[bubble_start,path_node_list[0]]=DG[bubble_start][path_node_list[0]]
-        for index,path_node in enumerate(path_node_list):
-            print(index,", ",path_node)
-            dist=get_distance_to_start(DG,bubble_start, path_node,path_reads[startnode_id])
-            tup=dist,path_node
-            tup_list.append(tup)
-            if path_node!=path_node_list[-1]:
-                edges_to_delete[path_node,path_node_list[index+1]]=DG[path_node][path_node_list[index+1]]
-            else:
-                print("BER",bubble_end)
-                print(DG.nodes[bubble_end])
-                entry = DG.get_edge_data(path_node,bubble_end)
-                edges_to_delete[path_node,bubble_end]=entry
-
-    print("ETD",edges_to_delete)
-    for edge,edge_infos in edges_to_delete.items():
-        print(edge)
-        DG.remove_edge(edge[0],edge[1])
-    return edges_to_delete
+#TODO: we get an empty sequence into the consensus generation. WHY?!
 def generate_consensus_path(work_dir,consensus_attributes,reads,k_size):
     reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
-    for i, (q_id, pos1, pos2) in  enumerate(consensus_attributes, 3):
-        if pos2==0:
-            pos2=len(reads[q_id][1])-k_size
+    for i, (q_id, pos1, pos2) in enumerate(consensus_attributes, 3):
+        print("Printing full seq:",reads[q_id][1])
+        if pos2 == 0:
+            pos2 = len(reads[q_id][1])-k_size
         seq = reads[q_id][1][pos1: pos2 + k_size]
+        print(q_id,": ",seq)
         reads_path.write(">{0}\n{1}\n".format(str(q_id)+str(pos1)+str(pos2), seq))
     reads_path.close()
-    # print(reads_path.name)
+    print(reads_path.name)
     # sys.exit()
     spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir,"spoa_tmp.fa"), "spoa")
     print("spoa_ref",spoa_ref)
@@ -446,13 +372,82 @@ def collect_bubble_nodes(path_nodes,consensus_infos,DG,support_dict):
     print("all_nodes",all_nodes)
     return all_nodes,all_shared
 
-def add_edges(DG,all_nodes,edges_to_delete,consensus_infos,bubble_start,bubble_end,all_shared,path_nodes):
+
+"""Helper method which is used to find the distance of a node to the start node. This is done by using the read information for both nodes
+    INPUT:          DG      Our directed Graph
+                    bubble_start        The start node of our bubble
+                    path_node           The node for which we would like to retreive the distance
+                    path_reads:         The reads which we are looking at to get the distances
+    OUTPUT:         dist_to_start:      mean distance between the two nodes (we only look at the path_reads)
+"""
+def get_distance_to_start(DG, bubble_start, path_node, path_reads):
+    actual_reads = [a_tuple[0] for a_tuple in path_reads]
+    print("actual_reads", actual_reads)
+    sum = 0
+    # we iterate over actual_reads (the read ids we got from path_reads)
+    for i, read in enumerate(actual_reads):
+        start_infos = DG.nodes[bubble_start]['reads']
+        print("startinfos", start_infos)
+        start_tuple = start_infos[read]
+        print("starttuple", start_tuple)
+        start_pos = start_tuple[1]
+        print("path_node",path_node)
+        node_infos = DG.nodes[path_node]['reads']
+        print("node_infos",node_infos)
+        end_tuple = node_infos[read]
+        end_pos = end_tuple[0]
+        sum += end_pos - start_pos
+    dist_to_start = sum / (i + 1)
+    return dist_to_start
+
+
+"""
+Helper method utilized by linearize bubbles which removes the edges we have to get rid of(all edges which connect 2 nodes which are part of the current bubble
+    INPUT:      DG      Our directed Graph
+                path_reads:         The reads which we are looking at to get the distances
+                bubble_start        The start node of our bubble
+                bubble_end:         The end node of our bubble
+                path_nodes          A list of nodes which make up a path in our bubble
+
+    OUTPUT:     edges_to_delete         A dictionary holding all edges which we want to delete and their respective attributes (needed for adding edges)
+"""
+
+
+def remove_edges(DG, path_reads, bubble_start, bubble_end, path_nodes):
+    print("Path nodes", path_nodes)
+    print("PAth_reads", path_reads)
+    tup_list = []
+    # we store all the infos for the deleted edges into edges_to_delete
+    edges_to_delete = {}
+    # we have to delete the edges which connect the nodes that are inside the bubble
+    for startnode_id, path_node_list in path_nodes.items():
+        print(path_node_list)
+        # we mark the edge bubble_start-path_node_list[0] and add its infos to edges_to_delete
+        edges_to_delete[bubble_start, path_node_list[0]] = DG[bubble_start][path_node_list[0]]
+        for index, path_node in enumerate(path_node_list):
+            print(index, ", ", path_node)
+            dist = get_distance_to_start(DG, bubble_start, path_node, path_reads[startnode_id])
+            tup = dist, path_node
+            tup_list.append(tup)
+            if path_node != path_node_list[-1]:
+                edges_to_delete[path_node, path_node_list[index + 1]] = DG[path_node][path_node_list[index + 1]]
+            else:
+                print("BER", bubble_end)
+                print(DG.nodes[bubble_end])
+                entry = DG.get_edge_data(path_node, bubble_end)
+                edges_to_delete[path_node, bubble_end] = entry
+
+    print("ETD", edges_to_delete)
+    for edge, edge_infos in edges_to_delete.items():
+        print(edge)
+        DG.remove_edge(edge[0], edge[1])
+    return edges_to_delete
+def add_edges(DG,all_nodes,edges_to_delete,bubble_start,bubble_end,all_shared,path_nodes):
     counter=0
     path1=[]
     path2=[]
 
     print("EdgestoDelete",edges_to_delete)
-    prevallnodes=bubble_start
     print("Allnodeslen",len(all_nodes))
     #we assign both paths to variables to make them easier accessible.
     for id,path in path_nodes.items():
@@ -538,16 +533,15 @@ def linearize_bubble(DG, consensus_infos, bubble_start, bubble_end, path_nodes,e
     print("Allnodes before sorting",all_nodes)
     all_nodes.sort(key=lambda tup: tup[1])
     print("Allnodes after sorting", all_nodes)
-    add_edges(DG,all_nodes,edges_to_delete,consensus_infos,bubble_start,bubble_end,all_shared,path_nodes)
+    add_edges(DG,all_nodes,edges_to_delete,bubble_start,bubble_end,all_shared,path_nodes)
     print("Popped bubble ",path_nodes)
+
 """ Method to simplify the graph. 
     INPUT:  DG  Directed Graph
            delta_len   parameter giving the maximum length difference between two paths to still pop the bubble
     OUTPUT: DG Directed Graph without bubbles
         """
-#TODO: We have to generate a consensus of the reads in one bubble path to be able to have a pairwise sequence alignment between the bubble paths
 def align_and_linearize_bubble_nodes(DG,bubble_start,bubble_end,delta_len,all_reads,consensus_infos,work_dir,k_size,path_nodes,support_dict):
-    #TODO: generate consensus sequences via spoa
     consensus_list=[]
     for path_node,consensus_attributes in consensus_infos.items():
         print("consensus",consensus_attributes)
@@ -574,27 +568,7 @@ def align_and_linearize_bubble_nodes(DG,bubble_start,bubble_end,delta_len,all_re
         linearize_bubble(DG, consensus_infos, bubble_start, bubble_end, path_nodes,edges_to_delete,support_dict)
         print("Edges aflin",DG.edges(data=True))
     print(score)
-    #TODO implement linearize_bubble to alter DG in order to pop the bubble
 
-"""function to find shared reads between the bubble_start and bubble_end. Those reads are the ones we will loook at to figure out how similar the paths are
-    INPUT:      DG:              The graph for which the element is to be found
-                bubble_start:    the source node of the bubble(local source)
-                bubble_end:      the sink node of the bubble(local sink)
-    OUTPUT:     shared_reads:    a list of reads which are in bubble_start as well as in bubble_end
-
-"""
-"""def find_shared_reads(DG,bubble_start, bubble_end):
-    all_nodes_reads=DG.nodes(data='reads')
-    
-    start_reads=all_nodes_reads[bubble_start]
-    print("startreads",start_reads)
-    end_reads=all_nodes_reads[bubble_end]
-    print("end_reads", end_reads)
-    start_read_list=start_reads.keys()
-    end_read_list=end_reads.keys()
-    shared_reads=list(set(start_read_list).intersection(end_read_list))
-    print("Shared REads ",shared_reads)
-    return shared_reads"""
 def get_path_nodes(cycle, min_element, max_element, DG):
     # find the nodes which are directly connected to min_node (min_node_out) and to max_node(max_node_in) this enables the finding of which reads we have to compare
     min_edges = DG.out_edges(min_element)
@@ -632,6 +606,7 @@ INPUT:          DG: The directed graph
 OUTPUT:         A boolean value telling us whether there is a set of reads that consistently supports the path
 """
 def test_path_viability(DG,path_start,initial_support,cycle,bubble_end):
+
     curr_support=initial_support
     curr_node=path_start
     visited_nodes=[]
@@ -668,6 +643,7 @@ def test_path_viability(DG,path_start,initial_support,cycle,bubble_end):
     #we were able to reach bubble_end->we just confirmed that we have a bubble path
     is_viable=True
     print("Visited_nodes ",visited_nodes)
+    print("intersect_supp",intersect_supp)
     return (is_viable, visited_nodes,intersect_supp)
 def get_path_starts(cycle,bubble_start,bubble_end,DG,shared_reads):
     #We want to find the nodes, which denote the start points for each path(as we have to find out which reads are in which path)
@@ -691,14 +667,16 @@ def get_path_reads_length(r_ids, bubble_start, bubble_end, DG,shared_reads):
     id_counter=0
     read_length=0
     read_list=[]
+    max_node_infos = DG.nodes[bubble_end]['reads']
+    print("max_node_infos")
+    print(max_node_infos)
+    min_node_infos = DG.nodes[bubble_start]['reads']
+    print("min_node_infos")
+    print(min_node_infos)
+    print("rids",r_ids)
+    print("shared_reads",shared_reads)
     for r_id in r_ids:
         if r_id in shared_reads:
-                max_node_infos=DG.nodes[bubble_end]['reads']
-                #print("max_node_infos")
-                print(max_node_infos)
-                min_node_infos=DG.nodes[bubble_start]['reads']
-                #print("min_node_infos")
-                print(min_node_infos)
                 bubble_end_pos=max_node_infos[r_id]
                 bubble_start_pos=min_node_infos[r_id]
                 start_of_bubble=bubble_start_pos[1]
@@ -753,10 +731,11 @@ def find_and_pop_bubbles(DG, delta_len,all_reads,work_dir,k_size):
             (is_viable_path, path_nodes,support) = test_path_viability(DG, key, value, bubble_nodes, bubble_end)
             path_nodes_dict[key]=path_nodes
             support_dict[key]=support
-            if not (is_viable_path):
+            if not (is_viable_path) or not path_nodes:
                 no_viab_bubble=True
                 break
-            path_length,read_list=get_path_reads_length(value, bubble_start, bubble_end, DG,shared_reads)
+            print("supported",support)
+            path_length,read_list=get_path_reads_length(value, bubble_start, bubble_end, DG,support)
             print("read_list (consensus:_infos",read_list)
             readlen_dict[key]=path_length
             consensus_infos[key]=read_list
@@ -777,9 +756,9 @@ def find_and_pop_bubbles(DG, delta_len,all_reads,work_dir,k_size):
                 lengthdiff = abs(lengthdiff-length)
         if lengthdiff < delta_len:
             print("Linearizing bubble ",bubble_nodes)
-            generate_subgraph(DG, bubble_nodes)
+            #generate_subgraph(DG, bubble_nodes)
             align_and_linearize_bubble_nodes(DG,bubble_start,bubble_end,delta_len,all_reads,consensus_infos,work_dir,k_size,path_nodes_dict,support_dict)
-            generate_subgraph(DG, bubble_nodes)
+            #generate_subgraph(DG, bubble_nodes)
 """Overall method used to simplify the graph
 During this method: - Bubbles are identified and if possible popped     
                     - Nodes are merged        

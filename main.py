@@ -583,7 +583,7 @@ def main(args):
         # edgelist = list(DG.edges.data())
         # print(edgelist)
         #TODO
-        #DG = simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
+        simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         #draw_Graph(DG)
         #print("finding the reads, which make up the isoforms")

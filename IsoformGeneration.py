@@ -20,6 +20,12 @@ def remove_reads_from_node(DG,node,supported_reads):
         if read in reads.keys():
             del reads[read]
     return reads
+"""Method to delete read information from edges
+INPUT:      DG                  Directed Graph
+            edge                edge for which read information is deleted
+            supported_reads     list of reads which we want to delete from the nodes 
+OUPUT:      reads:              dictionary, which does not contain the read information anymore
+"""
 def remove_reads_from_edge(DG,edge,supported_reads):
     print("Edge",edge)
     reads = DG[edge[0]][edge[1]]['edge_supp']
@@ -28,6 +34,13 @@ def remove_reads_from_edge(DG,edge,supported_reads):
         if read in reads:
             reads.remove(read)
     return reads
+"""Method to delete nodes and edges which do not support any reads any more
+INPUT:      DG                  Directed Graph
+            visitee_nodes       Nodes which make up an isoform and from which we delete the reads
+            visited_edges       Edges which make up an isoform and from which we delete the reads
+            supported_reads     list of reads which we want to delete from the nodes 
+OUPUT:      reads:              dictionary, which does not contain the read information anymore
+"""
 def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
     #print("cleaning the graph")
     print("Visited Edges",visited_edges)

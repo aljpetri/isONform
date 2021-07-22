@@ -174,6 +174,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
     print(reads_at_end_dict)
     # a source and a sink node are added to the graph in order to have a well-defined start and end for the paths
     DG.add_node("s",reads=reads_at_start_dict)
+    print("REads at end dict",reads_at_end_dict)
     DG.add_node("t",reads=reads_at_end_dict)
 
     # holds the r_id as key and a list of tuples as value: For identification of reads, also used to ensure correctness of graph
@@ -523,7 +524,7 @@ def main():
 
 
     #TODO put back in!!!
-    #print("removing temporary workdir")
+    print("removing temporary workdir")
     shutil.rmtree(work_dir)
 if __name__ == "__main__":
     main()
