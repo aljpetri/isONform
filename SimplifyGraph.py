@@ -508,7 +508,7 @@ def add_edges(DG,all_nodes,edges_to_delete,bubble_start,bubble_end,all_shared,pa
             node_supp=DG.nodes[nextnode1]['reads']
             additional_supp=dummy_node_support(DG,new_edge_supp2)
             node_supp.update(additional_supp)
-        #TODO: add reads of other path with dummy variables
+
         else:
             prevnode2=path2.pop(0)
             if len(path2)<1:
@@ -590,7 +590,8 @@ INPUT:      cycle:          A list of nodes which make up the bubble(found to be
             contains_t:     A boolean value denoting whether the cycle contains node "t"
 OUTPUT: path_starts:        Dictionary holding the information about which reads support the source node (later used as initial_supp in test_path_viability)
 """
-#TODO: out_path_reads is actually not that great as it only holds the reads which support the bubble source and the first node in a path
+
+#TODO:rewrite to use relative distances
 def get_path_reads(DG,min_node_out,shared_reads):
     path_starts = {}
     for out_node in min_node_out:
@@ -724,14 +725,11 @@ INPUT:
     
 OUTPUT:
     DG:         Directed Graph containing the popped bubbles"""
-
-def filter_bubbles(DG, delta_len,all_reads,work_dir,k_size):
+#TODO:rewrite to use relative distances
+def filter_bubbles(DG, delta_len,all_reads,work_dir,k_size,bubbles):
     popable_bubbles=[]
     bubble_state=[]
-    bubbles=find_bubbles(DG)
-    nr_bubbles=len(bubbles)
-    print("Found "+str(nr_bubbles)+" bubbles in our graph")
-    print("Bubbles: ",bubbles)
+
     #just for debugging and curiosity reasons: We introduce an integer counting the number of pseudobubbles (not true bubbles)
     filter_count=0
     Popable = namedtuple('Popable', 'bubble_nodes, bubble_poppable')
@@ -817,7 +815,7 @@ def filter_bubbles(DG, delta_len,all_reads,work_dir,k_size):
 """
 
 
-# TODO: add information about which reads are on the other path and add them to the node infos with a dummy value (e.g. -1,-1)
+#TODO:rewrite to use relative distances
 def linearize_bubble(DG, consensus_infos, bubble_start, bubble_end, path_nodes, support_dict):
     # The main idea of this method is: 1. Get all the nodes which are in both paths and calculate their avg distance to bubble_start
     #                                 2. Sort the nodes by distance
@@ -841,6 +839,29 @@ def pop_bubbles(DG,bubble_pop):
         linearize_bubble(DG, bubble.lin_infos.consensus, bubble.lin_infos.bubble_start, bubble.lin_infos.bubble_end, bubble.lin_infos.path_nodes, bubble.lin_infos.support_dict)
         print("Edges aflin", DG.edges(data=True))
         print("bubble",bubble)
+        #TODO: verify frozenset working as thought. Finish implementation
+def eliminate_already_analysed_bubbles(bubble_list,bubble_infos):
+    print(bubble_list)
+    bubble_list_set = set(frozenset(i.bubble_nodes) for i in bubble_list)
+    bubble_info_set = set(frozenset(i) for i in bubble_infos)
+
+
+
+    #for bubble in bubble_list:
+
+def bubble_popping_routine(DG, delta_len,all_reads,work_dir,k_size):
+    bubbles = find_bubbles(DG)
+    nr_bubbles = len(bubbles)
+    print("Found " + str(nr_bubbles) + " bubbles in our graph")
+    print("Bubbles: ", bubbles)
+
+    bubble_state, popable_bubbles = filter_bubbles(DG, delta_len, all_reads, work_dir, k_size, bubbles)
+    print("bubstate",bubble_state)
+    bubble_infos = bubble_state
+    print("bub_infos",bubble_infos)
+    eliminate_already_analysed_bubbles(bubbles,bubble_infos)
+    print("Bubble_state", len(bubble_state), ":", bubble_state)
+    pop_bubbles(DG, popable_bubbles)
 """Overall method used to simplify the graph
 During this method: - Bubbles are identified and if possible popped     
                     - Nodes are merged        
@@ -849,19 +870,18 @@ INPUT:  DG: Directed Graph before simplifications,
         delta_len: Maximum length differences in between two reads
 OUTPUT: DG: Graph after simplification took place    """
 
-
+#TODO: Overall: add relative distances to all edges in the graph/ make sure all edges have relative distances
 def simplifyGraph(DG, delta_len,all_reads,work_dir,k_size):
     print("Simplifying the Graph (Merging nodes, popping bubbles)")
-    # remove edges which yield self loops, not sure yet whether it makes sense to remove or if needed
     #print("self loops")
     #print(list(nx.selfloop_edges(DG)))
     list_of_cycles = find_repetative_regions(DG)
     print(list_of_cycles)
+    bubble_infos=[]
     #print(DG.edges())
     s_reads = DG.nodes["s"]['reads']
-
-    bubble_state,popable_bubbles=filter_bubbles(DG, delta_len,all_reads,work_dir,k_size)
-    print("Bubble_state",len(bubble_state),":",bubble_state)
-    pop_bubbles(DG,popable_bubbles)
+    #TODO: rewrite this code: We want to introduce a method which appoints relative edge distances (avg(start8endnode))-avg(end(startnode)) to the whole graph
+    #TODO: Use relative distances for all computaations.
+    bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size)
     print("Popping bubbles done")
     merge_nodes(DG)
