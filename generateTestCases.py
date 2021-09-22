@@ -65,7 +65,7 @@ def simulate_reads_with_normal(args, isoforms):
     #print("Isoforms")
     #print(isoforms)
     outfile = open(os.path.join(args.outfolder, "reads.fq"), "w")
-    is_fastq = True  # if outfile[-1] == "q" else False
+    is_fastq = False  # if outfile[-1] == "q" else False
     middle_exon_frequnecy = args.probs[1]
     #l = open(spoa_out_file, "r").readlines()
     #no_middel_exon = [(isoforms[0][0] + "_{0}".format(i), isoforms[0][1]) for i in
@@ -207,7 +207,7 @@ def simulate_reads_with_normal(args, isoforms):
 
 #adds mutation to the reads TODO: Read Isoforms, add the shuffle
 def simulate_reads(args, isoforms):
-    shuffle=True
+    shuffle=False
     #print("Isoforms")
     #print(isoforms)
     outfile = open(os.path.join(args.outfolder, "reads.fq"), "w")
@@ -243,8 +243,9 @@ def simulate_reads(args, isoforms):
     # sys.exit()
     reads = {}
     #error_lvls = [0.6, 0.7, 0.8, 0.9, 0.92, 0.94, 0.96, 0.98, 0.99, 0.995]
-    error_lvls=[0.9,0.95,0.96,0.98,0.99,0.995]#3.94%error rate
-    error_lvls=[0.8, 0.875,0.9,0.92,0.96,0.98,0.99,0.995]#7%error rate
+    #error_lvls=[0.9,0.95,0.96,0.98,0.99,0.995]#3.94%error rate
+    #error_lvls=[0.8, 0.875,0.9,0.92,0.96,0.98,0.99,0.995]#7%error rate
+    error_lvls=[0.99]
     for i_acc, isoform in isoforms.items():
         #print(i_acc)
         read = []
@@ -468,7 +469,7 @@ def generate_isoforms_def_start_end(args, ref_path):
             isoforms[actual_isoforms]=isoform
             known_isoforms.append(isoform)
             #now we want to make sure that we also have some equal isoforms in the data(to make sure we get the correct amount of isoforms)
-            double_seed=random.randrange(1,10)
+            double_seed=random.randrange(3,12)
             #TODO change this part. We always want isoforms to be supported by 1-10 reads
             if double_seed>1:
                 for i in range(1,double_seed):

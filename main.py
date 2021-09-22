@@ -363,7 +363,6 @@ def listToString(s):
 def main(args):
     # start = time()
     delta_len = 3
-    max_bubblesize=4
     outfolder = args.outfolder
     # read the file
     all_reads = {i + 1: (acc, seq, qual) for i, (acc, (seq, qual)) in
@@ -382,7 +381,7 @@ def main(args):
     #eprint()
 
     work_dir = tempfile.mkdtemp()
-    #print("Temporary workdirektory:", work_dir)
+    print("Temporary workdirektory:", work_dir)
 
     # start = time()
     # corrected_reads = {}
@@ -528,16 +527,18 @@ def main(args):
                 # del all_intervals
                 # all_intervals = []
 
-        print()
         #print("Done with batch_id:", batch_id)
         #print("Took {0} seconds.".format(time() - batch_start_time))
         # eval_sim2(corrected_seq, seq, qual, tot_errors_before, tot_errors_after)
         # if r_id == 10:
         #     sys.exit()
         # print(type(intervals_to_correct))
+
         with open('all_intervals.txt', 'wb') as file:
             file.write(pickle.dumps(all_intervals_for_graph))
-        #print("All_intervals were written into file")
+        with open('all_reads.txt', 'wb') as file:
+            file.write(pickle.dumps(all_reads))
+        print("All_intervals were written into file")
         #for r_id,intervals_to_correct in all_intervals_for_graph.items():
             #if(r_id==2):
                 #print("intervals to correct")
@@ -582,17 +583,14 @@ def main(args):
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         # edgelist = list(DG.edges.data())
         # print(edgelist)
-        #TODO
         simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         #draw_Graph(DG)
         #print("finding the reads, which make up the isoforms")
         generate_isoforms(DG,all_reads,reads_for_isoforms,work_dir,outfolder,max_seqs_to_spoa)
-        isoform = []
         # for iso in isoform_reads:
         #print("hello")
-        #with open('all_reads.txt', 'wb') as file:
-        #    file.write(pickle.dumps(all_reads))
+
         #for key,value in all_reads.items():
         #    print(key,value)
         #print("Allreads written in file")
@@ -622,7 +620,7 @@ def main(args):
     #    outfile.write("@{0}\n{1}\n+\n{2}\n".format(acc, seq, qual))
     # outfile.close()
 
-    #print("removing temporary workdir")
+    print("removing temporary workdir")
     shutil.rmtree(work_dir)
 
 
@@ -645,10 +643,6 @@ if __name__ == '__main__':
     parser.add_argument('--disable_numpy', action="store_true",
                         help='Do not require numpy to be installed, but this version is about 1.5x slower than with numpy.')
     parser.add_argument('--delta_len', type=int, default=3, help='Maximum length difference between two reads intervals for which they would still be merged')
-    parser.add_argument('--max_bubblesize', type=int, default=2,
-                        help='Maximum length of a possible bubble for which two reads are merged')
-    parser.add_argument('--max_interval_delta', type=int, default=2,
-                        help='Maximum number of intervals which are allowed to differ in order to still allow a merging of the respective reads')
     parser.add_argument('--max_seqs_to_spoa', type=int, default=200, help='Maximum number of seqs to spoa')
     parser.add_argument('--max_seqs', type=int, default=1000,
                         help='Maximum number of seqs to correct at a time (in case of large clusters).')

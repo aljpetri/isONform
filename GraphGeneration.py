@@ -472,19 +472,22 @@ def main():
     work_dir = tempfile.mkdtemp()
     #print("Temporary workdirektory:", work_dir)
     k_size=9
-    outfolder="out"
+    outfolder="out_local"
+    cwd = os.getcwd()
+    print("CWD",cwd)
     file = open('all_intervals.txt', 'rb')
     all_intervals_for_graph = pickle.load(file)
     file.close()
+
+
     file2 = open('all_reads.txt', 'rb')
 
     all_reads = pickle.load(file2)
     #print("Allreads type")
     #print(type(all_reads))
-    #print(all_reads)
+    print(all_reads)
     file2.close()
-    delta_len=3
-    max_bubblesize=4
+    delta_len=6
     read_len_dict=get_read_lengths(all_reads)
     #print(all_intervals_for_graph)
     DG,known_intervals,node_overview_read,reads_for_isoforms,reads_list = generateGraphfromIntervals(all_intervals_for_graph, k_size,delta_len,read_len_dict)

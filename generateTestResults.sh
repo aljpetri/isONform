@@ -21,16 +21,17 @@ errorcounter=0
 file=out/mapping.txt
 
 #iterate over different numbers of isoforms
-for ((i=3; i<=5; i++))
+for ((i=2; i<=15; i++))
 do
 #we want to have some double reads 
-n_reads=$(($i+5))
+n_reads=$(($i*10))
 #echo "Generating $i TestIsoforms" >>results.tsv
-#for each amount of isoforms we would like to run 5 tests to make sure our algo works stable
+#for each amount of isoforms we would like to run 15 tests to make sure our algo works stable
 for((j=1;j<=15;j++))
 do
 echo $i_$j
 outputs=0
+#python generateTestCases.py --ref /home/alexanderpetri/Desktop/RAWDATA_PhD1/Isoform_Test_data.fa --sim_genome_len 1344 --nr_reads 20 --outfolder testout --coords 50 100 150 200 250 300 350 400 450 500 --probs 0.4 0.4 0.4 0.4 0.4 --n_isoforms 2 --e True
 #run the test case generation script with the parameters needed
 python generateTestCases.py --ref /home/alexanderpetri/Desktop/RAWDATA_PhD1/Isoform_Test_data.fa --sim_genome_len 1344 --nr_reads $n_reads --outfolder testout --coords 50 100 150 200 250 300 350 400 450 500 --probs 0.4 0.4 0.4 0.4 0.4 --n_isoforms $i --e True
 cp ~/PHDProject1/testout/reads.fq filedirectory
@@ -43,12 +44,16 @@ number="${i}_${j}"
 echo $number
 mv ~/PHDProject1/filedirectory/reads.fq ~/PHDProject1/filedirectory/reads_$number.fq
 #run IsONform
-python main.py --fastq ~/PHDProject1/testout/reads.fq --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --max_bubblesize 2 --delta_len 10 --outfolder out
+#if e=True
+python main.py --fastq ~/PHDProject1/testout/reads.fq --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 3 --outfolder out
+#if e=False
+#python main.py --fastq ~/PHDProject1/testout/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 3 --outfolder out
 had_issue=$?
 zero=0
 echo $had_issue
 if [[ "$had_issue" != "$zero" ]]
 then
+errorcounter=$((errorcounter+1))
 cp testout/reads.fq error_${errorcounter}.fq
 fi
 #python main.py --fastq ~/PHDProject1/testout/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --max_bubblesize 2 --delta_len 3 --outfolder testout 
@@ -58,10 +63,10 @@ result=$(($res/2))
 #echo "$result"
 echo -e "$i \t $result \t $true_read_amount \t" >> $outputfile
 
-if [[ "$result" -gt "$true_read_amount" ]]
-then
-cp testout/reads.fq strange_error_${errorcounter}.fq
-fi
+#if [[ "$result" -gt "$true_read_amount" ]]
+#then
+#cp testout/reads.fq strange_error_${errorcounter}.fq
+#fi
 
 
 #if we have found an example for which IsONform does mess up, save it to debug later

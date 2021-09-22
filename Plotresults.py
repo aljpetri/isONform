@@ -17,7 +17,7 @@ def plot_scatter(nr_nodes):
     #ax.set_xscale('log')
     #label the plot to make the figure better comprehensible
     ax.set_xlabel("# Isoforms")
-    ax.set_ylabel("# Isoforms found by IsONform(avg 5 tries)")
+    ax.set_ylabel("# Isoforms found by IsONform(avg 15 experiments)")
 
     pylab.show()
 def load_tsv(filename):
