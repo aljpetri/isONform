@@ -286,11 +286,16 @@ def find_bubble_end(DG,listofnodes):
     set_a = set(listofnodes)
     set_b = in_nodes
     subtraction = set_a - set_b
+    print(subtraction)
     list_of_strings = [str(s) for s in subtraction]
     #print("LOSend",list_of_strings)
     if len(list_of_strings)>1:
         real_bubble=False
+    print(inedges)
     for in_edge in inedges:
+        print(in_edge)
+        print(list_of_strings)
+        #if(in_edge[1] in list_of_strings):
         if(in_edge[1] == list_of_strings[0]):
             edge_infos=DG[in_edge[0]][in_edge[1]]["edge_supp"]
             for entry in edge_infos:
@@ -319,17 +324,28 @@ def get_bubble_start_end(DG, listofnodes):
     return startnode,endnode,real_bubble,shared_reads
 
 
-
-#TODO: we get an empty sequence into the consensus generation. WHY?!
+def all_same(items):
+    return all(x == items[0] for x in items)
+#TODO: we get an empty sequence into the consensus generation. WHY?!. It seems we
 def generate_consensus_path(work_dir,consensus_attributes,reads,k_size):
     reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
+    startseqlist=[]
+    endseqlist = []
     for i, (q_id, pos1, pos2) in enumerate(consensus_attributes, 3):
         print("Printing full seq:",reads[q_id][1])
         if pos2 == 0:
-            pos2 = len(reads[q_id][1])
-        seq = reads[q_id][1][pos1: pos2]
-        print(q_id,": ",seq)
+            pos2 = len(reads[q_id][1]) - k_size
+        seq = reads[q_id][1][pos1: pos2+ k_size]
+        #startseq=reads[q_id][1][pos1:pos1+k_size]
+        endseq=reads[q_id][1][pos2:pos2+k_size]
+        #startseqlist.append(startseq)
+        endseqlist.append(endseq)
+        print(q_id,"from ",pos1,"to",pos2+k_size,": ",seq)
         reads_path.write(">{0}\n{1}\n".format(str(q_id)+str(pos1)+str(pos2), seq))
+    #print("start",startseqlist)
+    print("end",endseqlist)
+    #assert all_same(startseqlist)
+    #assert all_same(endseqlist)
     reads_path.close()
     #print(reads_path.name)
     # sys.exit()
@@ -373,7 +389,7 @@ def collect_bubble_nodes(path_nodes,consensus_infos,DG,support_dict):
     print("all_nodes",all_nodes)
     return all_nodes,all_shared
 
-
+#TODO: fix bug in this method (currently main bug)
 """Helper method which is used to find the distance of a node to the start node. This is done by using the read information for both nodes
     INPUT:          DG      Our directed Graph
                     bubble_start        The start node of our bubble
@@ -441,12 +457,10 @@ def remove_edges(DG, path_reads, bubble_start, bubble_end, path_nodes):
         # we mark the edge bubble_start->path_node_list[0] and add its infos to edges_to_delete
         #print(DG.edges)
         edges_to_delete[bubble_start, pnl_start] = DG[bubble_start][pnl_start]
-        dist = get_distance_to_start(DG, bubble_start, pnl_start, path_reads[startnode_id])
-        node_distances[pnl_start] = dist
+        #dist = get_distance_to_start(DG, bubble_start, pnl_start, path_reads[startnode_id])
         for index, path_node in enumerate(path_node_list):
             print(index, ", ", path_node)
-            dist = get_distance_to_start(DG, bubble_start, path_node, path_reads[startnode_id])
-            node_distances[path_node]=dist
+            #dist = get_distance_to_start(DG, bubble_start, path_node, path_reads[startnode_id])
             if path_node != path_node_list[-1]:
                 edges_to_delete[path_node, path_node_list[index + 1]] = DG[path_node][path_node_list[index + 1]]
             else:
@@ -459,20 +473,19 @@ def remove_edges(DG, path_reads, bubble_start, bubble_end, path_nodes):
     for edge, edge_infos in edges_to_delete.items():
         print(edge)
         DG.remove_edge(edge[0], edge[1])
-    print("node_distances ", node_distances)
-    return edges_to_delete,node_distances
+    return edges_to_delete
 
 """Helper method: Adds additional support values for the bubble_nodes(needed to get a consistent graph)
 INPUT:      DG:
             nextnode:       the node of which we need the support
 OUTPUT:     additional_support:  dictionary of additional support values
 """
-def additional_node_support(DG,new_support,node_dist,s_infos,node,nextnode_other_path):
+def additional_node_support(DG,new_support,this_dist,s_infos,node,nextnode_other_path):
     additional_support={}
-    print("Node_dist",node_dist)
+    print("Node_dist",this_dist)
     #print(DG.nodes(data=True))
     #print(node_dist[nextnode])
-    this_dist=node_dist[node]
+    #this_dist=node_dist[node]
     for r_id in new_support:
         #TODO: This if/else is not fully functional yet, but helps to improve algo stability
         if r_id not in s_infos.keys():
@@ -511,7 +524,7 @@ def merge_two_dicts(dict1,dict2):
                 merged_dict[key2] = val2
     return merged_dict
 #TODO: For this method we have a bug: Our paths are not sorted accordingly to the allnodes. This results in unfindable nodes
-def add_edges(DG,all_nodes,edges_to_delete,bubble_start,bubble_end,all_shared,path_nodes,node_dist):
+def add_edges(DG,all_nodes,edges_to_delete,bubble_start,bubble_end,all_shared,path_nodes): #,node_dist):
     counter=0
     path1=[]
     path2=[]
@@ -538,9 +551,11 @@ def add_edges(DG,all_nodes,edges_to_delete,bubble_start,bubble_end,all_shared,pa
     nextnode1 = path1[0]
     nextnode2 = path2[0]
     prevnode=bubble_start
+    finalprev=None
     #this is the main part of the linearization. We iterate over all_nodes and try to find out which path the nodes belong to.
     #This info is needed as we need the current state ob both paths to add the correct edge_support and node_support to the graph
-    for counter,nodetup in enumerate(all_nodes):
+    for nodetup in all_nodes:
+        print("Nodetuple",nodetup)
         node=nodetup[0]
         print("Node",node)
         reads_for_node=[]
@@ -556,9 +571,12 @@ def add_edges(DG,all_nodes,edges_to_delete,bubble_start,bubble_end,all_shared,pa
         [full_edge_supp_final.append(x) for x in full_edge_supp if x not in full_edge_supp_final]
         print("full_edge_support_final:", full_edge_supp_final)
         node_supp=[]
+        real_pos = nodetup[1]
         #if the next node is from path1: pop the node out of path1 and set nextnode1 to the
         if node in path1:
             prevnode1=path1.pop(0)
+            finalprev=prevnode1
+            print("P1", path2)
             if len(path1)<1:
                 nextnode1=bubble_end
                 print("Nextnode1", nextnode1)
@@ -576,7 +594,8 @@ def add_edges(DG,all_nodes,edges_to_delete,bubble_start,bubble_end,all_shared,pa
                 print(nextnode1)
             node_supp=DG.nodes[nextnode1]['reads']
             print("Edge_supp_bubble_pop",new_edge_supp2)
-            additional_supp=additional_node_support(DG,new_edge_supp2,node_dist,s_infos,node,nextno2)
+
+            additional_supp=additional_node_support(DG,new_edge_supp2,real_pos,s_infos,node,nextno2)
             print("additional_support",additional_supp)
             old_node_supp=DG.nodes[node]['reads']
             new_node_supp_dict[node] = merge_two_dicts(additional_supp, old_node_supp)
@@ -584,6 +603,8 @@ def add_edges(DG,all_nodes,edges_to_delete,bubble_start,bubble_end,all_shared,pa
 
         elif node in path2:
             prevnode2=path2.pop(0)
+            finalprev = prevnode2
+            print("P2",path2)
             print("prevnode2",prevnode2)
             if len(path2)<1:
                 nextnode2=bubble_end
@@ -601,7 +622,7 @@ def add_edges(DG,all_nodes,edges_to_delete,bubble_start,bubble_end,all_shared,pa
                 print("Nextnode2", nextnode2)
             #node_supp = DG.nodes[nextnode2]['reads']
             print("new_edge_supp",new_edge_supp1)
-            additional_supp = additional_node_support(DG, new_edge_supp1,node_dist,s_infos,node,nextno1)
+            additional_supp = additional_node_support(DG, new_edge_supp1,real_pos,s_infos,node,nextno1)
             old_node_supp = DG.nodes[node]['reads']
             new_node_supp_dict[node] = merge_two_dicts(additional_supp, old_node_supp)
             #node_supp.update(additional_supp)
@@ -614,13 +635,19 @@ def add_edges(DG,all_nodes,edges_to_delete,bubble_start,bubble_end,all_shared,pa
         DG.add_edge(prevnode,node,edge_supp=full_edge_supp_final)
         print("Adding edge from ",prevnode, "to ",node)
         #print(DG.edges(data=True))
+        print(node)
         prevnode=node
+        print("nodetup",nodetup)
     print("updated nodes")
     print(new_node_supp_dict)
     #print(DG.nodes(data=True))
     nx.set_node_attributes(DG,new_node_supp_dict,"reads")
     print("updated nodes")
     #print(DG.nodes(data=True))
+    if len(path2)>0:
+        prevnode2=path2.pop()
+    if len(path1) > 0:
+        prevnode1 = path1.pop()
     #end of for loop - in the next lines we add the information for the last edge between all_nodes[-1] and bubble_end (sink_node)
     new_edge_supp1 = edges_to_delete[prevnode1, bubble_end]['edge_supp']
     new_edge_supp2 = edges_to_delete[prevnode2, bubble_end]['edge_supp']
@@ -646,7 +673,7 @@ def align_and_linearize_bubble_nodes(delta_len,all_reads,consensus_infos,work_di
         else:
             (q_id,pos1,pos2)=consensus_attributes[0]
             print("consensus_attributes", q_id,", ",pos1,", ",pos2)
-            con=all_reads[q_id][1][pos1: pos2]
+            con=all_reads[q_id][1][pos1: pos2+k_size]
         consensus_list.append(con)
     print(consensus_list)
     consensus1=consensus_list[0]
@@ -936,14 +963,14 @@ def linearize_bubble(DG, consensus_infos, bubble_start, bubble_end, path_nodes, 
     print("time for linearization")
     #print("Edges befdel", DG.edges(data=True))
     # edges_to_delete: A dictionary holding all edges which we want to delete and their respective attributes (needed for adding edges)
-    edges_to_delete,node_dist = remove_edges(DG, consensus_infos, bubble_start, bubble_end, path_nodes)
-    print("node_dista",node_dist)
+    edges_to_delete = remove_edges(DG, consensus_infos, bubble_start, bubble_end, path_nodes)
+
     #print("Edges afdel", DG.edges(data=True))
     all_nodes, all_shared = collect_bubble_nodes(path_nodes, consensus_infos, DG, support_dict)
     print("Allnodes before sorting", all_nodes)
     all_nodes.sort(key=lambda tup: tup[1])
     print("Allnodes after sorting", all_nodes)
-    add_edges(DG, all_nodes, edges_to_delete, bubble_start, bubble_end, all_shared, path_nodes, node_dist)
+    add_edges(DG, all_nodes, edges_to_delete, bubble_start, bubble_end, all_shared, path_nodes) #, node_dist)
     print("Popped bubble ", path_nodes)
 
 def pop_bubbles(DG,bubble_pop):
@@ -973,6 +1000,16 @@ def eliminate_already_analysed_bubbles(old_bubbles,new_bubbles):
     bubbles_list = list(bubbles_to_analyse)
     bubbles_non_frozen = [list(x) for x in bubbles_list]
     return bubbles_non_frozen
+#TODO: make sure this is correctly implemented
+def eliminate_already_analysed_bubbles_inefficient(old_bubbles,new_bubbles):
+    bubbles_list=[]
+    for old in old_bubbles:
+        sorted(old)
+    for new in new_bubbles:
+        sorted(new)
+        if new not in old_bubbles:
+            bubbles_list.append(new)
+    return bubbles_list
 def list_list_append(original,new):
     for i in new:
         original.append(i)
@@ -990,6 +1027,7 @@ def delete_not_popped_bubbles_from_old_bubbles(bubble_state,old_bubbles):
 def bubble_popping_routine(DG, delta_len,all_reads,work_dir,k_size):
     #find all bubbles present in the graph which are to be popped
     bubbles = find_bubbles(DG)
+    bubbles.sort(key=len)
     nr_bubbles = len(bubbles)
     print("Found " + str(nr_bubbles) + " bubbles in our graph")
     print("Bubbles: ", bubbles)
@@ -999,7 +1037,7 @@ def bubble_popping_routine(DG, delta_len,all_reads,work_dir,k_size):
     #as long as we find new bubbles (that we have not yet analysed)
     while bubbles:
         print("WhileBubbles",bubbles)
-
+        #draw_Graph(DG)
         #filter out bubbles which are not poppable
         bubble_state, poppable_bubbles = filter_bubbles(DG, delta_len, all_reads, work_dir, k_size, bubbles)
         print("Bub_state",bubble_state)
@@ -1014,11 +1052,14 @@ def bubble_popping_routine(DG, delta_len,all_reads,work_dir,k_size):
         pop_bubbles(DG, poppable_bubbles_filtered)
         #find all bubbles in the new state of the graph
         new_bubbles=find_bubbles(DG)
+        new_bubbles.sort(key=len)
         nr_bubbles = len(bubbles)
         print("Found " + str(nr_bubbles) + " bubbles in our graph")
         print("Bubbles (not here): ", bubbles)
         #find the difference of the new bubbles and the old bubbles (meaning we are only interested in bubbles that have not yet been analysed)
-        bubbles=eliminate_already_analysed_bubbles(old_bubbles, new_bubbles)
+        #TODO: both of the two following lines are working however the more efficient version does yield different order (set)
+        #bubbles=eliminate_already_analysed_bubbles(old_bubbles, new_bubbles)
+        bubbles=eliminate_already_analysed_bubbles_inefficient(old_bubbles,new_bubbles)
         nr_bubbles = len(bubbles)
         print("Found " + str(nr_bubbles) + " bubbles in our graph (Eliminated)")
         print("Bubbles: ", bubbles)
