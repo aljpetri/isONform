@@ -27,7 +27,7 @@ do
 n_reads=$(($i*10))
 #echo "Generating $i TestIsoforms" >>results.tsv
 #for each amount of isoforms we would like to run 15 tests to make sure our algo works stable
-for((j=1;j<=15;j++))
+for((j=1;j<=20;j++))
 do
 echo $i_$j
 outputs=0
@@ -45,7 +45,7 @@ echo $number
 mv ~/PHDProject1/filedirectory/reads.fq ~/PHDProject1/filedirectory/reads_$number.fq
 #run IsONform
 #if e=True
-python main.py --fastq ~/PHDProject1/testout/reads.fq --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 3 --outfolder out
+python main.py --fastq ~/PHDProject1/testout/reads.fq --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 45 --outfolder out
 #if e=False
 #python main.py --fastq ~/PHDProject1/testout/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 3 --outfolder out
 had_issue=$?
@@ -60,13 +60,17 @@ fi
 #we count the lines in mapping.txt, which is an output of IsONform. As we have a fasta file we have to divide this number by 2 to retreive the actual number of isoforms we generated
 res=$(< "$file" wc -l)
 result=$(($res/2))
+if [[ "$had_issue" != "$zero" ]]
+then
+result=-1
+fi
 #echo "$result"
 echo -e "$i \t $result \t $true_read_amount \t" >> $outputfile
 
-#if [[ "$result" -gt "$true_read_amount" ]]
-#then
-#cp testout/reads.fq strange_error_${errorcounter}.fq
-#fi
+if [[ "$result" == "$true_read_amount" ]]
+then
+cp testout/reads.fq strange_error_${errorcounter}.fq
+fi
 
 
 #if we have found an example for which IsONform does mess up, save it to debug later

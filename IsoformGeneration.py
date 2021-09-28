@@ -7,6 +7,7 @@ import os, sys
 from EqualityObject import *
 import itertools
 import matplotlib.pyplot as plt
+from GraphGeneration import *
 """Method to delete read information from nodes
 INPUT:      DG                  Directed Graph
             node                node for which read information is deleted
@@ -27,9 +28,10 @@ INPUT:      DG                  Directed Graph
 OUPUT:      reads:              dictionary, which does not contain the read information anymore
 """
 def remove_reads_from_edge(DG,edge,supported_reads):
-    #print("Edge",edge)
+    print("Edge",edge)
     reads = DG[edge[0]][edge[1]]['edge_supp']
     #print(reads)
+    #draw_Graph(DG)
     for read in supported_reads:
         if read in reads:
             reads.remove(read)
@@ -44,10 +46,9 @@ OUPUT:      reads:              dictionary, which does not contain the read info
 def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
     #print("cleaning the graph")
     #print("Visited Edges",visited_edges)
-    #print("Visited nodes")
-    #print(visited_nodes)
-    #print("supported_reads")
-    #print(supported_reads)
+    #print("Visited nodes",visited_nodes)
+
+    #print("supported_reads",supported_reads)
     all_edges_dict={}
     update_dict={}
     edge_update_dict={}
@@ -55,7 +56,7 @@ def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
         #print("visited_edge:",edge)
         new_reads = remove_reads_from_edge(DG, edge, supported_reads)
     #for node in visited_nodes:
-     #   print(node)
+     #print(node)
       #  new_reads=remove_reads_from_node(DG, node, supported_reads)
 
         #print("New_reads",new_reads)
@@ -121,8 +122,8 @@ def get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr):
     edgelist = list(DG.out_edges(current_node))
     #print("now at")
     #print(current_node)
-    print("Edgelist")
-    print(edgelist)
+    #print("Edgelist")
+    #print(edgelist)
     #print("initial supported reads")
     #print(supported_reads)
     final_support=[]
@@ -222,12 +223,12 @@ def compute_equal_reads(DG,reads):
 
 def run_spoa(reads, spoa_out_file, spoa_path):
     with open(spoa_out_file, "w") as output_file:
-        # print('Running spoa...', end=' ')
+        #print('Running spoa...', end=' ')
         stdout.flush()
         null = open("/dev/null", "w")
         subprocess.check_call(["/home/alexanderpetri/spoa/build/bin/spoa", reads, "-l", "0", "-r", "0", "-g", "-2"],
                                   stdout=output_file, stderr=null)
-        # print('Done.')
+        #print('Done.')
         stdout.flush()
     #output_file.close()
     l = open(spoa_out_file, "r").readlines()
@@ -261,7 +262,7 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_se
             #rid = equalreads[0]
             rid = key
             singleread = reads[rid]
-            # print(singleread)
+            #print(singleread)
             seq = singleread[1]
             # name='consensus'+str(rid)
             mapping[name].append(singleread[0])
@@ -282,9 +283,9 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_se
             spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
             #print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
             consensus_file.write(">{0}\n{1}\n".format(name, spoa_ref))
-    # print(mapping)
+    #print(mapping)
 
-    # print("Mapping has length "+str(len(mapping)))
+    #print("Mapping has length "+str(len(mapping)))
     mappingfile = open(os.path.join(outfolder, "mapping.txt"), "w")
     for id, seq in mapping.items():
         mappingfile.write("{0}\n{1}\n".format(id, seq))
