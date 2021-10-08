@@ -45,7 +45,7 @@ echo $number
 mv ~/PHDProject1/filedirectory/reads.fq ~/PHDProject1/filedirectory/reads_$number.fq
 #run IsONform
 #if e=True
-python main.py --fastq ~/PHDProject1/testout/reads.fq --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 45 --outfolder out
+python main.py --fastq ~/PHDProject1/testout/reads.fq --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 5 --outfolder out
 #if e=False
 #python main.py --fastq ~/PHDProject1/testout/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 3 --outfolder out
 had_issue=$?
@@ -82,6 +82,6 @@ fi
 #echo "New file created" >>resultserror.tsv
 #fi
 done
-echo -e"\n">>$outputfile
+#echo -e"\n">>$outputfile
 done
 

@@ -28,7 +28,7 @@ INPUT:      DG                  Directed Graph
 OUPUT:      reads:              dictionary, which does not contain the read information anymore
 """
 def remove_reads_from_edge(DG,edge,supported_reads):
-    print("Edge",edge)
+    #print("Edge",edge)
     reads = DG[edge[0]][edge[1]]['edge_supp']
     #print(reads)
     #draw_Graph(DG)
@@ -120,15 +120,10 @@ OUTPUT: next_node:          the node which has the maximum support
 """
 def get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr):
     edgelist = list(DG.out_edges(current_node))
-    #print("now at")
-    #print(current_node)
-    #print("Edgelist")
-    #print(edgelist)
-    #print("initial supported reads")
-    #print(supported_reads)
+    #print("now at",current_node)
+    #print("Edgelist",edgelist)
+    #print("initial supported reads",supported_reads)
     final_support=[]
-    #print("CurrnodeREads")
-    #print(curr_node_reads)
     similarity_val=0
     next_node=""
     #iterate over all possible next nodes (other_node)
@@ -141,8 +136,7 @@ def get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr):
         edge_reads=edge_attr[edge]
         #print("edge_reads",edge_reads)
         shared_reads=list(set(supp_reads).intersection(edge_reads))
-        #print("Shared REads")
-        #print(shared_reads)
+        #print("Shared REads",shared_reads)
         if len(shared_reads)>similarity_val:
                 #print("SIM")
                 #print(similarity_val)
@@ -182,13 +176,12 @@ def compute_equal_reads(DG,reads):
             #add current node to the list of visited_nodes
             visited_nodes.append(current_node)
             prev_node=current_node
-            #print("supporting_edge")
-            #print(supporting_edge)
             #print("CurrnodebefMethod")
             #print(current_node)
             current_node,supported_reads=get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr)
             #print("current node returned by get best supported edge node", current_node)
             edge_tup=(prev_node,current_node)
+            #print("edge_tup",edge_tup)
             visited_edges.append(edge_tup)
             if not supported_reads:
                 break

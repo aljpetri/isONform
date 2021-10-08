@@ -59,7 +59,7 @@ def check_valid_args(args, ref):
     print(args.coords, args.probs)
     assert (len(args.coords) - 1) == len(args.probs)
 
-#adds mutation to the reads TODO: Read Isoforms, add the shuffle
+#adds mutation to the reads
 def simulate_reads_with_normal(args, isoforms):
     shuffle=False
     #print("Isoforms")
@@ -100,6 +100,7 @@ def simulate_reads_with_normal(args, isoforms):
     #error_lvls=[0.9,0.95,0.96,0.98,0.99,0.995]#3.94%error rate
     #error_lvls=[0.8, 0.875,0.9,0.92,0.96,0.98,0.99,0.995]#7%error rate
     error_lvls=[0.99]#smaller error rate(~1%)
+    error_lvls=[0.98]
     for i_acc, isoform in isoforms.items():
         if "." in i_acc:
             #print(i_acc)
@@ -292,17 +293,6 @@ def simulate_reads(args, isoforms):
                         r_ins = random.uniform(0, 1)
                         qual.append(round(-math.log(0.7, 10) * 10))
 
-                # if r < 0.84:
-                #     read.append(n)
-                # elif 0.84 <= r <= 0.96:
-                #     pass
-                # else:
-                #     read.append(n)
-                #     read.append(random.choice("ACGT"))
-                #     r_ins = random.uniform(0,1)
-                #     while r_ins >= 0.96:
-                #         read.append(random.choice("ACGT"))
-                #         r_ins = random.uniform(0,1)
             else:
                 if was_del:  # adding uncertainty from previous deleted base
                     read.append(n)
