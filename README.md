@@ -4,7 +4,7 @@
 2. [Output](#output) 
 3. [Running the test script](#Running)
 	1. [Running isONform](#runalgo)
-4. [Credits]  (#credits)
+4. [Credits](#credits)
 
 ## Introduction <a name="introduction"></a>
 This algorithm marks the first project for my PHD:<br />
@@ -30,7 +30,6 @@ To run the actual algorithm:<br />
 (On my machine:)<br />
 <em>python main.py --fastq ~/PHDProject1/testout/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --max_bubblesize 2 --delta_len 3 --outfolder testout </em><br />
 <em>python main.py --fastq /path/to/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --max_bubblesize 2 --delta_len 3 --outfolder testout <br />
-
 
 ## Credits <a name="credits"></a>
 
