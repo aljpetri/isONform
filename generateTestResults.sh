@@ -71,8 +71,13 @@ if [[ "$result" == "$true_read_amount" ]]
 then
 cp testout/reads.fq strange_error_${errorcounter}.fq
 fi
+num2=2
+otherres=$((result * num2))
 
-
+if [[ "$result" -gt "$otherres" ]]
+then 
+cp testout/reads.fq other_error_${errorcounter}.fq
+fi
 #if we have found an example for which IsONform does mess up, save it to debug later
 #if [[ "$i" != "$result" ]]
 #then

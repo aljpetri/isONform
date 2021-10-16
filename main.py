@@ -22,6 +22,7 @@ import edlib
 import _pickle as pickle
 from sys import stdout
 
+from SimplifyGraph import simplifyGraph
 from modules import create_augmented_reference, help_functions, correct_seqs  # ,align
 
 

@@ -494,13 +494,14 @@ def main():
     print(known_intervals)
     print("edges with attributes:")
     print(DG.edges(data=True))
+
     #check_graph_correctness(known_intervals,all_intervals_for_graph)
     #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #edgelist = list(DG.edges.data())
     #print(edgelist)
     #print(DG.nodes(data=True))
     #print(type(DG.nodes(data=True)))
-    #draw_Graph(DG)
+    draw_Graph(DG)
     simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
     #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #draw_Graph(DG)
@@ -512,7 +513,7 @@ def main():
    # print(node_overview_read)
    # print("all edges for the graph")
    # print([e for e in DG.edges])
-    #draw_Graph(DG)
+    draw_Graph(DG)
     #print("knownintervals")
     #print(known_intervals)
     #The call for the isoform generation (deprecated during implementation)
@@ -526,7 +527,6 @@ def main():
     DG.nodes(data=True)
 
 
-    #TODO put back in!!!
     print("removing temporary workdir")
     shutil.rmtree(work_dir)
 if __name__ == "__main__":

@@ -202,7 +202,7 @@ def find_bubbles(DG):
 
 
 """
-Helper method used to find all the reads which are in startnode and may be part of a bubble(at least the next node is part of the bubble)
+Helper method used to find all the reads, which are in startnode and may be part of a bubble(at least the next node is part of the bubble)
 INPUT:          listofnodes:  A list of nodes which make up the bubble(found to be a bubble by being a cycle in an undirected graph
                 DG:         the directed graph we want to pop the bubble in
                 startnode: The node deemed to be the starting node of the bubble (given as tuple)  
@@ -254,43 +254,38 @@ OUTPUT:     startnode: The node deemed to be the starting node of the bubble (gi
             start_reads: All reads that are supporting the bubble_start_node as well as one edge towards a bubble node
             """
 
-
-def find_bubble_start(DG, listofnodes):
-    # print("fbslistofnodes")
-    # print(listofnodes)
-    #boolean value stating whether the bubble is good to pop
-    still_viable = True
-    out = set()
-    outedges = []
-    for node in listofnodes:
-        # print(node)
-        out_edges_all = DG.out_edges(node)
-        # print("Out edges all",out_edges_all)
-        for out_edge in out_edges_all:
-            if (out_edge[1] in listofnodes):
-                out.add(out_edge[1])
-                outedges.append(out_edge)
-    set_a = set(listofnodes)
-    set_b = out
-    subtraction = set_a - set_b
-    list_of_strings = [str(s) for s in subtraction]
-    # print("LOSstart", list_of_strings)
-
-    if len(list_of_strings) > 1:
-        still_viable = False
-    bubble_reads = set()
-    for out_edge in outedges:
-        # print(out_edge)
-        edge_infos = DG[out_edge[0]][out_edge[1]]["edge_supp"]
-        for entry in edge_infos:
-            bubble_reads.add(entry)
-    startnode = " ".join(list_of_strings)
-    # print("startnode",startnode)
-    start_reads = get_start_reads(DG, startnode, listofnodes)
-    return still_viable, startnode, start_reads
-
-
-"""Helper method for get_bubble_start_end: This method finds the maximum node in the bubble
+#get all incoming edges for node x. If start of incoming edge in bubble-> this is not the source node of the bubble
+def find_bubble_start(DG,listofnodes):
+    #startnodes: a dictionary holding all nodes that
+    startnodes= {}
+    viable=False
+    final_startnodes=[]
+    startnode=None
+    #we iterate over all nodes in our bubble
+    for n in listofnodes:
+        #we use a boolean value to indicate whether n has an in_edge from any other bubble_node
+        gets_list_node = False
+        in_edges=DG.in_edges(n)
+        for edge in in_edges:
+            #if the source of the edge is in the bubble
+            if (edge[0] in listofnodes):
+                #set the indicator value to be TRUE
+               gets_list_node=True
+        startnodes[n]=gets_list_node
+    print(startnodes)
+    for key,value in startnodes.items():
+        if not value:
+            final_startnodes.append(key)
+    print(final_startnodes)
+    if len(final_startnodes)==1:
+        startnode=final_startnodes[0]
+        viable=True
+    else:
+        print("more start than needed")
+        print(final_startnodes)
+    return startnode,viable
+"""
+Helper method for get_bubble_start_end: This method finds the maximum node in the bubble
 The method iterates through the nodes in a bubble and collects all their in_nodes. For The maximum node there will not be an in_node
 INPUT:      listofnodes:  A list of nodes which make up the bubble(found to be a bubble by being a cycle in an undirected graph
             DG:         the directed graph we want to pop the bubble in
@@ -298,43 +293,36 @@ OUTPUT:     endnode: The node deemed to be the end node of the bubble (given as 
             still_viable: Boolean value denoting whether the cycle is still a contender for being a bubble
             end_reads: All reads that are supporting the bubble_end_node as well as one edge from a bubble node
             """
+def find_bubble_end(DG,listofnodes):
 
+    endnodes= {}
+    viable=False
+    final_endnodes=[]
+    endnode=None
+    for n in listofnodes:
+        gets_list_node = False
+        out_edges=DG.out_edges(n)
+        for edge in out_edges:
+            if (edge[1] in listofnodes):
+               gets_list_node=True
+        endnodes[n]=gets_list_node
+    print(endnodes)
+    for key,value in endnodes.items():
+        if not value:
+            final_endnodes.append(key)
+    print(final_endnodes)
+    if len(final_endnodes)==1:
+        endnode=final_endnodes[0]
+        viable=True
+    else:
+        #generate_subgraph(DG,listofnodes)
+        print("more end than needed")
+        print(final_endnodes)
+    return endnode,viable
 
-def find_bubble_end(DG, listofnodes):
-    real_bubble = True
-    in_nodes = set()
-    inedges = []
-    bubble_end_reads = set()
-    for node in listofnodes:
-        in_edges_all = DG.in_edges(node)
-        for in_edge in in_edges_all:
-            if in_edge[0] in listofnodes:
-                in_nodes.add(in_edge[0])
-                inedges.append(in_edge)
-    set_a = set(listofnodes)
-    set_b = in_nodes
-    subtraction = set_a - set_b
-    #print(subtraction)
-    list_of_strings = [str(s) for s in subtraction]
-    # print("LOSend",list_of_strings)
-    if len(list_of_strings) > 1:
-        real_bubble = False
-    #print("inedges",inedges)
-    for in_edge in inedges:
-        #print(in_edge)
-        #print(list_of_strings)
-        # if(in_edge[1] in list_of_strings):
-        if (in_edge[1] == list_of_strings[0]):
-            edge_infos = DG[in_edge[0]][in_edge[1]]["edge_supp"]
-            for entry in edge_infos:
-                bubble_end_reads.add(entry)
-    endnode = " ".join(list_of_strings)
-    end_reads = get_end_reads(DG, endnode, listofnodes)
-    return real_bubble, endnode, end_reads
+"""
 
-
-"""Helper method for find_bubbles
-Returns the minimum element (=the source) of the bubble as well as the maximum element(=the sink) of the bubble
+Returns the reads that are supporting startnode as well as endnode of the bubble 
 INPUT:      listofnodes:A list containing all nodes which are part of the bubble
             DG:     The graph for which the element is to be found
 OUTPUT:     min_element: the source node of the bubble(local source)
@@ -343,15 +331,16 @@ OUTPUT:     min_element: the source node of the bubble(local source)
             contains_t: Boolean value indication whether the bubble contains the sink node t
 """
 
-
-def get_bubble_start_end(DG, listofnodes):
-    print(listofnodes)
-    real_bubble_s, startnode, bubble_start_reads = find_bubble_start(DG, listofnodes)
-    real_bubble_e, endnode, bubble_end_reads = find_bubble_end(DG, listofnodes)
-    real_bubble = real_bubble_e and real_bubble_s
+def get_shared_reads(DG,startnode,endnode):
+    bubble_start_reads=set(DG.nodes[startnode]['reads'])
+    bubble_end_reads = set(DG.nodes[endnode]['reads'])
+    #real_bubble = real_bubble_e and real_bubble_s
+    print("bubble_start_and_end")
+    print(bubble_start_reads)
+    print(bubble_end_reads)
     shared_reads = list(bubble_start_reads.intersection(bubble_end_reads))
     print("shared_reads:", shared_reads)
-    return startnode, endnode, real_bubble, shared_reads
+    return shared_reads
 
 
 
@@ -396,17 +385,21 @@ OUTPUT:     good_to_pop     boolean value indicating our finding
 """
 def parse_cigar_differences(cigar_string, delta_len):
     good_to_pop = True
+    print("Now we are parsing....")
+    print(cigar_string)
     for i,elem in enumerate(cigar_string):
         cig_len = elem[0]
         cig_type = elem[1]
         # all matches are absolutely fine
         if (cig_type != '=') and (cig_type != 'M'):
+            print(cig_type)
+            print(cig_len)
             # we have a non match, now we have to figure out whether this is due to an exon or indel (everything with len>delta_len is defined as exon)
             if cig_len > delta_len:
                     # we found an exon being the difference between the paths->no bubble popping feasible
                     good_to_pop = False
                     print(cigar_string)
-
+    print(good_to_pop)
     return good_to_pop
 #TODO fully comment this header
 """Function that collects the nodes which make up a bubble
@@ -417,8 +410,7 @@ INPUT:          path_nodes
 OUTPUT:         all_nodes
                 all_shared
 """
-def collect_bubble_nodes(path_nodes, consensus_infos, DG, support_dict):
-    all_nodes = []
+def collect_shared_reads_bubble(path_nodes, consensus_infos, support_dict):
     print("Consensus_infos", consensus_infos)
     print(path_nodes)
     all_shared = []
@@ -426,22 +418,8 @@ def collect_bubble_nodes(path_nodes, consensus_infos, DG, support_dict):
         shared_reads = support_dict[startnode_id]
         print("shared", shared_reads)
         all_shared.extend(shared_reads)
-        print(path_node_list)
-        for path_node in path_node_list:
-            path_node_infos = DG.nodes[path_node]['reads']
-            distance = 0
-            print("path_node ", path_node)
-            for i, s_read in enumerate(shared_reads):
-                pos_tuple = path_node_infos[s_read]
-                print("pos_tuple")
-                print(pos_tuple[0])
-                distance += pos_tuple[0]
-            final_distance = distance / (i + 1)
-            print("final_distance", final_distance)
-            all_nodes_tuple = (path_node, final_distance)
-            all_nodes.append(all_nodes_tuple)
-    print("all_nodes", all_nodes)
-    return all_nodes, all_shared
+
+    return  all_shared
 
 
 # TODO:comment code more
@@ -511,7 +489,10 @@ def remove_edges(DG, path_reads, bubble_start, bubble_end, path_nodes,support_di
         #print("PathNodeList", path_node_list)
         #print("startnode_id", startnode_id)
         #print("startnode", bubble_start)
-        pnl_start = path_node_list[0]
+        if path_node_list:
+            pnl_start = path_node_list[0]
+        else:
+            pnl_start=bubble_end
         #print("pnl_start", pnl_start)
         # we mark the edge bubble_start->path_node_list[0] and add its infos to edges_to_delete
         # print(DG.edges)
@@ -703,7 +684,7 @@ INPUT:          DG      our graph object
 
 the function does not output anything but updated the graph object DG 
 """
-def add_edges(DG, all_nodes, edges_to_delete, bubble_start, bubble_end, all_shared, path_nodes,actual_node_distances,seq_infos):  # ,node_dist):
+def add_edges(DG, edges_to_delete, bubble_start, bubble_end, all_shared, path_nodes,actual_node_distances,seq_infos):  # ,node_dist):
     counter = 0
     path1 = []
     path2 = []
@@ -738,9 +719,20 @@ def add_edges(DG, all_nodes, edges_to_delete, bubble_start, bubble_end, all_shar
     print("s INFOS", s_infos, "of node ", bubble_start)
     prevnode1 = bubble_start
     prevnode2 = bubble_start
-    nextnode1 = path1[0]
-    nextnode2 = path2[0]
+    if path1:
+        nextnode1 = path1[0]
+
+    else:
+        nextnode1=bubble_end
+        print("Creepy ands", actual_node_distances)
+    if path2:
+        nextnode2 = path2[0]
+    else:
+        nextnode2 = bubble_end
+        print("Creepy ands", actual_node_distances)
     prevnode = bubble_start
+
+
     # this is the main part of the linearization. We iterate over all_nodes and try to find out which path the nodes belong to.
     # This info is needed as we need the current state ob both paths to add the correct edge_support and node_support to the graph
     for nodetup in actual_node_distances:
@@ -825,7 +817,8 @@ def add_edges(DG, all_nodes, edges_to_delete, bubble_start, bubble_end, all_shar
         print("ES 2 from ", prevnode2, " to ", nextnode2)
         print("NES2", new_edge_supp2)
         # print(DG.edges(data=True))
-        DG.add_edge(prevnode, node, edge_supp=full_edge_supp_final)
+        if not prevnode==node:
+            DG.add_edge(prevnode, node, edge_supp=full_edge_supp_final)
         print("Adding edge from ", prevnode, "to ", node)
         # print(DG.edges(data=True))
         print(node)
@@ -833,9 +826,10 @@ def add_edges(DG, all_nodes, edges_to_delete, bubble_start, bubble_end, all_shar
         print("nodetup", nodetup)
     print("updated nodes")
     print(new_node_supp_dict)
-    print("New node support for node ", node, " ;", new_node_supp_dict[node])
+    if node!=bubble_end:
+        print("New node support for node ", node, " ;", new_node_supp_dict[node])
     # print(DG.nodes(data=True))
-    nx.set_node_attributes(DG, new_node_supp_dict, "reads")
+        nx.set_node_attributes(DG, new_node_supp_dict, "reads")
     print("updated nodes")
     # print(DG.nodes(data=True))
     if len(path2) > 0:
@@ -848,7 +842,8 @@ def add_edges(DG, all_nodes, edges_to_delete, bubble_start, bubble_end, all_shar
     full_edge_supp = new_edge_supp1 + new_edge_supp2
     full_edge_supp_final = []
     [full_edge_supp_final.append(x) for x in full_edge_supp if x not in full_edge_supp_final]
-    DG.add_edge(prevnode, bubble_end, edge_supp=full_edge_supp_final)
+    if not prevnode==bubble_end:
+        DG.add_edge(prevnode, bubble_end, edge_supp=full_edge_supp_final)
     print("Adding edge from ", prevnode, "to ", bubble_end)
     # print("FinalEdges",DG.edges(data=True))
 
@@ -891,19 +886,15 @@ def align_bubble_nodes(delta_len, all_reads, consensus_infos, work_dir, k_size):
     return good_to_pop,cigar_alignment,seq_infos
 
 
-def get_path_nodes(cycle, min_element, max_element, DG):
+def get_path_nodes(cycle, min_element, DG):
     # find the nodes which are directly connected to min_node (min_node_out) and to max_node(max_node_in) this enables the finding of which reads we have to compare
     min_edges = DG.out_edges(min_element)
-    max_edges = DG.in_edges(max_element)
     min_node_out = []
-    max_node_in = []
     for edge in min_edges:
         if edge[1] in cycle:
             min_node_out.append(edge[1])
-    for edge in max_edges:
-        if edge[0] in cycle:
-            max_node_in.append(edge[0])
-    return min_node_out, max_node_in
+
+    return min_node_out
 
 
 """Helper method for find_bubbles: This method figures out which reads belong to which part from bubble source to bubble sink
@@ -919,7 +910,9 @@ OUTPUT: path_starts:        Dictionary holding the information about which reads
 
 def get_path_reads(DG, min_node_out, shared_reads):
     path_starts = {}
+
     for out_node in min_node_out:
+        print(out_node)
         inter_out_readlist = DG.nodes[out_node]['reads']
         print(inter_out_readlist)
         out_readlist = [i for i in inter_out_readlist]
@@ -953,6 +946,9 @@ def test_path_viability(DG, path_start, initial_support, cycle, bubble_end):
     curr_node = path_start
     visited_nodes = []
     intersect_supp = []
+    if path_start==bubble_end:
+        print("This is something!")
+        return True, visited_nodes,curr_support
     # we only iterate until we have reached bubble_end
     while curr_node != bubble_end:
         visited_nodes.append(curr_node)
@@ -961,12 +957,14 @@ def test_path_viability(DG, path_start, initial_support, cycle, bubble_end):
         # we have to test for all possible out edges to be sure to find the path
         for out_edge in curr_out:
             next_node = out_edge[1]
+
             # we only continue investigating the next_node if it is part of the bubble
             if next_node in cycle:
                 # get the edges which support the edge to next_node
                 next_support = DG[curr_node][next_node]["edge_supp"]
                 # figure out whether there is any overlap between the current support and next_support
                 intersect_supp = list(set(curr_support).intersection(next_support))
+                print("intersect supp",intersect_supp)
                 # if we have an overlap, this means that at least one read from our initial_support also supports this edge
                 if intersect_supp:
                     # we have found a node to continue
@@ -981,7 +979,6 @@ def test_path_viability(DG, path_start, initial_support, cycle, bubble_end):
         # we did not find any node we could continue with->our path is not the path of a real bubble
         if not further_node:
             is_viable = False
-
             return is_viable, visited_nodes, intersect_supp
     # we were able to reach bubble_end->we just confirmed that we have a bubble path
     is_viable = True
@@ -1003,11 +1000,12 @@ OUTPUT:     path_starts:
 
 def get_path_starts(cycle, bubble_start, bubble_end, DG, shared_reads):
     # We want to find the nodes, which denote the start points for each path(as we have to find out which reads are in which path)
-    min_node_out, max_node_in = get_path_nodes(cycle, bubble_start, bubble_end, DG)
+    min_node_out = get_path_nodes(cycle, bubble_start, DG)
+    print("minnodeout",min_node_out)
     # Now we want to get the actual reads for each path
     path_starts = get_path_reads(DG, min_node_out, shared_reads)
     # iterate over all shared reads and get the pathlength for each
-    #print("Path_starts ", path_starts)
+    print("Path_starts ", path_starts)
     return path_starts
 
 
@@ -1021,18 +1019,10 @@ INPUT:      cycle:          A list of nodes which make up the bubble(found to be
 """
 
 
-def get_path_reads_length(r_ids, bubble_start, bubble_end, DG, shared_reads):
-    id_counter = 0
-    read_length = 0
+def get_consensus_positions(r_ids, bubble_start, bubble_end, DG, shared_reads):
     read_list = []
     max_node_infos = DG.nodes[bubble_end]['reads']
-    #print("max_node_infos")
-    #print(max_node_infos)
     min_node_infos = DG.nodes[bubble_start]['reads']
-    #print("min_node_infos")
-    #print(min_node_infos)
-    #print("rids", r_ids)
-    #print("shared_reads", shared_reads)
     for r_id in r_ids:
         if r_id in shared_reads:
             bubble_end_pos = max_node_infos[r_id]
@@ -1042,74 +1032,89 @@ def get_path_reads_length(r_ids, bubble_start, bubble_end, DG, shared_reads):
             start_of_bubble = bubble_start_pos[1]
             end_of_bubble = bubble_end_pos[0]
             entry = (r_id, start_of_bubble, end_of_bubble)
-            #print(entry)
             read_list.append(entry)
-            read_length += (end_of_bubble - start_of_bubble)
-            id_counter += 1
-    path_length = read_length / id_counter
-    return path_length, read_list
+    return read_list
 
 
 """
 function which finds the bubbles and if feasible pops them in the graph
 INPUT:
-    DG:         The directed graph in which we pop the bubbles
+    DG:         Our directed graph 
     delta_len   Maximum length difference for which the paths are merged ie the bubble is popped
     all_reads   dictionary containing all the reads(string sequence) and their ids
 
 
 OUTPUT:
-    DG:         Directed Graph containing the popped bubbles"""
+    bubble_state, popable_bubbles,no_pop_tup_list"""
 
-
-def filter_bubbles(DG, delta_len, all_reads, work_dir, k_size, bubbles):
+#TODO:split up into two functions this would require a lot of work and shared parameters. MAybe better to leave as is
+def investigate_bubbles(DG, delta_len, all_reads, work_dir, k_size, bubbles):
     popable_bubbles = []
     bubble_state = []
     no_pop_tup_list=[]
     # just for debugging and curiosity reasons: We introduce an integer counting the number of pseudobubbles (not true bubbles)
     filter_count = 0
-    Popable = namedtuple('Popable', 'bubble_nodes, bubble_poppable')
+    Supported = namedtuple('Supported', 'bubble_nodes, bubble_supported')
     # iterate over the different bubbles
     for listint, bubble_nodes in enumerate(bubbles):
         viable_bubble = False
         #print("bubble:", bubble_nodes)
-        # find the minimum and maximum for each bubble
-        bubble_start, bubble_end, real_bubble, shared_reads = get_bubble_start_end(DG, bubble_nodes)
-        # we have to figure out whether we are having a real bubble, this is indicated by the boolean value real_bubble
-        # If the bubble is not a true bubble: Skip this "bubble"
-        if not real_bubble:
+        # find the local source and local sink for each bubble, if we find more than one source or sink, the bubble is not a supported bubble. However supported bubbles additionally have to be supported by at least two reads
+        bubble_start,viable_start =find_bubble_start(DG,bubble_nodes)
+        bubble_end,viable_end =find_bubble_end(DG,bubble_nodes)
+        #if the bubbles have more start and/or endnodes than one it is not viable->Don't continue investigating
+        viable_to_continue=viable_start and viable_end
+        if not viable_to_continue:
             filter_count += 1
-            popable = Popable(bubble_nodes, viable_bubble)
-            bubble_state.append(popable)
-            #print("Filtered ", filter_count, " bubbles out")
+            supported = Supported(bubble_nodes, False)
+            bubble_state.append(supported)
+            print("Filtered ", filter_count, " bubbles out")
             continue
-        # find the nodes which are on either path to be able to tell apart the paths on the bubble
+        print("bubble_start", bubble_start)
+        print("bubble_end", bubble_end)
+        #get the reads which are supporting start and endnode of the bubble. Those are the reads we are most interested in (all or a subset of those reads actually support the bubble)
+        shared_reads=get_shared_reads(DG,bubble_start,bubble_end)
+
+        # we have to figure out whether we are having a sufficiently supported_bubble, meaning at least two reads are supporting bubble_start and bubble_end
+        # If the bubble is not a supported bubble: Skip the further investigation
+        if len(shared_reads)<2:
+            filter_count += 1
+            supported = Supported(bubble_nodes, False)
+            bubble_state.append(supported)
+            print("Filtered ", filter_count, " bubbles out")
+            continue
+
         path_starts = get_path_starts(bubble_nodes, bubble_start, bubble_end, DG, shared_reads)
-        readlen_dict = {}
         consensus_infos = {}
         path_nodes_dict = {}
         no_viab_bubble = False
         support_dict = {}
         #print("Pathstarts", path_starts)
+        #key: path_start: the id of the node which denotes the start of our path, value: reads supporting the node
         for key, value in path_starts.items():
             (is_viable_path, path_nodes, support) = test_path_viability(DG, key, value, bubble_nodes, bubble_end)
             path_nodes_dict[key] = path_nodes
             support_dict[key] = support
-            if not (is_viable_path) or not path_nodes:
+            if not (is_viable_path):
                 no_viab_bubble = True
                 break
+            elif not bubble_end=='t' and path_nodes:
+                no_viab_bubble=False
             #print("supported", support)
-            path_length, read_list = get_path_reads_length(value, bubble_start, bubble_end, DG, support)
-            #print("read_list (consensus:_infos", read_list)
-            readlen_dict[key] = path_length
+            print("bubble_end",bubble_end)
+            # this denotes the start of the consensus alignment phase: We find the positions for the consensus generation ->we
+            # find the nodes which are on either path to be able to tell apart the paths on the bubble
+            read_list = get_consensus_positions(value, bubble_start, bubble_end, DG, support)
             consensus_infos[key] = read_list
+
         if no_viab_bubble:
 
-            popable = Popable(bubble_nodes, viable_bubble)
-            bubble_state.append(popable)
+            supported = Supported(bubble_nodes, viable_bubble)
+            bubble_state.append(supported)
             filter_count += 1
             continue
         good_to_pop,cigar,seq_infos = align_bubble_nodes(delta_len, all_reads, consensus_infos, work_dir, k_size)
+        print("good_to_pop",good_to_pop)
         if good_to_pop:
             # print("Path_nodes type",type(path_nodes))
             Linearization_infos = namedtuple('Linearization_Infos',
@@ -1127,8 +1132,9 @@ def filter_bubbles(DG, delta_len, all_reads, work_dir, k_size, bubbles):
             print(consensus_infos)
             no_pop_tuple=(bubble_nodes,cigar)
             no_pop_tup_list.append(no_pop_tuple)
-        popable = Popable(bubble_nodes, viable_bubble)
-        bubble_state.append(popable)
+        supported = Supported(bubble_nodes, viable_bubble)
+        print("popable",supported)
+        bubble_state.append(supported)
     return bubble_state, popable_bubbles,no_pop_tup_list
     # generate_subgraph(DG, bubble_nodes)
 
@@ -1136,7 +1142,7 @@ def filter_bubbles(DG, delta_len, all_reads, work_dir, k_size, bubbles):
 INPUT:      poppable_bubbles:      a list of bubbles that are poppable
 OUTPUT:     new_poppable:          a list of bubbles that do not overlap->ready for popping
 """
-def filter_touched(poppable_bubbles):
+def find_disjoint_bubbles(poppable_bubbles):
     #print("Filter touched", poppable_bubbles)
     known_nodes = []
     new_poppable = []
@@ -1170,12 +1176,10 @@ def linearize_bubble(DG, consensus_infos, bubble_start, bubble_end, path_nodes, 
     print("time for linearization")
     # edges_to_delete: A dictionary holding all edges which we want to delete and their respective attributes (needed for adding edges)
     edges_to_delete,node_dist,actual_node_distances = remove_edges(DG, consensus_infos, bubble_start, bubble_end, path_nodes,support_dict)
-    #TODO: Allnodes is not used anymore->get rid of all_nodes!!!
-    all_nodes, all_shared = collect_bubble_nodes(path_nodes, consensus_infos, DG, support_dict)
-    print("Allnodes before sorting", all_nodes)
+    all_shared= collect_shared_reads_bubble(path_nodes, consensus_infos, support_dict)
     actual_node_distances.sort(key=lambda tup: tup[1])
-    print("Allnodes after sorting", all_nodes)
-    add_edges(DG, all_nodes, edges_to_delete, bubble_start, bubble_end, all_shared, path_nodes,actual_node_distances,seq_infos)  # , node_dist)
+    #print("Allnodes after sorting", all_nodes)
+    add_edges(DG, edges_to_delete, bubble_start, bubble_end, all_shared, path_nodes,actual_node_distances,seq_infos)  # , node_dist)
     print("Popped bubble ", path_nodes)
 
 """Wrapper method that is used for popping a list of bubbles calling linearize_bubble
@@ -1196,6 +1200,7 @@ def pop_bubbles(DG, bubble_pop):
         print(DG.edges(data=True))
 
 
+
 """Helper method used to transform a list of lists into a set of frozenset(makes it easer to compare)
 INPUT: input: a list of lists( list of bubbles)
 OUTPUT: result: a set of frozensets( set holding a fr
@@ -1209,7 +1214,6 @@ def list_list_to_set_frozenset(input):
         set_i = frozenset(tup_i)
         result.add(set_i)
     return result
-
 
 def eliminate_already_analysed_bubbles(old_bubbles, new_bubbles):
     new_bubbles_set = list_list_to_set_frozenset(new_bubbles)
@@ -1230,29 +1234,27 @@ def eliminate_already_analysed_bubbles_inefficient(old_bubbles, new_bubbles):
         if new not in old_bubbles:
             bubbles_list.append(new)
     return bubbles_list
-
-
-def list_list_append(original, new):
-    for i in new:
-        original.append(i)
-    return original
-
-
-def delete_not_popped_bubbles_from_old_bubbles(bubble_state, old_bubbles):
-    #print("Poppable_bub", bubble_state)
-    #print("Old_bub before", old_bubbles)
-    for pop_state in bubble_state:
-        #print("pop_state", pop_state)
-        is_poppable = pop_state.bubble_poppable
-        if is_poppable:
-            old_bubbles.remove(pop_state.bubble_nodes)
-
-    #print("Old_bub after", old_bubbles)
-
-def extend_old_bubbles(old_bubbles,bubble_state):
-    for newbubble in bubble_state:
-        if newbubble.bubble_poppable==False:
+"""Helper method used to extend the list of bubbles that has been analysed but not been deemed poppable (old_bubbles)
+INPUT:      old_bubbles
+            bubble_state
+"""
+def extend_unpoppable(old_bubbles,poppable_state):
+    for newbubble in poppable_state:
+        print(newbubble)
+        print(newbubble.bubble_supported)
+        if newbubble.bubble_supported==False:
+            print("newbubble",newbubble.bubble_nodes)
             old_bubbles.append(newbubble.bubble_nodes)
+
+
+"""The backbone of bubble popping: the bubbles are detected and filtered to only yield poppable bubbles. Those are popped then.
+INPUT:      DG:         our directed graph
+            delta_len:  for all differences longer than delta len we have a structural difference while all differences shorter are deemed to be errors
+            all_reads:  list of tuples containing all the reads and (what we need) their sequences
+            work_dir:   the current work directory
+            k_size:     the length of our k_mers
+
+"""
 def bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size):
     # find all bubbles present in the graph which are to be popped
     more_to_pop=True
@@ -1266,25 +1268,35 @@ def bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size):
         nr_bubbles = len(bubbles)
         print("Found " + str(nr_bubbles) + " bubbles in our graph")
         print("Bubbles: ", bubbles)
-        # filter out bubbles which are not poppable
-        bubble_state, poppable_bubbles, no_pop_tup_list = filter_bubbles(DG, delta_len, all_reads, work_dir, k_size,
+        # find the difference of the new bubbles and the old bubbles (meaning we are only interested in bubbles that have not yet been analysed)
+        # TODO: both of the two following lines are working however the more efficient version does yield different order (set)
+        # bubbles=eliminate_already_analysed_bubbles(old_bubbles, new_bubbles)
+        bubbles = eliminate_already_analysed_bubbles_inefficient(old_bubbles, bubbles)
+
+        bubble_state, poppable_bubbles, no_pop_tup_list = investigate_bubbles(DG, delta_len, all_reads, work_dir, k_size,
                                                                          bubbles)
+        print("Bub_state",bubble_state)
         # extending old_bubbles: This list of bubbles consists of all bubbles deemed to be not poppable
-        extend_old_bubbles(old_bubbles,bubble_state)
-        print("Poppable Bubbles",bubble_state)
+        extend_unpoppable(old_bubbles,bubble_state)
+        print("Bubble_state",bubble_state)
+        print("old_bubbles",old_bubbles)
         #this list serves as a debug tool: It stores the cigar string of the bubble alignment so we can see whether all bubbles are correctly identified
         no_pop_list.extend(no_pop_tup_list)
         print("WhileBubbles", bubbles)
         print("poppable_bubbles", poppable_bubbles)
-        poppable_bubbles_filtered = filter_touched(poppable_bubbles)
-        print("Poppable_bubbles_touched", poppable_bubbles_filtered)
-        popped_bubbles.extend(poppable_bubbles_filtered)
-        print("Actually popped",popped_bubbles)
+        disjoint_poppable_bubbles = find_disjoint_bubbles(poppable_bubbles)
+        print("disjoint_poppable_bubbles", disjoint_poppable_bubbles)
         # pop the poppable bubbles by linearizing them
-        pop_bubbles(DG, poppable_bubbles_filtered)
+        pop_bubbles(DG, disjoint_poppable_bubbles)
+        popped_bubbles.extend(disjoint_poppable_bubbles)
+        print("Actually popped", popped_bubbles)
+        print("Current state of the graph")
+        print(DG.nodes(data=True))
+        print(DG.edges(data=True))
         if not poppable_bubbles:
             more_to_pop=False
     print("NO_POP",no_pop_list)
+
     # draw_Graph(DG)
 
 
