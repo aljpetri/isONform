@@ -576,7 +576,7 @@ def main(args):
         #print(type(all_reads))
         read_len_dict = get_read_lengths(all_reads)
         DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
-            all_intervals_for_graph, k_size, delta_len, read_len_dict)
+            all_intervals_for_graph, k_size, delta_len, read_len_dict,all_reads)
         print("Known intervals")
         print(known_intervals)
         #print("edges with attributes:")
