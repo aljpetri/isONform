@@ -169,10 +169,10 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
     reads_at_end_dict = {}
     reads_for_isoforms=[]
     for i in range(1,len(all_intervals_for_graph)+1):
-        reads_at_start_dict[i]=(0,0)
+        reads_at_start_dict[i]=Read_infos(0,0,True,'')
         reads_for_isoforms.append(i)
     for i in range(1,len(read_len_dict)+1):
-        reads_at_end_dict[i]=(read_len_dict[i],read_len_dict[i])
+        reads_at_end_dict[i]=Read_infos(read_len_dict[i],read_len_dict[i],True,'')
         #reads_for_isoforms.append(i)
     print(reads_at_start_dict)
     print(reads_at_end_dict)
@@ -302,17 +302,17 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                         len_difference = abs(this_len - prev_len)
                         #print("Len_difference:"+str(len_difference))
                         #if the length difference is <delta_len: Just add the readinfos
-                        if len_difference < delta_len:
+                        #if len_difference < delta_len:
                             # update the read information of node name
-                            prev_nodelist = nodes_for_graph[name]
-                            seq = all_reads[r_id][1]
-                            r_infos = Read_infos(inter[0], inter[1], True, seq[inter[1]:inter[1] + k])
-                            prev_nodelist[r_id] = r_infos
-                            nodes_for_graph[name] = prev_nodelist
-                            edge_info = edge_support[previous_node, name]
-                            if not r_id in edge_info:
-                                edge_info.append(r_id)
-                                edge_support[previous_node, name] = edge_info
+                        prev_nodelist = nodes_for_graph[name]
+                        seq = all_reads[r_id][1]
+                        r_infos = Read_infos(inter[0], inter[1], True, seq[inter[1]:inter[1] + k])
+                        prev_nodelist[r_id] = r_infos
+                        nodes_for_graph[name] = prev_nodelist
+                        edge_info = edge_support[previous_node, name]
+                        if not r_id in edge_info:
+                            edge_info.append(r_id)
+                            edge_support[previous_node, name] = edge_info
                         """"#if the length difference is >delta len: generate new node, to be able to tell those nodes apart we use alternative_nodes
                         else:
                             nodelist = {}
@@ -370,7 +370,10 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                 # add a node into nodes_for_graph
                 name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
                 #add the read information for the node
-                nodelist[r_id]= (inter[0], inter[1])
+                seq = all_reads[r_id][1]
+                r_infos = Read_infos(inter[0], inter[1], True, seq[inter[1]:inter[1] + k])
+                nodelist[r_id] = r_infos
+                nodes_for_graph[name] = nodelist
                 nodes_for_graph[name] = nodelist
                 #keep known_intervals up to date
                 known_intervals[r_id - 1].append((inter[0], name, inter[1]))
