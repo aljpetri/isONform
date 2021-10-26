@@ -1,12 +1,12 @@
 # isONform- an algorithm capable of recovering isoforms from long read sequencing data
 # Table of contents
 1. [Introduction](#introduction)
-2. [Some paragraph](#output) 
-3. [Another paragraph](#Running)
-	1. [Sub paragraph](#runalgo)
-4. [kjl]  (#credits)
+2. [Output](#output) 
+3. [Running the test script](#Running)
+	1. [Running isONform](#runalgo)
+4. [Credits](#credits)
 
-## This is the introduction <a name="introduction"></a>
+## Introduction <a name="introduction"></a>
 This algorithm marks the first project for my PHD:<br />
 This tool generates isoforms out of clustered and corrected long reads.
 For this a graph is built up using the networkx api and different simplification strategies are applied to it, such as bubble popping and node merging.
@@ -30,7 +30,6 @@ To run the actual algorithm:<br />
 (On my machine:)<br />
 <em>python main.py --fastq ~/PHDProject1/testout/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --max_bubblesize 2 --delta_len 3 --outfolder testout </em><br />
 <em>python main.py --fastq /path/to/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --max_bubblesize 2 --delta_len 3 --outfolder testout <br />
-
 
 ## Credits <a name="credits"></a>
 
