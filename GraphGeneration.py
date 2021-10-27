@@ -160,7 +160,7 @@ TODO:   add dictionary to store infos about known instances
 #TODO: find out where the double edges came from (why we have to use 'if not r_id in edge_info:'
 def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dict,all_reads):
     Read_infos = namedtuple('Read_Infos',
-                                     'start_mini_end end_mini_start original_support end_mini_seq')
+                                     'start_mini_end end_mini_start original_support')
 
     DG = nx.DiGraph()
     cycle_nodes={}
@@ -169,17 +169,17 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
     reads_at_end_dict = {}
     reads_for_isoforms=[]
     for i in range(1,len(all_intervals_for_graph)+1):
-        reads_at_start_dict[i]=Read_infos(0,0,True,'')
+        reads_at_start_dict[i]=Read_infos(0,0,True)
         reads_for_isoforms.append(i)
     for i in range(1,len(read_len_dict)+1):
-        reads_at_end_dict[i]=Read_infos(read_len_dict[i],read_len_dict[i],True,'')
+        reads_at_end_dict[i]=Read_infos(read_len_dict[i],read_len_dict[i],True)
         #reads_for_isoforms.append(i)
     print(reads_at_start_dict)
     print(reads_at_end_dict)
     # a source and a sink node are added to the graph in order to have a well-defined start and end for the paths
-    DG.add_node("s",reads=reads_at_start_dict)
+    DG.add_node("s",reads=reads_at_start_dict,end_mini_seq='')
     print("REads at end dict",reads_at_end_dict)
-    DG.add_node("t",reads=reads_at_end_dict)
+    DG.add_node("t",reads=reads_at_end_dict,end_mini_seq='')
 
     # holds the r_id as key and a list of tuples as value: For identification of reads, also used to ensure correctness of graph
     known_intervals = []
@@ -190,6 +190,9 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
         node_overview_read.append([])
     #print(known_intervals)
     nodes_for_graph = {}
+    alternative_nodes = {}
+    #the following dictionary is supposed to hold the end minimizer sequence for each node
+    node_sequence={}
     edge_support={}
     prior_read_infos = {}
     cycle_in_reads={}
@@ -238,7 +241,11 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                             # update the read information of node name
                             prev_nodelist = nodes_for_graph[name]
                             seq=all_reads[r_id][1]
-                            r_infos = Read_infos(inter[0], inter[1], True, seq[inter[1]:inter[1]+k] )
+                            r_infos = Read_infos(inter[0], inter[1], True )
+                            end_mini_seq= seq[inter[1]:inter[1]+k]
+                            if not(end_mini_seq==DG.nodes[name]['end_mini_seq']):
+                                print("ERROR: ",end_mini_seq," not equal to ",DG.nodes[name]['end_mini_seq'])
+                            #node_sequence[name]=end_mini_seq
                             prev_nodelist[r_id]=r_infos
                             nodes_for_graph[name] = prev_nodelist
                             length = this_len
@@ -249,7 +256,11 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                             # update the read information of node name
                             prev_nodelist = nodes_for_graph[name]
                             seq = all_reads[r_id][1]
-                            r_infos = Read_infos(inter[0], inter[1], True, seq[inter[1]:inter[1] + k])
+                            r_infos = Read_infos(inter[0], inter[1], True)
+                            end_mini_seq = seq[inter[1]:inter[1] + k]
+                            if not(end_mini_seq==DG.nodes[name]['end_mini_seq']):
+                                print("ERROR: ",end_mini_seq," not equal to ",DG.nodes[name]['end_mini_seq'])
+                            #node_sequence[name] = end_mini_seq
                             prev_nodelist[r_id] = r_infos
                             nodes_for_graph[name] = prev_nodelist
                             edge_info = edge_support[previous_node, name]
@@ -286,7 +297,9 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                         #update the read information of node name
                         prev_nodelist=nodes_for_graph[name]
                         seq = all_reads[r_id][1]
-                        r_infos = Read_infos(inter[0], inter[1], True, seq[inter[1]:inter[1] + k])
+                        r_infos = Read_infos(inter[0], inter[1], True)
+                        end_mini_seq = seq[inter[1]:inter[1] + k]
+                        node_sequence[name] = end_mini_seq
                         prev_nodelist[r_id] = r_infos
                         nodes_for_graph[name]=prev_nodelist
                         #only add a new edge if the edge was not present before
@@ -302,18 +315,20 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                         len_difference = abs(this_len - prev_len)
                         #print("Len_difference:"+str(len_difference))
                         #if the length difference is <delta_len: Just add the readinfos
-                        #if len_difference < delta_len:
+                        if len_difference < 2*k:
                             # update the read information of node name
-                        prev_nodelist = nodes_for_graph[name]
-                        seq = all_reads[r_id][1]
-                        r_infos = Read_infos(inter[0], inter[1], True, seq[inter[1]:inter[1] + k])
-                        prev_nodelist[r_id] = r_infos
-                        nodes_for_graph[name] = prev_nodelist
-                        edge_info = edge_support[previous_node, name]
-                        if not r_id in edge_info:
-                            edge_info.append(r_id)
-                            edge_support[previous_node, name] = edge_info
-                        """"#if the length difference is >delta len: generate new node, to be able to tell those nodes apart we use alternative_nodes
+                            prev_nodelist = nodes_for_graph[name]
+                            seq = all_reads[r_id][1]
+                            r_infos = Read_infos(inter[0], inter[1], True)
+                            end_mini_seq = seq[inter[1]:inter[1] + k]
+                            node_sequence[name] = end_mini_seq
+                            prev_nodelist[r_id] = r_infos
+                            nodes_for_graph[name] = prev_nodelist
+                            edge_info = edge_support[previous_node, name]
+                            if not r_id in edge_info:
+                                edge_info.append(r_id)
+                                edge_support[previous_node, name] = edge_info
+                        #if the length difference is >delta len: generate new node, to be able to tell those nodes apart we use alternative_nodes
                         else:
                             nodelist = {}
                             #inappropriate_node
@@ -321,7 +336,11 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                             # add a node into nodes_for_graph
                             name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
                             DG.add_node(name)
-                            nodelist[r_id] = (inter[0], inter[1])
+                            r_infos = Read_infos(inter[0], inter[1], True)
+                            end_mini_seq = seq[inter[1]:inter[1] + k]
+                            node_sequence[name] = end_mini_seq
+                            nodelist[r_id] = r_infos
+                            #nodelist[r_id] = (inter[0], inter[1])
                             nodes_for_graph[name] = nodelist
                             DG.add_edge(previous_node,name,length=this_len)
                             edge_support[previous_node, name] = []
@@ -340,7 +359,10 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                                     name=node_info[0]
                                     # update the read information of node name
                                     prev_nodelist = nodes_for_graph[name]
-                                    prev_nodelist[r_id]=(inter[0], inter[1])
+                                    r_infos = Read_infos(inter[0], inter[1], True)
+                                    end_mini_seq = seq[inter[1]:inter[1] + k]
+                                    node_sequence[name] = end_mini_seq
+                                    prev_nodelist[r_id] = r_infos
                                     nodes_for_graph[name] = prev_nodelist
 
                                     edge_info = edge_support[previous_node, name]
@@ -352,7 +374,10 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                                     #add a new entry to alternative_nodes[old_node] to enable finding this instance
                                     alternative_nodes[old_node].append(alt_info_tuple)
                                     # add the read information for the node
-                                    nodelist[r_id]= (inter[0], inter[1])
+                                    r_infos = Read_infos(inter[0], inter[1], True)
+                                    end_mini_seq = seq[inter[1]:inter[1] + k]
+                                    node_sequence[name] = end_mini_seq
+                                    prev_nodelist[r_id] = r_infos
                                     nodes_for_graph[name] = nodelist
                                     DG.add_node(name)
                                     # get the length between the previous end and this nodes start
@@ -360,7 +385,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                                     # connect the node to the previous one
                                     DG.add_edge(previous_node, name, length=length)
                                     edge_support[previous_node, name] = []
-                                    edge_support[previous_node, name].append(r_id)"""
+                                    edge_support[previous_node, name].append(r_id)
                 # keep known_intervals up to date
                 known_intervals[r_id-1].append((inter[0],name,inter[1]))
                 node_overview_read[r_id-1].append(name)
@@ -371,7 +396,9 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                 name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
                 #add the read information for the node
                 seq = all_reads[r_id][1]
-                r_infos = Read_infos(inter[0], inter[1], True, seq[inter[1]:inter[1] + k])
+                r_infos = Read_infos(inter[0], inter[1], True)
+                end_mini_seq = seq[inter[1]:inter[1] + k]
+                node_sequence[name] = end_mini_seq
                 nodelist[r_id] = r_infos
                 nodes_for_graph[name] = nodelist
                 nodes_for_graph[name] = nodelist
@@ -424,6 +451,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
         #print(edge_support[name,"t"])
     #set the node attributes to be nodes_for_graph, very convenient way of solving this
     nx.set_node_attributes(DG,nodes_for_graph,name="reads")
+    nx.set_node_attributes(DG,node_sequence,name="end_mini_seq")
     nx.set_edge_attributes(DG,edge_support,name='edge_supp')
     #use the known_intervals data structure to be able to verify the number of nodes appointed to each read
     #check_graph_correctness(known_intervals,all_intervals_for_graph)
