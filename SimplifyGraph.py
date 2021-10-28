@@ -387,12 +387,15 @@ INPUT:      work_dir:               The work directory we are in
 OUTPUT:     spoa_ref:               the consensus sequence generated from the reads
 
 """
+#TODO: for one read the positions do not fit(it has a shorter sequence for our consensus->somewhere we have the wrong position)
 def generate_consensus_path(work_dir, consensus_attributes, reads, k_size):
     reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
     seq_infos={}
     endseqlist = []
     for i, (q_id, pos1, pos2) in enumerate(consensus_attributes, 3):
-        print("Printing full seq:", reads[q_id][1])
+        print("read ",q_id)
+        print("Printing full seq:")
+        print( reads[q_id][1])
         if pos2 == 0:
             pos2 = len(reads[q_id][1]) - k_size
         seq = reads[q_id][1][pos1: pos2 + k_size]
@@ -510,28 +513,58 @@ def add_end_minimizer_info(positions,node_end_minimizers,node):
         curr_dict[key]=value[1]
     node_end_minimizers[node]=curr_dict
 
+def get_dist_to_prev(DG,prev_node,curr_node):
+    print("getting dist to prev")
+    print("prev_reads",prev_node)
+    print("this_reads",curr_node)
+    prev_supp=DG.nodes[prev_node]['reads']
+    curr_supp=DG.nodes[curr_node]['reads']
+    print(prev_supp)
+    print(curr_supp)
+    intersect_supp = list(set(prev_supp).intersection(curr_supp))
+    sum=0
+    for i,read in enumerate(intersect_supp):
+        prev_pos=prev_supp[read].end_mini_start
+        curr_pos=curr_supp[read].end_mini_start
+        sum=sum+(curr_pos-prev_pos)
+        i=i+1
+    avg_dist=sum/i
+    return avg_dist
+    dist_to_prev=0
+    cter=0
+    #for supp,pos in prev_reads.items():
+    #    print("supp",supp)
+    #    if supp in this_reads:
+    #        this_pos=this_reads[supp]
+    #        dist=this_pos[0]-pos[1]
+    #        print("this_pos",this_pos)
+    #        print("pos",pos)
+    #        dist_to_prev=dist_to_prev+dist
+    #        cter=cter+1
+    #final_dist=int(dist_to_prev/cter)
+    #print(final_dist)
+    #return final_dist
 
-def new_distance_to_start(DG,bubble_start,pnl_start,curr_node,consensus_log,bubble_end,support):
+def new_distance_to_start(DG,bubble_start,pnl_start,curr_node,consensus_log,bubble_end,support,prev_node):
     print("consensus_log",consensus_log)
     print("currnode",curr_node)
     print(str(pnl_start))
     print("newdistancetostart")
-    if pnl_start==bubble_end:
-        return -1
+    #if pnl_start==bubble_end:
+    #    return -1
     #tup=[item for item in consensus_log if item[0] == str(pnl_start)]
-    for item in consensus_log:
-        print(item)
-        if item[0]==pnl_start:
-            seq=item[1]
-            node_seq=DG.nodes[curr_node]['end_mini_seq']
-            print("Is ",node_seq ," in ",seq," ?")
-            possible_pos=seq.find(node_seq)
-            print(possible_pos)
-            if not possible_pos==-1:
-                return possible_pos
-            else:
-                dist = get_distance_to_start(DG, bubble_start, pnl_start, support)
-                return dist
+    seq=consensus_log[pnl_start]
+    node_seq=DG.nodes[curr_node]['end_mini_seq']
+    print("Is ",node_seq ," in ",seq," ?")
+    possible_pos=seq.find(node_seq)
+    print(possible_pos)
+    if not possible_pos==-1:
+        return possible_pos
+    else:
+        #TODO:alter get_dist_to_prev to yield better results
+        dist=get_dist_to_prev(DG,prev_node,curr_node)
+        #dist = get_distance_to_start(DG, bubble_start, pnl_start, support)
+        return dist
     #print(tup)
 
 
@@ -563,6 +596,13 @@ def remove_edges(DG, path_reads, bubble_start, bubble_end, path_nodes,support_di
         #print("startnode", bubble_start)
         if path_node_list:
             pnl_start = path_node_list[0]
+            dist = new_distance_to_start(DG, bubble_start, pnl_start, pnl_start, consensus_log, bubble_end,
+                                         support_dict[startnode_id], bubble_start)
+            node_distances[pnl_start] = dist
+            prevnode = pnl_start
+            tup = (pnl_start, dist)
+            if not tup in tup_list:
+                tup_list.append(tup)
         else:
             pnl_start=bubble_end
         #print("pnl_start", pnl_start)
@@ -570,16 +610,12 @@ def remove_edges(DG, path_reads, bubble_start, bubble_end, path_nodes,support_di
         # print(DG.edges)
         edges_to_delete[bubble_start, pnl_start] = DG[bubble_start][pnl_start]
         #dist = get_distance_to_start(DG, bubble_start, pnl_start,support_dict[startnode_id])
-        if pnl_start!=bubble_end:
-            dist = new_distance_to_start(DG,bubble_start,pnl_start,pnl_start,consensus_log,bubble_end,support_dict[startnode_id])
-            node_distances[pnl_start] = dist
-            tup=(pnl_start,dist)
-            if not tup in tup_list:
-                tup_list.append(tup)
+        #if pnl_start!=bubble_end:
+
         for index, path_node in enumerate(path_node_list):
             #print(index, ", ", path_noded)
             #if pnl_start!=bubble_end:
-            dist = new_distance_to_start(DG,bubble_start, pnl_start, path_node, consensus_log,bubble_end,support_dict[startnode_id])
+            dist = new_distance_to_start(DG,bubble_start, pnl_start, path_node, consensus_log,bubble_end,support_dict[startnode_id],prevnode)
             #dist = get_distance_to_start(DG, bubble_start, path_node,support_dict[startnode_id])
             node_distances[path_node] = dist
             tup = (path_node, dist)
@@ -616,24 +652,7 @@ def get_avg_interval_length(DG,node):
     print("finalresult",finalresult)
     return finalresult
 
-def get_dist_to_prev(prev_reads,this_reads):
-    print("getting dist to prev")
-    print("prev_reads",prev_reads)
-    print("this_reads",this_reads)
-    dist_to_prev=0
-    cter=0
-    for supp,pos in prev_reads.items():
-        print("supp",supp)
-        if supp in this_reads:
-            this_pos=this_reads[supp]
-            dist=this_pos[0]-pos[1]
-            print("this_pos",this_pos)
-            print("pos",pos)
-            dist_to_prev=dist_to_prev+dist
-            cter=cter+1
-    final_dist=int(dist_to_prev/cter)
-    print(final_dist)
-    return final_dist
+
 
 """Helper method: Adds additional support values for the bubble_nodes(needed to get a consistent graph)
 INPUT:      DG:
@@ -641,9 +660,37 @@ INPUT:      DG:
 OUTPUT:     additional_support:  dictionary of additional support values
 """
 
-def additional_node_support(DG, new_support,other_support, this_dist, s_infos, node, prevnode_this_path,other_prevnode,other_dist,seq_infos):
+"""def additional_node_support(DG,new_support, )
     Read_infos = namedtuple('Read_Infos',
-                            'start_mini_end end_mini_start original_support end_mini_seq')
+                            'start_mini_end end_mini_start original_support')
+    # this will contain all reads that are being to be added to the node with their respective (virtual) positions
+    additional_support = {}
+    print("Node_dist", this_dist)
+    print("node", node)
+    print("s_infos", s_infos)
+    this_reads = DG.nodes[node]['reads']
+    avg_len = get_avg_interval_length(DG, node)
+    # a lot of print statements used to debug
+    print("avg_len", avg_len)
+    print("new_support ", new_support)
+    print("prevnode_this_path", prevnode_this_path)
+    print("prevnode_other_path", other_prevnode)
+
+    for r_id in new_support:
+        print("r_id", r_id)
+        # figure out if r_id is also represented by bubble_start
+        if r_id not in s_infos.keys():
+            # r_id is not in s_infos (meaning the read is not supporting bubble_start), if it would be in s_infos, we do not have to recompute anything
+            if r_id not in this_reads:"""
+
+def additional_node_support(DG, new_support,other_support, node_dist_dict, s_infos, node, prevnode_this_path,other_prevnode,seq_infos,bubble_start):
+    Read_infos = namedtuple('Read_Infos',
+                            'start_mini_end end_mini_start original_support')
+    if other_prevnode==bubble_start:
+        other_dist=0
+    else:
+        other_dist=node_dist_dict[other_prevnode]
+    this_dist=node_dist_dict[node]
     print("other:dist",other_dist)
     #this will contain all reads that are being to be added to the node with their respective (virtual) positions
     additional_support = {}
@@ -660,11 +707,13 @@ def additional_node_support(DG, new_support,other_support, this_dist, s_infos, n
 
     for r_id in new_support:
         print("r_id",r_id)
-        #figure out if r_id is also represented by bubble_start
-        if r_id not in s_infos.keys():
-            #r_id is not in s_infos (meaning the read is not supporting bubble_start), if it would be in s_infos, we do not have to recompute anything
-            if r_id not in this_reads:
-                #what we do if the read is not in s but still meets the bubble
+        #figure out whether the r_id is part of this bubble_path
+        if r_id not in this_reads:
+            # what we do if the read meets the bubble and is not in this_reads
+            # figure out if r_id is also represented by bubble_start
+            if r_id not in s_infos.keys():
+                # r_id is not in s_infos (meaning the read is not supporting bubble_start), if it would be in s_infos, we do not have to recompute anything
+
                 #get the position of the read in previous node
                 #calculate relative distance to start (relative to previous node)
                 #start=position+relative dist
@@ -676,22 +725,21 @@ def additional_node_support(DG, new_support,other_support, this_dist, s_infos, n
                 prev_end=pos_info_tup.end_mini_start
                 relative_dist= int(this_dist-other_dist)
                 print("relative_dist",relative_dist)
-                newstart=prev_end+relative_dist
-                newend=int(newstart+avg_len)
-                #TODO:change this to use a namedtuple
-                additional_support[r_id] = Read_infos(newstart, newend,False,'')
-        #the read is in this path so we do not have to do a lot here
-        else:
-            # print("r_id",r_id)
-            print("S_Infos", s_infos[r_id])
-            #start_pos=s_infos[r_id].start_mini_end
-            end_pos=s_infos[r_id].end_mini_start
-            #start_pos, end_pos = s_infos[r_id]
-            newstart=int(this_dist) + end_pos
-            print("newstart",newstart)
-            newend=newstart+avg_len
-            # TODO:change this to use a namedtuple
-            additional_support[r_id] = Read_infos(newstart, newend,False,'')
+                newend=prev_end+relative_dist
+                newstart=int(newend-avg_len)
+                additional_support[r_id] = Read_infos(newstart, newend,False)
+            #the read is in this path so we do not have to do a lot here
+            else:
+                # print("r_id",r_id)
+                print("S_Infos", s_infos[r_id])
+                #start_pos=s_infos[r_id].start_mini_end
+                end_pos=s_infos[r_id].end_mini_start
+                #start_pos, end_pos = s_infos[r_id]
+                newend=int(this_dist) + end_pos
+                #print("newstart",newstart)
+                newstart=newend-avg_len
+                additional_support[r_id] = Read_infos(newstart, newend,False)
+
     print("Additional node_supp after", additional_support)
     return additional_support
 
@@ -714,7 +762,7 @@ def merge_two_dicts(dict1, dict2):
 
 #TODO:this may not be sufficient
 def sort_by_node_label(seq):
-    seq_duplicates = sorted(seq, key=lambda x: (x[1], x[0]))
+    seq_duplicates = sorted(seq, key=lambda x: x[1])
     return seq_duplicates
 
 """adds new edges to the graph 
@@ -742,9 +790,15 @@ def add_edges(DG, edges_to_delete, bubble_start, bubble_end, all_shared, path_no
     print("allnodes", actual_node_distances)
     print("pathnodes", path_nodes)
     #sort_by_dist_to_s(actual_node_distances,DG)
-    print("actual_node_distance",actual_node_distances)
+
     actual_node_distances=sort_by_node_label(actual_node_distances)
-    print("actual_node_distance s1", actual_node_distances)
+    node_dist_dict= dict()
+
+    for node_id, distance in actual_node_distances:
+        node_dist_dict.setdefault(node_id, distance)
+    print(node_dist_dict)
+    print("node_dist_dict", node_dist_dict)
+    #print("actual_node_distance s1", actual_node_distances)
     #sorted(actual_node_distances, key=cmp_to_key(compare))
     #print("actual_node_distance s2", actual_node_distances)
     # we assign both paths to variables to make them easier accessible.
@@ -797,7 +851,8 @@ def add_edges(DG, edges_to_delete, bubble_start, bubble_end, all_shared, path_no
         [full_edge_supp_final.append(x) for x in full_edge_supp if x not in full_edge_supp_final]
         print("full_edge_support_final:", full_edge_supp_final)
         node_supp = []
-        real_pos = nodetup[1]
+        print("AND", node_dist_dict)
+        this_dist = node_dist_dict.get(node)
 
         #here we destinguish the nodes with respect to their membership in the bubble paths
         if node in path1:
@@ -806,8 +861,8 @@ def add_edges(DG, edges_to_delete, bubble_start, bubble_end, all_shared, path_no
                 other_dist = other_dist_list[0]
             else:
                 other_dist=0
-            additional_supp = additional_node_support(DG, new_edge_supp2, new_edge_supp1, real_pos, s_infos, node,
-                                                      prevnode1,prevnode2,other_dist,seq_infos)
+            additional_supp = additional_node_support(DG, new_edge_supp2, new_edge_supp1, node_dist_dict, s_infos, node,
+                                                      prevnode1,prevnode2,seq_infos,bubble_start)
             # if the next node is from path1: pop the node out of path1 and set nextnode1 to the
             prevnode1 = path1.pop(0)
             print("P1", path2)
@@ -836,8 +891,8 @@ def add_edges(DG, edges_to_delete, bubble_start, bubble_end, all_shared, path_no
             else:
                 other_dist = 0
             #find the positions for all reads that were not yet supporting this node
-            additional_supp = additional_node_support(DG, new_edge_supp1, new_edge_supp2, real_pos, s_infos, node,
-                                                      prevnode2,prevnode1,other_dist,seq_infos)
+            additional_supp = additional_node_support(DG, new_edge_supp1, new_edge_supp2, node_dist_dict, s_infos, node,
+                                                      prevnode2,prevnode1,seq_infos,bubble_start)
             prevnode2 = path2.pop(0)
             print("P2", path2)
             print("prevnode2", prevnode2)
@@ -869,12 +924,15 @@ def add_edges(DG, edges_to_delete, bubble_start, bubble_end, all_shared, path_no
         print(node)
         prevnode = node
         print("nodetup", nodetup)
+        print("new_node_supp_dict",new_node_supp_dict)
+        if node != bubble_end:
+            print("New node support for node ", node, " ;", new_node_supp_dict[node])
+            nx.set_node_attributes(DG, new_node_supp_dict, "reads")
     print("updated nodes")
     print(new_node_supp_dict)
-    if node!=bubble_end:
-        print("New node support for node ", node, " ;", new_node_supp_dict[node])
+
     # print(DG.nodes(data=True))
-        nx.set_node_attributes(DG, new_node_supp_dict, "reads")
+
     print("updated nodes")
     # print(DG.nodes(data=True))
     if len(path2) > 0:
@@ -901,16 +959,17 @@ def add_edges(DG, edges_to_delete, bubble_start, bubble_end, all_shared, path_no
 
 
 def align_bubble_nodes(delta_len, all_reads, consensus_infos, work_dir, k_size):
+    print("aligning")
     consensus_list = []
-    consensus_log=[]
+    consensus_log= {}
     seq_infos={}
     for path_node, consensus_attributes in consensus_infos.items():
         print("consensus", consensus_attributes)
         print("path_node",path_node)
         if len(consensus_attributes) > 1:
             con,seq_infos_from_fun = generate_consensus_path(work_dir, consensus_attributes, all_reads, k_size)
-            consensus_info_tuple = (path_node, con)
-            consensus_log.append(consensus_info_tuple)
+
+            consensus_log[path_node]=con
             seq_infos.update(seq_infos_from_fun)
             consensus_list.append(con)
         else:
@@ -918,10 +977,10 @@ def align_bubble_nodes(delta_len, all_reads, consensus_infos, work_dir, k_size):
             print("consensus_attributes", q_id, ", ", pos1, ", ", pos2)
             con = all_reads[q_id][1][pos1: pos2 + k_size]
             seq_infos[q_id]=(pos1,pos2+k_size,con)
-            consensus_info_tuple=(path_node,con)
-            consensus_log.append(consensus_info_tuple)
+            consensus_log[path_node]=con
         consensus_list.append(con)
     print(consensus_list)
+    print("consensus_log",consensus_log)
     consensus1 = consensus_list[0]
     consensus2 = consensus_list[1]
     s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
@@ -1023,7 +1082,7 @@ def test_path_viability(DG, path_start, initial_support, cycle,bubble_start, bub
                 next_support = DG[curr_node][next_node]["edge_supp"]
                 # figure out whether there is any overlap between the current support and next_support
                 intersect_supp = list(set(curr_support).intersection(next_support))
-                print("intersect supp",intersect_supp)
+                #print("intersect supp",intersect_supp)
                 # if we have an overlap, this means that at least one read from our initial_support also supports this edge
                 if intersect_supp:
                     # we have found a node to continue
@@ -1086,10 +1145,8 @@ def get_consensus_positions(r_ids, bubble_start, bubble_end, DG, shared_reads):
         if r_id in shared_reads:
             bubble_end_pos = max_node_infos[r_id]
             bubble_start_pos = min_node_infos[r_id]
-            if bubble_start_pos == (-1, -1):
-                continue
-            start_of_bubble = bubble_start_pos[1]
-            end_of_bubble = bubble_end_pos[0]
+            start_of_bubble = bubble_start_pos.end_mini_start
+            end_of_bubble = bubble_end_pos.end_mini_start
             entry = (r_id, start_of_bubble, end_of_bubble)
             read_list.append(entry)
     return read_list
@@ -1328,6 +1385,9 @@ def bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size):
     popped_bubbles = []
     old_bubbles=[]
     no_pop_list = []
+    print("Initial state of the graph")
+    print(DG.nodes(data=True))
+    print(DG.edges(data=True))
     while more_to_pop:
         # find all bubbles in the new state of the graph
         bubbles = find_bubbles(DG)
@@ -1382,9 +1442,9 @@ def simplifyGraph(DG, delta_len, all_reads, work_dir, k_size):
     print("Simplifying the Graph (Merging nodes, popping bubbles)")
     list_of_cycles = find_repetative_regions(DG)
     print(list_of_cycles)
-    print("Current State of Graph:")
-    print(DG.nodes(data=True))
-    print(DG.edges(data=True))
+    #print("Current State of Graph:")
+    #print(DG.nodes(data=True))
+    #print(DG.edges(data=True))
     bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size)
     print("Popping bubbles done")
     merge_nodes(DG)
