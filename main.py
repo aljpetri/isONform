@@ -588,10 +588,15 @@ def main(args):
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         #draw_Graph(DG)
         #print("finding the reads, which make up the isoforms")
-        generate_isoforms(DG,all_reads,reads_for_isoforms,work_dir,outfolder,max_seqs_to_spoa)
+
         # for iso in isoform_reads:
         #print("hello")
-
+        possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
+        print("Found cycle(s) ", possible_cycles)
+        if not (possible_cycles):
+            generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa)
+        else:
+            print("found cycle. Terminate")
         #for key,value in all_reads.items():
         #    print(key,value)
         #print("Allreads written in file")
