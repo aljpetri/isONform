@@ -684,27 +684,25 @@ def find_real_nextnode(nextnode1,nextnode2,node_dist,bubble_end):
         return nextnode2
     elif nextnode2 == bubble_end:
         return nextnode1
-    elem1 = node_dist[nextnode1]
-    elem2 = node_dist[nextnode2]
-    if elem1 < elem2:
+    dist1 = node_dist[nextnode1]
+    dist2 = node_dist[nextnode2]
+    if dist1 < dist2:
         return nextnode1
-    elif elem2 < elem1:
+    elif dist2 < dist1:
         return nextnode2
     else:
         print("We have to come up with something!")
-        print("is ",nextnode1," < ",nextnode2,"? As we got ",elem1,"== ",elem2)
+        print("is ",nextnode1," < ",nextnode2,"? As we got ",dist1,"== ",dist2)
         return nextnode1
     #TODO: we can just take the 0th element of the path bc this is what we did before. Nextnode1 is located at pos 1
-def get_next_node(path, overall_nextnode,bubble_end):
+def get_next_node(path, bubble_end):
     print("get_ndex_node")
     print(str(type(path)))
     print(path)
-    thisidx=path.index(overall_nextnode)
-    print("thisidx",thisidx)
     if len(path)<2:
         nextnode=bubble_end
     else:
-        nextnode=path[thisidx+1]
+        nextnode=path[1]
     return nextnode
 def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nodes,node_dist,seq_infos):  # ,node_dist):
     counter = 0
@@ -775,7 +773,7 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
         overall_nextnode=find_real_nextnode(nextnode1,nextnode2,node_dist,bubble_end)
         #TODO:seperate the finding of next node from the actual adding of edges to make it easier to hunt down bugs
         if overall_nextnode in path1:
-            nextnode1=get_next_node(path1, overall_nextnode,bubble_end)
+            nextnode1=get_next_node(path1,bubble_end)
             print("nextnode1",nextnode1)
             additional_supp = additional_node_support(DG, new_edge_supp2, new_edge_supp1, node_dist, s_infos, overall_nextnode,
                                                       prevnode1, prevnode2, seq_infos, bubble_start)
@@ -786,7 +784,7 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
             prevnode1=overall_nextnode
             curr_node=prevnode1
         elif overall_nextnode in path2:
-            nextnode2=get_next_node(path2,overall_nextnode,bubble_end)
+            nextnode2=get_next_node(path2,bubble_end)
             additional_supp = additional_node_support(DG, new_edge_supp1, new_edge_supp2, node_dist, s_infos, overall_nextnode,
                                                       prevnode2, prevnode1, seq_infos, bubble_start)
             print("additionalNodeSupport2 for", overall_nextnode)
@@ -801,16 +799,24 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
         new_node_supp_dict[overall_nextnode] = merge_two_dicts(additional_supp, old_node_supp)
         nx.set_node_attributes(DG, new_node_supp_dict, "reads")
         edge_params[prevnode,overall_nextnode]=full_edge_supp
-        DG.add_edge(prevnode, overall_nextnode, edge_supp=full_edge_supp)
+        #DG.add_edge(prevnode, overall_nextnode, edge_supp=full_edge_supp)
 
-        print("Adding edge from ", prevnode, "to ", overall_nextnode)
+        #print("Adding edge from ", prevnode, "to ", overall_nextnode)
         prevnode=curr_node
 
     new_edge_supp1 = edges_to_delete[prevnode1, bubble_end]['edge_supp']
     new_edge_supp2 = edges_to_delete[prevnode2, bubble_end]['edge_supp']
     full_edge_supp = new_edge_supp1 + new_edge_supp2
-    DG.add_edge(prevnode, bubble_end, edge_supp=full_edge_supp)
-    print("Adding edge fa from ", prevnode, "to ", bubble_end)
+    edge_params[prevnode, bubble_end] = full_edge_supp
+    print("edge_params",edge_params)
+    #DG.add_edge(prevnode, bubble_end, edge_supp=full_edge_supp)
+    for key,value in edge_params.items():
+        #print(key,value)
+        DG.add_edge(key[0],key[1],edge_supp=value)
+    possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
+    if possible_cycles:
+        print("Found cycle(s) ", possible_cycles)
+        #print("Adding edge fa from ", key[0], "to ", key[1])
     # this is the main part of the linearization. We iterate over all_nodes and try to find out which path the nodes belong to.
     # This info is needed as we need the current state ob both paths to add the correct edge_support and node_support to the graph
 
@@ -841,10 +847,11 @@ def align_bubble_nodes(delta_len, all_reads, consensus_infos, work_dir, k_size):
             con = all_reads[q_id][1][pos1: pos2 + k_size]
             seq_infos[q_id]=(pos1,pos2+k_size,con)
             consensus_log[path_node]=con
-        consensus_list.append(con)
+            consensus_list.append(con)
     print(consensus_list)
     print("consensus_log",consensus_log)
     consensus1 = consensus_list[0]
+    print("consensus1")
     consensus2 = consensus_list[1]
     s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
                                                                                        match_score=2,
@@ -1034,6 +1041,7 @@ def find_poppable_bubbles(DG, delta_len, all_reads, work_dir, k_size, bubbles):
     Supported = namedtuple('Supported', 'bubble_nodes, bubble_supported')
     # iterate over the different bubbles
     for listint, bubble_nodes in enumerate(bubbles):
+        print("Analysing: ",bubble_nodes)
         viable_bubble = False
         #print("bubble:", bubble_nodes)
         # find the local source and local sink for each bubble, if we find more than one source or sink, the bubble is not a supported bubble. However supported bubbles additionally have to be supported by at least two reads

@@ -363,7 +363,7 @@ def listToString(s):
 
 def main(args):
     # start = time()
-    delta_len = 3
+
     outfolder = args.outfolder
     # read the file
     all_reads = {i + 1: (acc, seq, qual) for i, (acc, (seq, qual)) in
@@ -389,6 +389,8 @@ def main(args):
     v_depth_ratio_threshold = args.T
     # context_depth_ratio_threshold = args.C
     k_size = args.k
+    #we set delta_len to be 2*k_size to make the algo feasible
+    delta_len = 2 * k_size
     for batch_id, reads in enumerate(batch(all_reads, args.max_seqs)):
         print("correcting {0} reads in a batch".format(len(reads)))
         batch_start_time = time()
