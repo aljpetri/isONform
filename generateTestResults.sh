@@ -51,33 +51,40 @@ python main.py --fastq ~/PHDProject1/testout/reads.fq --k 9 --w 10 --xmin 14 --x
 had_issue=$?
 zero=0
 echo $had_issue
-if [[ "$had_issue" != "$zero" ]]
-then
-errorcounter=$((errorcounter+1))
-cp testout/reads.fq error_${errorcounter}.fq
-fi
 #python main.py --fastq ~/PHDProject1/testout/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --max_bubblesize 2 --delta_len 3 --outfolder testout 
 #we count the lines in mapping.txt, which is an output of IsONform. As we have a fasta file we have to divide this number by 2 to retreive the actual number of isoforms we generated
 res=$(< "$file" wc -l)
 result=$(($res/2))
 if [[ "$had_issue" != "$zero" ]]
 then
+errorcounter=$((errorcounter+1))
 result=-1
+cp testout/reads.fq error_${errorcounter}.fq
+
+else
+if [[ "$result" == "$true_read_amount" ]]
+then
+cp testout/reads.fq strange_error_${errorcounter}.fq
+
+elif [[ "$result" -gt "$otherres" ]]
+then 
+cp testout/reads.fq other_error_${errorcounter}.fq
+
+elif [[ "$result" -lt "$i" ]]
+then 
+cp testout/reads.fq isoform_error_${errorcounter}.fq
+fi
 fi
 #echo "$result"
 echo -e "$i \t $result \t $true_read_amount \t" >> $outputfile
 
-if [[ "$result" == "$true_read_amount" ]]
-then
-cp testout/reads.fq strange_error_${errorcounter}.fq
-fi
+
 num2=2
 otherres=$((result * num2))
 
-if [[ "$result" -gt "$otherres" ]]
-then 
-cp testout/reads.fq other_error_${errorcounter}.fq
-fi
+
+
+
 #if we have found an example for which IsONform does mess up, save it to debug later
 #if [[ "$i" != "$result" ]]
 #then

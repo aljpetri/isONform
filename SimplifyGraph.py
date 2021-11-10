@@ -392,14 +392,20 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size):
     reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
     seq_infos={}
     endseqlist = []
-    for i, (q_id, pos1, pos2) in enumerate(consensus_attributes, 3):
+    print(consensus_attributes)
+    for i, (q_id, pos1, pos2) in enumerate(consensus_attributes):
+        print("consensus_atm:",q_id,", ",pos1,",",pos2)
         print("read ",q_id)
-        print("Printing full seq:")
-        print( reads[q_id][1])
+        print(pos2)
+        print("Printing full seq:", reads[q_id][1])
         if pos2 == 0:
+            print("TRUE")
             pos2 = len(reads[q_id][1]) - k_size
-        seq = reads[q_id][1][pos1: pos2 + k_size]
+        print(pos2)
+        seq = reads[q_id][1][pos1: (pos2 + k_size)]
+        print(seq)
         seq_infos[q_id]=(pos1,pos2+k_size,seq)
+        print("seq_infos",seq_infos)
         # startseq=reads[q_id][1][pos1:pos1+k_size]
         endseq = reads[q_id][1][pos2:pos2 + k_size]
         # startseqlist.append(startseq)
@@ -416,6 +422,23 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size):
     print("spoa_ref", spoa_ref)
     return spoa_ref,seq_infos
 
+def parse_cigar_diversity(cigar_tuples,delta_perc):
+    match_length=0
+    alignment_len=0
+    print("Now we are parsing....")
+    print(cigar_tuples)
+    for i, elem in enumerate(cigar_tuples):
+
+        cig_len = elem[0]
+        cig_type = elem[1]
+        alignment_len += cig_len
+        if (cig_type != '=') and (cig_type != 'M'):
+            match_length += cig_len
+    diversity = (match_length/alignment_len)*100
+    if diversity<delta_perc:
+        return True
+    else:
+        return False
 """Helper method used to test whether two sequences are close enough to pop their underlying bubble
 INPUT:      cigar_string    a string denoting the cigar output of the alignment
             delta_len       a threshold which we use to distinguish between mutations and errors
@@ -709,6 +732,7 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
     path1 = []
     path2 = []
     edge_params={}
+    linearization_order=[]
     #actual_node_distances=[(k, v) for k, v in node_dist.items()]
     #print("actual_node_distances", actual_node_distances)
     #actual_node_distances.sort(key=lambda tup: tup[1])
@@ -741,7 +765,7 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
     new_node_supp_dict = {}
     print("path1",path1)
     print("path2",path2)
-
+    linearization_order.append(bubble_start)
     s_infos = DG.nodes[bubble_start]['reads']
     print("s INFOS", s_infos, "of node ", bubble_start)
     prevnode1 = bubble_start
@@ -797,6 +821,7 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
             print("ERRORRRRRR", overall_nextnode," neither in ",nextnode1," nor in ",nextnode2)
         old_node_supp = DG.nodes[overall_nextnode]['reads']
         new_node_supp_dict[overall_nextnode] = merge_two_dicts(additional_supp, old_node_supp)
+        linearization_order.append(overall_nextnode)
         nx.set_node_attributes(DG, new_node_supp_dict, "reads")
         edge_params[prevnode,overall_nextnode]=full_edge_supp
         #DG.add_edge(prevnode, overall_nextnode, edge_supp=full_edge_supp)
@@ -808,7 +833,9 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
     new_edge_supp2 = edges_to_delete[prevnode2, bubble_end]['edge_supp']
     full_edge_supp = new_edge_supp1 + new_edge_supp2
     edge_params[prevnode, bubble_end] = full_edge_supp
+    linearization_order.append(bubble_end)
     print("edge_params",edge_params)
+    print("Linearized nodes to be in the following order ",linearization_order)
     #DG.add_edge(prevnode, bubble_end, edge_supp=full_edge_supp)
     for key,value in edge_params.items():
         #print(key,value)
@@ -829,6 +856,7 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
 
 def align_bubble_nodes(delta_len, all_reads, consensus_infos, work_dir, k_size):
     print("aligning")
+    print("current consensus_infos",consensus_infos)
     consensus_list = []
     consensus_log= {}
     seq_infos={}
@@ -840,14 +868,18 @@ def align_bubble_nodes(delta_len, all_reads, consensus_infos, work_dir, k_size):
 
             consensus_log[path_node]=con
             seq_infos.update(seq_infos_from_fun)
+            print(con)
             consensus_list.append(con)
         else:
             (q_id, pos1, pos2) = consensus_attributes[0]
+
+
             print("consensus_attributes", q_id, ", ", pos1, ", ", pos2)
             con = all_reads[q_id][1][pos1: pos2 + k_size]
             seq_infos[q_id]=(pos1,pos2+k_size,con)
             consensus_log[path_node]=con
             consensus_list.append(con)
+
     print(consensus_list)
     print("consensus_log",consensus_log)
     consensus1 = consensus_list[0]
@@ -856,13 +888,15 @@ def align_bubble_nodes(delta_len, all_reads, consensus_infos, work_dir, k_size):
     s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
                                                                                        match_score=2,
                                                                                        missmatch_penalty=-2,
-                                                                                       opening_penalty=3, gap_ext=1)
+                                                                                       opening_penalty=5, gap_ext=1)
     print(s1_alignment)
     print(s2_alignment)
     print(cigar_string)
     print(cigar_tuples)
     print("cigar done")
-    good_to_pop = parse_cigar_differences(cigar_tuples, delta_len)
+    delta_perc=5
+    good_to_pop=parse_cigar_diversity(cigar_tuples, delta_perc)
+    #good_to_pop = parse_cigar_differences(cigar_tuples, delta_len)
     cigar_alignment=(s1_alignment,s2_alignment)
     consensuses=(consensus1,consensus2)
     return good_to_pop,cigar_alignment,seq_infos,consensus_log
@@ -1016,7 +1050,9 @@ def get_consensus_positions(r_ids, bubble_start, bubble_end, DG, shared_reads):
             start_of_bubble = bubble_start_pos.end_mini_start
             end_of_bubble = bubble_end_pos.end_mini_start
             entry = (r_id, start_of_bubble, end_of_bubble)
+            #if not entry[1]>entry[2]:
             read_list.append(entry)
+    print("R_list",read_list)
     return read_list
 
 
@@ -1095,8 +1131,9 @@ def find_poppable_bubbles(DG, delta_len, all_reads, work_dir, k_size, bubbles):
             # this denotes the start of the consensus alignment phase: We find the positions for the consensus generation ->we
             # find the nodes which are on either path to be able to tell apart the paths on the bubble
             read_list = get_consensus_positions(value, bubble_start, bubble_end, DG, support)
+            print("read_ist",read_list)
             pre_consensus_infos[key] = read_list
-
+        print("consensus_infos:",pre_consensus_infos)
         if no_viab_bubble:
 
             supported = Supported(bubble_nodes, viable_bubble)

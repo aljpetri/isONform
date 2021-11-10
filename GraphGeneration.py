@@ -4,10 +4,14 @@ from sys import stdout
 import networkx as nx
 import itertools
 import matplotlib.pyplot as plt
+from collections import namedtuple
 from SimplifyGraph import *
 from IsoformGeneration import *
 import tempfile
 import shutil
+
+from SimplifyGraph import simplifyGraph
+
 """IsONform script containing the methods used to generate the Directed Graph from the Intervals coming from the Weighted Interval Scheduling Problem
 Author: Alexander Petri
 
@@ -241,7 +245,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                             # update the read information of node name
                             prev_nodelist = nodes_for_graph[name]
                             seq=all_reads[r_id][1]
-                            r_infos = Read_infos(inter[0], inter[1], True )
+                            r_infos = Read_infos(inter[0], inter[1], True)
                             end_mini_seq= seq[inter[1]:inter[1]+k]
                             if not(end_mini_seq==DG.nodes[name]['end_mini_seq']):
                                 print("ERROR: ",end_mini_seq," not equal to ",DG.nodes[name]['end_mini_seq'])
@@ -506,6 +510,10 @@ def get_read_lengths(all_reads):
 USED FOR DEBUGGING ONLY-deprecated in IsONform
 """
 def main():
+    import sys
+    #sys.stdout = open('log.txt', 'w')
+    print('test')
+
     reads=62
     max_seqs_to_spoa=200
     work_dir = tempfile.mkdtemp()
@@ -526,7 +534,7 @@ def main():
     #print(type(all_reads))
     print(all_reads)
     file2.close()
-    delta_len=6
+    delta_len=2*k_size
     read_len_dict=get_read_lengths(all_reads)
     #print(all_intervals_for_graph)
     print()
@@ -541,8 +549,10 @@ def main():
     #print(edgelist)
     #print(DG.nodes(data=True))
     #print(type(DG.nodes(data=True)))
-    draw_Graph(DG)
-    simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
+    #draw_Graph(DG)
+    #simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
+    print("Calling the method")
+    simplifyGraph(DG,delta_len, all_reads, work_dir, k_size)
     #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #draw_Graph(DG)
     #print(DG.nodes["s"]["reads"])
@@ -553,13 +563,29 @@ def main():
    # print(node_overview_read)
    # print("all edges for the graph")
    # print([e for e in DG.edges])
-    draw_Graph(DG)
+    #draw_Graph(DG)
     #print("knownintervals")
     #print(known_intervals)
     #The call for the isoform generation (deprecated during implementation)
     #TODO: invoke isoform_generation again
     #print("RFIoutside",reads_for_isoforms)
-    generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa)
+    possible_cycles=list(nx.simple_cycles(DG))#find_repetative_regions(DG)
+    print("Found cycle(s) ",possible_cycles)
+    if not (possible_cycles):
+        generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa)
+    else:
+        flat_list = [item for sublist in possible_cycles for item in sublist]
+        #generate_subgraph(DG, flat_list)
+        draw_Graph(DG)
+        selected_nodes = [(n,v) for n, v in DG.nodes(data=True) if n in flat_list]
+        print(selected_nodes)
+        selected_edges = [(u,v,e) for u, v, e in DG.edges(data=True) if u in flat_list and v in flat_list]
+        print(selected_edges)
+            # for bubble in bubbles:
+
+        #sys.stdout.close()
+        dst = "detected_cycle.txt"
+        shutil.copy("log.txt", dst)
     #print("nodes in DG")
     #print(list(DG))
     #print(known_intervals)
@@ -567,7 +593,8 @@ def main():
     DG.nodes(data=True)
 
 
-    print("removing temporary workdir")
+    #print("removing temporary workdir")
+    #sys.stdout.close()
     shutil.rmtree(work_dir)
 if __name__ == "__main__":
     main()

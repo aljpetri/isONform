@@ -363,7 +363,8 @@ def listToString(s):
 
 def main(args):
     # start = time()
-
+    if os.path.exists("mapping.txt"):
+        os.remove("mapping.txt")
     outfolder = args.outfolder
     # read the file
     all_reads = {i + 1: (acc, seq, qual) for i, (acc, (seq, qual)) in
