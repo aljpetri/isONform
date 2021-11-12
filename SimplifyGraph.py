@@ -4,7 +4,7 @@ from consensus import *
 import matplotlib.pyplot as plt
 from IsoformGeneration import *
 from functools import cmp_to_key
-
+from ordered_set import OrderedSet
 
 #TODO: possibily better to use hybrid approach to finding node positions: calculations as well as finding the index of the minimizer in the original read
 """Helper function used to plot the graph. Taken from GraphGeneration.
@@ -199,6 +199,118 @@ def find_bubbles(DG):
     # list_of_bubbles =nx.cycle_basis(UG)
     list_of_bubbles = cycle_basis(UG)
     return list_of_bubbles
+
+def find_possible_starts(DG,TopoNodes):
+    Start_node_infos = namedtuple('Start_node_infos',
+                            'node supporting_reads')
+    possible_starts=[]
+    for node in TopoNodes:
+        if DG.out_degree(node)>1:
+            start_supp=set(DG.nodes[node]['reads'])
+            start_tup=(node, start_supp)
+            possible_starts.append(start_tup)
+    return possible_starts
+def find_possible_ends(DG,TopoNodes):
+    End_node_infos = namedtuple('End_node_infos',
+                                  'node supporting_reads')
+    possible_ends=[]
+    for node in TopoNodes:
+        if DG.in_degree(node)>1:
+            end_supp=set(DG.nodes[node]['reads'])
+            end_tup=(node, end_supp)
+            possible_ends.append(end_tup)
+    return possible_ends
+def generate_combinations(possible_starts,possible_ends,TopoNodes):
+    combis=[]
+    for startnode in possible_starts:
+        for endnode in possible_ends:
+            if TopoNodes.index(startnode[0])<TopoNodes.index(endnode[0]):
+                inter=startnode[1].intersection(endnode[1])
+                if len(inter)>=2:
+                    combi=(startnode[0],endnode[0],inter)
+                    combis.append(combi)
+    return combis
+def filter_combinations(combinations,not_viable):
+    combinations_filtered=[]
+    for combi in combinations:
+        if combi not in not_viable:
+            combinations_filtered.append(combi)
+    return combinations_filtered
+
+def find_paths(DG,combination):
+    visited_nodes=[]
+    node=combination[0]
+    end=combination[1]
+    node_support_left=combination[2]
+    print("currentnodesupp",node_support_left)
+    while node_support_left:
+        read=node_support_left.pop()
+
+        current_node_support=node_support_left
+        print("popped ",read, " from currentnodesupp", current_node_support)
+        while node!=end:
+            visited_nodes.append(node)
+            out_edges=DG.out_edges(node)
+            for edge in out_edges:
+                edge_supp=DG[edge[0]][edge[1]]['edge_supp']
+                if read in edge_supp:
+                    node=edge[1]
+                    current_node_support=current_node_support.intersection(edge_supp)
+                    print("intersect",current_node_support)
+        node_support_left-=current_node_support
+    print("DONE")
+    return visited_nodes
+
+def get_actual_bubbles(DG,combinations):
+    bubbles=[]
+    notfiguredoutyet=[]
+    for combi in combinations:
+        print(combi)
+        read_nodes= {}
+        combi_start=combi[0]
+        combi_end=combi[1]
+        print("combination from ",combi_start," to ",combi_end," :")
+        combireads=combi[2]
+        print("combireads",combireads)
+        for read in combireads:
+            path=find_path
+            print(path)
+            frozen_path=frozenset(path)
+            if frozen_path not in read_nodes.keys():
+                reads=[]
+                reads.append(read)
+                read_nodes[frozen_path]=reads
+            else:
+                reads=read_nodes[frozen_path]
+                reads.append(read)
+                read_nodes[frozen_path]=reads
+        if len(read_nodes)==2:
+            path1=None
+            path2=None
+            reads1=None
+            reads2=None
+            for key,value in read_nodes.items():
+                if not path1:
+                    path1=key
+                    reads1=value
+
+                else:
+                    path2=key
+                    reads2=value
+            print("path1, ", path1, " ,supported by ", reads1)
+            print("path2, ", path2, " ,supported by ", reads2)
+            print("readnodes",read_nodes)
+            path_tup=(combi_start,combi_end,path1,reads1,path2,reads2)
+            bubbles.append(path_tup)
+        elif len(read_nodes)>2:
+            notfiguredoutyet.append(read_nodes)
+            print("What to do with this?")
+            print(read_nodes)
+    return bubbles,notfiguredoutyet
+
+
+
+
 
 
 """
@@ -423,7 +535,7 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size):
     return spoa_ref,seq_infos
 
 def parse_cigar_diversity(cigar_tuples,delta_perc):
-    match_length=0
+    miss_match_length=0
     alignment_len=0
     print("Now we are parsing....")
     print(cigar_tuples)
@@ -433,8 +545,8 @@ def parse_cigar_diversity(cigar_tuples,delta_perc):
         cig_type = elem[1]
         alignment_len += cig_len
         if (cig_type != '=') and (cig_type != 'M'):
-            match_length += cig_len
-    diversity = (match_length/alignment_len)*100
+            miss_match_length += cig_len
+    diversity = (miss_match_length/alignment_len)
     if diversity<delta_perc:
         return True
     else:
@@ -894,8 +1006,8 @@ def align_bubble_nodes(delta_len, all_reads, consensus_infos, work_dir, k_size):
     print(cigar_string)
     print(cigar_tuples)
     print("cigar done")
-    delta_perc=5
-    good_to_pop=parse_cigar_diversity(cigar_tuples, delta_perc)
+    delta=0.2
+    good_to_pop=parse_cigar_diversity(cigar_tuples, delta)
     #good_to_pop = parse_cigar_differences(cigar_tuples, delta_len)
     cigar_alignment=(s1_alignment,s2_alignment)
     consensuses=(consensus1,consensus2)
@@ -1072,6 +1184,8 @@ def find_poppable_bubbles(DG, delta_len, all_reads, work_dir, k_size, bubbles):
     popable_bubbles = []
     bubble_state = []
     no_pop_tup_list=[]
+    no_proper_bubble_list=[]
+    no_supported_list=[]
     # just for debugging and curiosity reasons: We introduce an integer counting the number of pseudobubbles (not true bubbles)
     filter_count = 0
     Supported = namedtuple('Supported', 'bubble_nodes, bubble_supported')
@@ -1091,6 +1205,8 @@ def find_poppable_bubbles(DG, delta_len, all_reads, work_dir, k_size, bubbles):
             supported = Supported(bubble_nodes, False)
             bubble_state.append(supported)
             print("Filtered ", filter_count, " bubbles out")
+            this_bub_tup = (bubble_nodes, bubble_start_list, bubble_end_list)
+            no_proper_bubble_list.append(this_bub_tup)
             continue
         else:
             bubble_start=bubble_start_list[0]
@@ -1107,6 +1223,8 @@ def find_poppable_bubbles(DG, delta_len, all_reads, work_dir, k_size, bubbles):
             supported = Supported(bubble_nodes, False)
             bubble_state.append(supported)
             print("Filtered ", filter_count, " bubbles out")
+            this_bub_tup=(bubble_nodes,shared_reads,bubble_start,bubble_end)
+            no_supported_list.append(this_bub_tup)
             continue
 
         path_starts = get_path_starts(bubble_nodes, bubble_start, DG, shared_reads)#TODO: this may not
@@ -1157,11 +1275,13 @@ def find_poppable_bubbles(DG, delta_len, all_reads, work_dir, k_size, bubbles):
             print(path_nodes_dict)
             print(support_dict)
             print(pre_consensus_infos)
-            no_pop_tuple=(bubble_nodes,cigar)
+            no_pop_tuple=(bubble_nodes,cigar,path_nodes_dict,support_dict)
             no_pop_tup_list.append(no_pop_tuple)
         supported = Supported(bubble_nodes, viable_bubble)
         print("popable",supported)
         bubble_state.append(supported)
+    print("No_proper_bubbles",no_proper_bubble_list)
+    print("No_supported_bubbles", no_supported_list)
     return bubble_state, popable_bubbles,no_pop_tup_list
     # generate_subgraph(DG, bubble_nodes)
 
@@ -1273,6 +1393,36 @@ def extend_unpoppable(old_bubbles,poppable_state):
             print("newbubble",newbubble.bubble_nodes)
             old_bubbles.append(newbubble.bubble_nodes)
 
+def new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_intervals):
+    # find all bubbles present in the graph which are to be popped
+
+    popped_bubbles = []
+    old_bubbles=[]
+    no_pop_list = []
+    print("Initial state of the graph")
+    print(DG.nodes(data=True))
+    print(DG.edges(data=True))
+    not_viable=[]
+    has_combinations=True
+    while has_combinations:
+        TopoNodes = list(nx.topological_sort(DG))
+        poss_starts = find_possible_starts(DG, TopoNodes)
+        poss_ends = find_possible_ends(DG, TopoNodes)
+        print("startnodes", poss_starts)
+        print("endnodes", str(poss_ends))
+        combinations = generate_combinations(poss_starts, poss_ends, TopoNodes)
+        combinations_filtered = filter_combinations(combinations, not_viable)
+        if not combinations_filtered:
+            has_combinations=False
+        print("combis",combinations_filtered)
+        sorted_combinations=sorted(combinations_filtered, key=lambda x: TopoNodes.index(x[1])-TopoNodes.index(x[0]))
+        print("sorted_combis",sorted_combinations)
+        has_combinations=False
+        for combination in sorted_combinations:
+            all_paths = find_paths(DG, combination)
+            start=combination[0]
+            end=combination[1]
+            reads=combination[2]
 
 """The backbone of bubble popping: the bubbles are detected and filtered to only yield poppable bubbles. Those are popped then.
 INPUT:      DG:         our directed graph
@@ -1283,25 +1433,40 @@ INPUT:      DG:         our directed graph
 
 """
 #TODO:find new name for cycle_basis thingie
-def bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size):
+def bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_intervals):
     # find all bubbles present in the graph which are to be popped
-    more_to_pop=True
+
     popped_bubbles = []
     old_bubbles=[]
     no_pop_list = []
     print("Initial state of the graph")
     print(DG.nodes(data=True))
     print(DG.edges(data=True))
-    while more_to_pop:
-        # find all bubbles in the new state of the graph
-        bubbles = find_bubbles(DG)
-        bubbles.sort(key=len)
-        nr_bubbles = len(bubbles)
-        print("Found " + str(nr_bubbles) + " bubbles in our graph")
-        print("Bubbles: ", bubbles)
+    not_viable=[]
+    has_combinations=True
+    while has_combinations:
+        TopoNodes = list(nx.topological_sort(DG))
+        poss_starts = find_possible_starts(DG, TopoNodes)
+        poss_ends = find_possible_ends(DG, TopoNodes)
+        print("startnodes", poss_starts)
+        print("endnodes", str(poss_ends))
+        combinations = generate_combinations(poss_starts, poss_ends, TopoNodes)
+        combinations_filtered = filter_combinations(combinations, not_viable)
+        if not combinations_filtered:
+            has_combinations=False
+        print("combis",combinations_filtered)
+        sorted_combinations=sorted(combinations_filtered, key=lambda x: TopoNodes.index(x[1])-TopoNodes.index(x[0]))
+        print("sorted_combis",sorted_combinations)
+        has_combinations=False
+        print("found ", len(combinations), " possible combinations.")
+        print("combinations", combinations)
+        actual_bubbles, notfiguredoutyet = get_actual_bubbles(DG, combinations)
+        print("Newly found bubbles in our graph", actual_bubbles)
+        print("We found ", len(actual_bubbles), "new bubbles in our graph")
+        print("We have not figured out for ", len(notfiguredoutyet))
         # find the difference of the new bubbles and the old bubbles (meaning we are only interested in bubbles that have not yet been analysed)
         # TODO: both of the two following lines are working however the more efficient version does yield different order (set)
-        # bubbles=eliminate_already_analysed_bubbles(old_bubbles, new_bubbles)
+        #bubbles=eliminate_already_analysed_bubbles(old_bubbles, new_bubbles)
         bubbles = eliminate_already_analysed_bubbles_inefficient(old_bubbles, bubbles)
 
         bubble_state, poppable_bubbles, no_pop_tup_list = find_poppable_bubbles(DG, delta_len, all_reads, work_dir, k_size,
@@ -1327,6 +1492,7 @@ def bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size):
         if not poppable_bubbles:
             more_to_pop=False
     print("NO_POP",no_pop_list)
+    print("OLD_bubbles",old_bubbles)
 
     # draw_Graph(DG)
 
@@ -1341,7 +1507,7 @@ OUTPUT: DG: Graph after simplification took place    """
 
 
 # TODO: Overall: add relative distances to all edges in the graph/ make sure all edges have relative distances
-def simplifyGraph(DG, delta_len, all_reads, work_dir, k_size):
+def simplifyGraph(DG, delta_len, all_reads, work_dir, k_size,known_intervals):
     #TODO: add true minimizers
     print("Simplifying the Graph (Merging nodes, popping bubbles)")
     list_of_cycles = find_repetative_regions(DG)
@@ -1349,7 +1515,8 @@ def simplifyGraph(DG, delta_len, all_reads, work_dir, k_size):
     #print("Current State of Graph:")
     #print(DG.nodes(data=True))
     #print(DG.edges(data=True))
-    #draw_Graph(DG)
-    bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size)
+    draw_Graph(DG)
+    new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_intervals)
     print("Popping bubbles done")
+    draw_Graph(DG)
     merge_nodes(DG)

@@ -9,7 +9,7 @@ from SimplifyGraph import *
 from IsoformGeneration import *
 import tempfile
 import shutil
-
+from ordered_set import OrderedSet
 from SimplifyGraph import simplifyGraph
 
 """IsONform script containing the methods used to generate the Directed Graph from the Intervals coming from the Weighted Interval Scheduling Problem
@@ -190,6 +190,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
     node_overview_read=[]
     #adds an empty list for each r_id to known_intervals. To those lists, tuples, representing the intervals are added
     for _ in itertools.repeat(None, len(all_intervals_for_graph)):
+        #known_intervals.append(OrderedSet([]))
         known_intervals.append([])
         node_overview_read.append([])
     #print(known_intervals)
@@ -511,7 +512,7 @@ USED FOR DEBUGGING ONLY-deprecated in IsONform
 """
 def main():
     import sys
-    #sys.stdout = open('log.txt', 'w')
+    sys.stdout = open('log.txt', 'w')
     print('test')
 
     reads=62
@@ -552,7 +553,7 @@ def main():
     #draw_Graph(DG)
     #simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
     print("Calling the method")
-    simplifyGraph(DG,delta_len, all_reads, work_dir, k_size)
+    simplifyGraph(DG,delta_len, all_reads, work_dir, k_size,known_intervals)
     #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #draw_Graph(DG)
     #print(DG.nodes["s"]["reads"])
@@ -594,7 +595,7 @@ def main():
 
 
     #print("removing temporary workdir")
-    #sys.stdout.close()
+    sys.stdout.close()
     shutil.rmtree(work_dir)
 if __name__ == "__main__":
     main()
