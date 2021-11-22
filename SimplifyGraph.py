@@ -1293,12 +1293,13 @@ def filter_marked_paths(all_paths,marked):
             all_paths.remove(tup)
 def filter_out_if_marked(all_paths,marked):
     filter_list=[]
+    print("all_paths",all_paths)
     for path in all_paths:
         print("filter_out_if_marked")
         path_nodes=path[0]
         for node in path_nodes:
             if node in marked:
-                if not node in filter_list:
+                if not path in filter_list:
                     filter_list.append(path)
     print("filter_list",filter_list)
     print("all_paths",all_paths)
@@ -1307,6 +1308,32 @@ def filter_out_if_marked(all_paths,marked):
             print("entry",entry)
             all_paths.remove(entry)
     return all_paths
+def get_path_length(path_infos,DG,poss_start,poss_end):
+    print("get_path_length",path_infos)
+    path=path_infos[0]
+    reads=path_infos[1]
+    print("path",path," reads ",reads)
+    path_len_sum=0
+    start_dict = DG.nodes[poss_start]['reads']
+    end_dict = DG.nodes[poss_end]['reads']
+    print(start_dict)
+    print(end_dict)
+    print("number of reads",len(reads))
+    for read in reads:
+        start_pos=start_dict[read].end_mini_start
+        end_pos=end_dict[read].end_mini_start
+        print("r_id",read)
+        path_len=end_pos-start_pos
+        path_len_sum +=path_len
+    avg_path_len=path_len_sum/(len(reads))
+    return avg_path_len
+def filter_path_if_marked(marked, path):
+    print("filter path if marked for ",marked," and ",path)
+    for node in path:
+        if node in marked:
+            return True
+    return False
+
 def new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_intervals):
     # find all bubbles present in the graph which are to be popped
     marked=[]
@@ -1354,11 +1381,58 @@ def new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_
                 is_poppable,cigar,seq_infos,consensus_info_log=align_bubble_nodes(all_reads,consensus_infos,work_dir,k_size)
                 if is_poppable:
                     linearize_bubble(DG,consensus_infos,combination[0],combination[1],all_paths_filtered,combination[2],seq_infos,consensus_info_log)
-                    marked.append(all_paths_filtered[0][0])
-                    marked.append(all_paths_filtered[1][0])
+                    for node in all_paths_filtered[0][0]:
+                        marked.append(node)
+                    #marked.append()
+                    for node in all_paths_filtered[1][0]:
+                        marked.append(node)
                     print("marked",marked)
+                else:
+                    not_viable.append(combination)
             elif len(all_paths_filtered)>2:
+                path_len=[]
+                for path in all_paths_filtered:
+                    this_len=get_path_length(path,DG,combination[0],combination[1])
+                    path_tup=(this_len,path)
+                    path_len.append(path_tup)
+                print("Unsorted", path_len)
+                path_len_sorted=sorted(path_len,key=lambda x:x[0])
+                print("Sorted",path_len_sorted)
                 print("APF",all_paths_filtered)
+                #TODO: we have to filter out this combination if it overlaps with previously popped paths (meaning paths in this set)
+                for p1,p2 in zip(path_len_sorted[:-1],path_len_sorted[1:]):
+                    print("P1:",p1)
+                    print("P2:", p2)
+                    consensus_infos={}
+                    p1_filtered=filter_path_if_marked(marked,p1[1][0])
+                    p2_filtered = filter_path_if_marked(marked, p2[1][0])
+                    if not (p1_filtered) and not(p2_filtered):
+                        print(p1)
+                        pathnode1 = p1[1][0][1]
+                        pathnode2 = p2[1][0][1]
+                        print("And now for the pathnodes")
+                        print(pathnode1)
+                        print(pathnode2)
+                        print("reads1", p1[1][1])
+                        print("reads2", p2[1][1])
+                        consensus_infos[pathnode1] = get_consensus_positions(combination[0], combination[1], DG, p1[1][1])
+                        consensus_infos[pathnode2] = get_consensus_positions(combination[0], combination[1], DG, p2[1][1])
+                        print("CI",consensus_infos)
+                        is_poppable, cigar, seq_infos, consensus_info_log = align_bubble_nodes(all_reads, consensus_infos,
+                                                                                           work_dir, k_size)
+                        if is_poppable:
+                            all_paths_filtered=[]
+                            all_paths_filtered.append(p1[1])
+                            all_paths_filtered.append(p2[1])
+                            print("ALL_Paths_filtered",all_paths_filtered)
+                            linearize_bubble(DG, consensus_infos, combination[0], combination[1], all_paths_filtered,
+                                         combination[2], seq_infos, consensus_info_log)
+                            for node in all_paths_filtered[0][0]:
+                                marked.append(node)
+                            # marked.append()
+                            for node in all_paths_filtered[1][0]:
+                                marked.append(node)
+                            print("marked", marked)
 """The backbone of bubble popping: the bubbles are detected and filtered to only yield poppable bubbles. Those are popped then.
 INPUT:      DG:         our directed graph
             delta_len:  for all differences longer than delta len we have a structural difference while all differences shorter are deemed to be errors
