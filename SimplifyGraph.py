@@ -243,21 +243,32 @@ def filter_combinations(combinations,not_viable):
     return combinations_filtered
 """detect the paths in our bubble
 """
-def find_paths(DG,combination):
+def find_paths(DG,combination,poss_start):
     path_and_support=[]
-    node=combination[0]
     end=combination[1]
     node_support_left=copy.deepcopy(combination[2])
     print("currentnodesupp",node_support_left)
+    already_visited_nodes=set()
     while node_support_left:
+        print("already visited nodes",already_visited_nodes)
         node = combination[0]
         curr_supp=set()
         read=node_support_left.pop()
         curr_supp.add(read)
         visited_nodes = []
         current_node_support=node_support_left
+        current_node_support.add(read)
+        #current_node_support.add(read)
         print("popped ",read, " from currentnodesupp", current_node_support)
+        path_not_overlapping=True
         while node!=end:
+            if node in already_visited_nodes and not(node == poss_start):
+                print("in other path")
+                visited_nodes = []
+                node_support_left -= current_node_support
+                current_node_support = set()
+                path_not_overlapping=False
+                break
             print("node",node)
             visited_nodes.append(node)
             out_edges=DG.out_edges(node)
@@ -267,13 +278,16 @@ def find_paths(DG,combination):
                     node=edge[1]
                     current_node_support=current_node_support.intersection(edge_supp)
                     print("intersect",current_node_support)
-        print(visited_nodes)
+        print("visited",visited_nodes)
         if current_node_support:
-            curr_supp.update(current_node_support)
-            node_support_left-=current_node_support
-        path_supp_tup=(visited_nodes,curr_supp)
-        path_and_support.append(path_supp_tup)
+                already_visited_nodes.update(visited_nodes)
+                curr_supp.update(current_node_support)
+                node_support_left-=current_node_support
+                print("nodeSupport_Left",node_support_left)
+                path_supp_tup=(visited_nodes,curr_supp)
+                path_and_support.append(path_supp_tup)
     print("DONE")
+    print("PAS",path_and_support)
     return path_and_support
 
 
@@ -470,9 +484,12 @@ def remove_edges(DG, path_reads, bubble_start, bubble_end, path_nodes,support_di
     node_distances = {}
     # we store all the infos for the deleted edges into edges_to_delete
     edges_to_delete = {}
-
+    print("path_nodes",path_nodes)
     # we have to delete the edges which connect the nodes that are inside the bubble
-    for startnode_id, path_node_list in path_nodes.items():
+    for one_info in path_nodes:
+        path_node_list=one_info[0]
+        path_node_list.pop(0)
+        startnode_id=path_node_list[0]
         prev_node = bubble_start
         curr_node = bubble_start
         print("PathNodeList", path_node_list)
@@ -692,13 +709,14 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
 
     # we assign both paths to variables to make them easier accessible.
     #TODO: change to use queue instead of list from collection import queue ->popleft
-    for id, path in path_nodes.items():
-        print(id, path)
+    for path_info in path_nodes:
+        nodes=path_info[0]
+        print("id", nodes[0])
         if counter == 0:
-            for p in path:
+            for p in nodes:
                 path1.append(p)
         else:
-            for p in path:
+            for p in nodes:
                 path2.append(p)
         counter = counter + 1
     #this dictionary contains the reads with their respected positions that are added to the nodes
@@ -1280,9 +1298,14 @@ def filter_out_if_marked(all_paths,marked):
         path_nodes=path[0]
         for node in path_nodes:
             if node in marked:
-                filter_list.append(path)
-    for entry in filter_list:
-        all_paths.remove(entry)
+                if not node in filter_list:
+                    filter_list.append(path)
+    print("filter_list",filter_list)
+    print("all_paths",all_paths)
+    if filter_list:
+        for entry in filter_list:
+            print("entry",entry)
+            all_paths.remove(entry)
     return all_paths
 def new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_intervals):
     # find all bubbles present in the graph which are to be popped
@@ -1295,6 +1318,8 @@ def new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_
     print(DG.edges(data=True))
     not_viable=[]
     has_combinations=True
+    #TODO: assert that the bubble_paths do not have any nodes in common! This currently results in an error
+
     while has_combinations:
         TopoNodes = list(nx.topological_sort(DG))
         poss_starts = find_possible_starts(DG, TopoNodes)
@@ -1311,13 +1336,14 @@ def new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_
         has_combinations=False
         for combination in sorted_combinations:
             print("combi",combination)
-            all_paths = find_paths(DG,combination)
+            all_paths = find_paths(DG,combination,combination[0])
             if len(all_paths)==1:
                 not_viable.append(combination)
             all_paths_filtered=filter_out_if_marked(all_paths,marked)
             print("all_paths_filtered",all_paths_filtered)
             consensus_infos={}
             if len(all_paths_filtered)==2:
+                print("2-path ", all_paths_filtered)
                 for path in all_paths_filtered:
                     print("current_path",path)
                     pathnode=path[0][1]
@@ -1328,7 +1354,11 @@ def new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_
                 is_poppable,cigar,seq_infos,consensus_info_log=align_bubble_nodes(all_reads,consensus_infos,work_dir,k_size)
                 if is_poppable:
                     linearize_bubble(DG,consensus_infos,combination[0],combination[1],all_paths_filtered,combination[2],seq_infos,consensus_info_log)
-
+                    marked.append(all_paths_filtered[0][0])
+                    marked.append(all_paths_filtered[1][0])
+                    print("marked",marked)
+            elif len(all_paths_filtered)>2:
+                print("APF",all_paths_filtered)
 """The backbone of bubble popping: the bubbles are detected and filtered to only yield poppable bubbles. Those are popped then.
 INPUT:      DG:         our directed graph
             delta_len:  for all differences longer than delta len we have a structural difference while all differences shorter are deemed to be errors
