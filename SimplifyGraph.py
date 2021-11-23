@@ -389,6 +389,7 @@ def parse_cigar_diversity(cigar_tuples,delta_perc):
         if (cig_type != '=') and (cig_type != 'M'):
             miss_match_length += cig_len
     diversity = (miss_match_length/alignment_len)
+    print("diversity",diversity)
     if diversity<delta_perc:
         return True
     else:
@@ -1334,7 +1335,16 @@ def filter_path_if_marked(marked, path):
             return True
     return False
 
-def new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_intervals):
+
+"""The backbone of bubble popping: the bubbles are detected and filtered to only yield poppable bubbles. Those are popped then.
+INPUT:      DG:         our directed graph
+            delta_len:  for all differences longer than delta len we have a structural difference while all differences shorter are deemed to be errors
+            all_reads:  list of tuples containing all the reads and (what we need) their sequences
+            work_dir:   the current work directory
+            k_size:     the length of our k_mers
+
+"""
+def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
     # find all bubbles present in the graph which are to be popped
     marked=[]
     popped_bubbles = []
@@ -1346,26 +1356,38 @@ def new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_
     not_viable=[]
     has_combinations=True
     #TODO: assert that the bubble_paths do not have any nodes in common! This currently results in an error
-
+    #we want to continue the bubble_popping process as long as we find combinations that have not been deemed to be "not viable" to pop
     while has_combinations:
+        print("not_viable ",not_viable)
+        #TopoNodes is a topologically order of the nodes in our graph
         TopoNodes = list(nx.topological_sort(DG))
+        #find all possible bubble start nodes in our graph
         poss_starts = find_possible_starts(DG, TopoNodes)
+        # find all possible bubble end nodes in our graph
         poss_ends = find_possible_ends(DG, TopoNodes)
         print("startnodes", poss_starts)
         print("endnodes", str(poss_ends))
+        #generate all combination of bubble start nodes and bubble end nodes in which the poss_starts comes before poss_end in TopoNodes
         combinations = generate_combinations(poss_starts, poss_ends, TopoNodes)
+        #sort the combinations so that the shortest combinations come first
+        sorted_combinations = sorted(combinations, key=lambda x: TopoNodes.index(x[1]) - TopoNodes.index(x[0]))
+        print(" unfiltered", sorted_combinations)
+        #filter out the combinations we already have analysed in a previous iteration
         combinations_filtered = filter_combinations(combinations, not_viable)
+        #if we haven't found any new combinations we successfully finished our bubble popping
         if not combinations_filtered:
             has_combinations=False
+            break
         print("combis",combinations_filtered)
+        # sort the combinations so that the shortest combinations come first
         sorted_combinations=sorted(combinations_filtered, key=lambda x: TopoNodes.index(x[1])-TopoNodes.index(x[0]))
         print("sorted_combis",sorted_combinations)
-        has_combinations=False
+
         for combination in sorted_combinations:
             print("combi",combination)
             all_paths = find_paths(DG,combination,combination[0])
-            if len(all_paths)==1:
-                not_viable.append(combination)
+            #if len(all_paths)==1:
+            #    not_viable.append(combination)
             all_paths_filtered=filter_out_if_marked(all_paths,marked)
             print("all_paths_filtered",all_paths_filtered)
             consensus_infos={}
@@ -1377,7 +1399,6 @@ def new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_
                     print("pathnode ",pathnode)
                     consensus_infos[pathnode]=get_consensus_positions(combination[0], combination[1], DG, path[1])
                 print("our consensus infos:",consensus_infos)
-                #TODO:currently this method delivers erroneous results. This is due to marked not working properly(supposedly)
                 is_poppable,cigar,seq_infos,consensus_info_log=align_bubble_nodes(all_reads,consensus_infos,work_dir,k_size)
                 if is_poppable:
                     linearize_bubble(DG,consensus_infos,combination[0],combination[1],all_paths_filtered,combination[2],seq_infos,consensus_info_log)
@@ -1388,8 +1409,9 @@ def new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_
                         marked.append(node)
                     print("marked",marked)
                 else:
+                    print("not poppable")
                     not_viable.append(combination)
-            elif len(all_paths_filtered)>2:
+            elif len(all_paths_filtered)>2:#we have more than two paths connecting s' and t'. We now want to efficiently compare those paths
                 path_len=[]
                 for path in all_paths_filtered:
                     this_len=get_path_length(path,DG,combination[0],combination[1])
@@ -1399,7 +1421,6 @@ def new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_
                 path_len_sorted=sorted(path_len,key=lambda x:x[0])
                 print("Sorted",path_len_sorted)
                 print("APF",all_paths_filtered)
-                #TODO: we have to filter out this combination if it overlaps with previously popped paths (meaning paths in this set)
                 for p1,p2 in zip(path_len_sorted[:-1],path_len_sorted[1:]):
                     print("P1:",p1)
                     print("P2:", p2)
@@ -1433,77 +1454,25 @@ def new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_
                             for node in all_paths_filtered[1][0]:
                                 marked.append(node)
                             print("marked", marked)
-"""The backbone of bubble popping: the bubbles are detected and filtered to only yield poppable bubbles. Those are popped then.
-INPUT:      DG:         our directed graph
-            delta_len:  for all differences longer than delta len we have a structural difference while all differences shorter are deemed to be errors
-            all_reads:  list of tuples containing all the reads and (what we need) their sequences
-            work_dir:   the current work directory
-            k_size:     the length of our k_mers
-
-"""
-#TODO:find new name for cycle_basis thingie
-def bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_intervals):
-    # find all bubbles present in the graph which are to be popped
-
-    popped_bubbles = []
-    old_bubbles=[]
-    no_pop_list = []
-    print("Initial state of the graph")
-    print(DG.nodes(data=True))
-    print(DG.edges(data=True))
-    not_viable=[]
-    has_combinations=True
-    while has_combinations:
-        TopoNodes = list(nx.topological_sort(DG))
-        poss_starts = find_possible_starts(DG, TopoNodes)
-        poss_ends = find_possible_ends(DG, TopoNodes)
-        print("startnodes", poss_starts)
-        print("endnodes", str(poss_ends))
-        combinations = generate_combinations(poss_starts, poss_ends, TopoNodes)
-        combinations_filtered = filter_combinations(combinations, not_viable)
-        if not combinations_filtered:
-            has_combinations=False
-        print("combis",combinations_filtered)
-        sorted_combinations=sorted(combinations_filtered, key=lambda x: TopoNodes.index(x[1])-TopoNodes.index(x[0]))
-        print("sorted_combis",sorted_combinations)
-        has_combinations=False
-        print("found ", len(combinations), " possible combinations.")
-        print("combinations", combinations)
-        actual_bubbles, notfiguredoutyet = get_actual_bubbles(DG, combinations)
-        print("Newly found bubbles in our graph", actual_bubbles)
-        print("We found ", len(actual_bubbles), "new bubbles in our graph")
-        print("We have not figured out for ", len(notfiguredoutyet))
-        # find the difference of the new bubbles and the old bubbles (meaning we are only interested in bubbles that have not yet been analysed)
-        # TODO: both of the two following lines are working however the more efficient version does yield different order (set)
-        #bubbles=eliminate_already_analysed_bubbles(old_bubbles, new_bubbles)
-        bubbles = eliminate_already_analysed_bubbles_inefficient(old_bubbles, bubbles)
-
-        bubble_state, poppable_bubbles, no_pop_tup_list = find_poppable_bubbles(DG, delta_len, all_reads, work_dir, k_size,
-                                                                         bubbles)
-        print("Bub_state",bubble_state)
-        # extending old_bubbles: This list of bubbles consists of all bubbles deemed to be not poppable
-        extend_unpoppable(old_bubbles,bubble_state)
-        print("Bubble_state",bubble_state)
-        print("old_bubbles",old_bubbles)
-        #this list serves as a debug tool: It stores the cigar string of the bubble alignment so we can see whether all bubbles are correctly identified
-        no_pop_list.extend(no_pop_tup_list)
-        print("WhileBubbles", bubbles)
-        print("poppable_bubbles", poppable_bubbles)
-        disjoint_poppable_bubbles = find_disjoint_bubbles(poppable_bubbles)
-        print("disjoint_poppable_bubbles", disjoint_poppable_bubbles)
-        # pop the poppable bubbles by linearizing them
-        pop_bubbles(DG, disjoint_poppable_bubbles)
-        popped_bubbles.extend(disjoint_poppable_bubbles)
-        print("Actually popped", popped_bubbles)
-        print("Current state of the graph")
-        print(DG.nodes(data=True))
-        print(DG.edges(data=True))
-        if not poppable_bubbles:
-            more_to_pop=False
-    print("NO_POP",no_pop_list)
-    print("OLD_bubbles",old_bubbles)
-
-    # draw_Graph(DG)
+                        else:
+                            print("not poppable")
+                            print("This combi is not viable", combination )
+                            this_combi_reads = p1[1][1].union(p2[1][1])
+                            print("this combi reads", this_combi_reads)
+                            this_combi = (combination[0], combination[1], this_combi_reads)
+                            print(this_combi)
+                            not_viable.append(this_combi)
+                            print(not_viable)
+                    else:
+                        print("This combi is not viable")
+                        this_combi_reads=p1[1][1].union(p2[1][1])
+                        print("this combi reads",this_combi_reads)
+                        this_combi=(combination[0],combination[1],this_combi_reads)
+                        print(this_combi)
+                        not_viable.append(this_combi)
+                        print(not_viable)
+            else:#we have only found one path
+                not_viable.append(combination)
 
 
 """Overall method used to simplify the graph
@@ -1525,7 +1494,7 @@ def simplifyGraph(DG, delta_len, all_reads, work_dir, k_size,known_intervals):
     #print(DG.nodes(data=True))
     #print(DG.edges(data=True))
     draw_Graph(DG)
-    new_bubble_popping_routine(DG, delta_len, all_reads, work_dir, k_size,known_intervals)
+    new_bubble_popping_routine(DG, all_reads, work_dir, k_size)
     print("Popping bubbles done")
     draw_Graph(DG)
     merge_nodes(DG)
