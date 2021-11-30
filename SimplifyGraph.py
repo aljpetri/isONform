@@ -249,9 +249,10 @@ def find_paths(DG,combination,poss_start):
     end=combination[1]
     node_support_left=set(combination[2])
     print("currentnodesupp",node_support_left)
-    already_visited_nodes=set()
+    #already_visited_nodes=set()
     while node_support_left:
-        print("already visited nodes",already_visited_nodes)
+        print(node_support_left)
+        #print("already visited nodes",already_visited_nodes)
         node = combination[0]
         curr_supp=set()
         read=node_support_left.pop()
@@ -263,25 +264,27 @@ def find_paths(DG,combination,poss_start):
         print("popped ",read, " from currentnodesupp", current_node_support)
         path_not_overlapping=True
         while node!=end:
-            if node in already_visited_nodes and not(node == poss_start):
-                print("in other path")
-                visited_nodes = []
-                node_support_left -= current_node_support
-                current_node_support = set()
-                path_not_overlapping=False
-                break
+            #if node in already_visited_nodes and not(node == poss_start):
+            #    print("in other path")
+            #    visited_nodes = []
+            #    node_support_left -= current_node_support
+            #    current_node_support = set()
+            #    path_not_overlapping=False
+            #    break
             print("node",node)
             visited_nodes.append(node)
             out_edges=DG.out_edges(node)
             for edge in out_edges:
+                print("edge",edge)
                 edge_supp=DG[edge[0]][edge[1]]['edge_supp']
+                print("edge_supp",edge_supp)
                 if read in edge_supp:
                     node=edge[1]
                     current_node_support=current_node_support.intersection(edge_supp)
                     print("intersect",current_node_support)
         print("visited",visited_nodes)
         if current_node_support:
-                already_visited_nodes.update(visited_nodes)
+                #already_visited_nodes.update(visited_nodes)
                 curr_supp.update(current_node_support)
                 node_support_left-=current_node_support
                 print("nodeSupport_Left",node_support_left)
@@ -489,14 +492,19 @@ def remove_edges(DG, path_reads, bubble_start, bubble_end, path_nodes,support_di
     print("path_nodes",path_nodes)
     # we have to delete the edges which connect the nodes that are inside the bubble
     for one_info in path_nodes:
+        print("path_nodes", path_nodes)
         path_node_list=one_info[0]
         path_node_list.pop(0)
-        startnode_id=path_node_list[0]
+        #startnode_id=path_node_list[0]
+        if not(path_node_list):
+            pnl_start=bubble_end
+        else:
+            pnl_start=path_node_list[0]
         prev_node = bubble_start
         curr_node = bubble_start
         print("PathNodeList", path_node_list)
-        entry = DG.get_edge_data(prev_node, startnode_id)
-        edges_to_delete[prev_node,startnode_id]=entry
+        entry = DG.get_edge_data(prev_node, pnl_start)
+        edges_to_delete[prev_node,pnl_start]=entry
         if not(path_node_list):
             pnl_start=bubble_end
         else:
@@ -713,7 +721,7 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
     #TODO: change to use queue instead of list from collection import queue ->popleft
     for path_info in path_nodes:
         nodes=path_info[0]
-        print("id", nodes[0])
+        #print("id", nodes[0])
         if counter == 0:
             for p in nodes:
                 path1.append(p)
@@ -1067,112 +1075,6 @@ INPUT:
 OUTPUT:
     bubble_state, popable_bubbles,no_pop_tup_list"""
 
-#TODO:split up into two functions this would require a lot of work and shared parameters. MAybe better to leave as is
-def find_poppable_bubbles(DG, delta_len, all_reads, work_dir, k_size, bubbles):
-    popable_bubbles = []
-    bubble_state = []
-    no_pop_tup_list=[]
-    no_proper_bubble_list=[]
-    no_supported_list=[]
-    # just for debugging and curiosity reasons: We introduce an integer counting the number of pseudobubbles (not true bubbles)
-    filter_count = 0
-    Supported = namedtuple('Supported', 'bubble_nodes, bubble_supported')
-    # iterate over the different bubbles
-    for listint, bubble_nodes in enumerate(bubbles):
-        print("Analysing: ",bubble_nodes)
-        viable_bubble = False
-        #print("bubble:", bubble_nodes)
-        # find the local source and local sink for each bubble, if we find more than one source or sink, the bubble is not a supported bubble. However supported bubbles additionally have to be supported by at least two reads
-        bubble_start_list =find_bubble_start(DG,bubble_nodes)
-        bubble_end_list =find_bubble_end(DG,bubble_nodes)
-        bubble_start=None
-        bubble_end=None
-        #if the bubbles have more start and/or endnodes than one it is not viable->Don't continue investigating
-        if not (len(bubble_start_list) ==1 and len(bubble_end_list)==1):
-            filter_count += 1
-            supported = Supported(bubble_nodes, False)
-            bubble_state.append(supported)
-            print("Filtered ", filter_count, " bubbles out")
-            this_bub_tup = (bubble_nodes, bubble_start_list, bubble_end_list)
-            no_proper_bubble_list.append(this_bub_tup)
-            continue
-        else:
-            bubble_start=bubble_start_list[0]
-            bubble_end=bubble_end_list[0]
-        print("bubble_start", bubble_start)
-        print("bubble_end", bubble_end)
-        #get the reads which are supporting start and endnode of the bubble. Those are the reads we are most interested in (all or a subset of those reads actually support the bubble)
-        shared_reads=get_shared_reads(DG,bubble_start,bubble_end)
-
-        # we have to figure out whether we are having a sufficiently supported_bubble, meaning at least two reads are supporting bubble_start and bubble_end
-        # If the bubble is not a supported bubble: Skip the further investigation
-        if len(shared_reads)<2:
-            filter_count += 1
-            supported = Supported(bubble_nodes, False)
-            bubble_state.append(supported)
-            print("Filtered ", filter_count, " bubbles out")
-            this_bub_tup=(bubble_nodes,shared_reads,bubble_start,bubble_end)
-            no_supported_list.append(this_bub_tup)
-            continue
-
-        path_starts = get_path_starts(bubble_nodes, bubble_start, DG, shared_reads)#TODO: this may not
-        pre_consensus_infos = {}
-        path_nodes_dict = {}
-        no_viab_bubble = False
-        support_dict = {}
-        #print("Pathstarts", path_starts)
-        #key: path_start: the id of the node which denotes the start of our path, value: reads supporting the node
-        for key, value in path_starts.items():
-            (is_viable_path, path_nodes, support) = test_path_viability(DG, key, value, bubble_nodes, bubble_start,bubble_end)
-            print("path nodes for ",key,": ",path_nodes)
-            path_nodes_dict[key] = path_nodes
-            support_dict[key] = support
-            if not (is_viable_path):
-                no_viab_bubble = True
-                break
-            elif not bubble_end=='t' and path_nodes:
-                no_viab_bubble=False
-            #print("supported", support)
-            print("bubble_end",bubble_end)
-            # this denotes the start of the consensus alignment phase: We find the positions for the consensus generation ->we
-            # find the nodes which are on either path to be able to tell apart the paths on the bubble
-            read_list = get_consensus_positions(value, bubble_start, bubble_end, DG, support)
-            print("read_ist",read_list)
-            pre_consensus_infos[key] = read_list
-        print("consensus_infos:",pre_consensus_infos)
-        if no_viab_bubble:
-
-            supported = Supported(bubble_nodes, viable_bubble)
-            bubble_state.append(supported)
-            filter_count += 1
-            continue
-        good_to_pop,cigar,seq_infos,consensus_info_log = align_bubble_nodes(delta_len, all_reads, pre_consensus_infos, work_dir, k_size)
-        print("good_to_pop",good_to_pop)
-        if good_to_pop:
-            # print("Path_nodes type",type(path_nodes))
-            Linearization_infos = namedtuple('Linearization_Infos',
-                                             'pre_consensus_infos bubble_start bubble_end path_nodes support_dict seq_infos, consensus_log')
-            l_infos = Linearization_infos(pre_consensus_infos, bubble_start, bubble_end, path_nodes_dict, support_dict, seq_infos,consensus_info_log)
-            Pop_infos = namedtuple('Pop_infos', 'bubble_nodes,lin_infos')
-            pop_infos = Pop_infos(bubble_nodes, l_infos)
-            popable_bubbles.append(pop_infos)
-            viable_bubble = good_to_pop
-        else:
-            print("bubble_end_non_viable", bubble_end)
-            print("bubble not poppable",bubble_nodes)
-            print(path_nodes_dict)
-            print(support_dict)
-            print(pre_consensus_infos)
-            no_pop_tuple=(bubble_nodes,cigar,path_nodes_dict,support_dict)
-            no_pop_tup_list.append(no_pop_tuple)
-        supported = Supported(bubble_nodes, viable_bubble)
-        print("popable",supported)
-        bubble_state.append(supported)
-    print("No_proper_bubbles",no_proper_bubble_list)
-    print("No_supported_bubbles", no_supported_list)
-    return bubble_state, popable_bubbles,no_pop_tup_list
-    # generate_subgraph(DG, bubble_nodes)
-
 """Helper method that filters the poppable_bubbles to only contain non-overlapping bubbles, as overlapping bubbles yield inconsistencies in our graph
 INPUT:      poppable_bubbles:      a list of bubbles that are poppable
 OUTPUT:     new_poppable:          a list of bubbles that do not overlap->ready for popping
@@ -1358,12 +1260,14 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
     not_viable_multibubble = set()
     has_combinations=True
 
-    #TODO: assert that the bubble_paths do not have any nodes in common! This currently results in an error
+    #TODO: assert that the bubble_paths do not have any nodes in common! We however have to do this after generating the paths. How to decide which path to choose?!
     #we want to continue the bubble_popping process as long as we find combinations that have not been deemed to be "not viable" to pop
     while has_combinations:
-        marked = []
-        #draw_Graph(DG)
-        print("not_viable ",not_viable_global)
+        marked = set()
+
+        print("Current State of Graph:")
+        print(DG.nodes(data=True))
+        print(DG.edges(data=True))
         #TopoNodes is a topologically order of the nodes in our graph
         TopoNodes = list(nx.topological_sort(DG))
         print("TopoNodes",TopoNodes)
@@ -1380,16 +1284,20 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
         print(" unfiltered", sorted_combinations)
         #filter out the combinations we already have analysed in a previous iteration
         combinations_filtered = filter_combinations(combinations, not_viable_global)
+        print("not_viable ", not_viable_global)
+
         #if we haven't found any new combinations we successfully finished our bubble popping
         if not combinations_filtered:
             has_combinations=False
             break
+
         #print("combis",combinations_filtered)
         # sort the combinations so that the shortest combinations come first
         sorted_combinations=sorted(combinations_filtered, key=lambda x: TopoNodes.index(x[1])-TopoNodes.index(x[0]))
         print("sorted_combis",sorted_combinations)
-
+        draw_Graph(DG)
         for combination in sorted_combinations:
+            is_alignable=True
             print("combi",combination)
             all_paths = find_paths(DG,combination,combination[0])
             if len(all_paths)==1:
@@ -1397,28 +1305,50 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
             all_paths_filtered=filter_out_if_marked(all_paths,marked)
             print("all_paths_filtered",all_paths_filtered)
             consensus_infos={}
-            """if len(all_paths_filtered)==2:
+            if len(all_paths_filtered)==2:
                 print("2-path ", all_paths_filtered)
-                for path in all_paths_filtered:
-                    print("current_path",path)
-                    pathnode=path[0][1]
-                    print("pathnode ",pathnode)
-                    consensus_infos[pathnode]=get_consensus_positions(combination[0], combination[1], DG, path[1])
-                print("our consensus infos:",consensus_infos)
-                is_poppable,cigar,seq_infos,consensus_info_log=align_bubble_nodes(all_reads,consensus_infos,work_dir,k_size)
-                if is_poppable:
-                    linearize_bubble(DG,consensus_infos,combination[0],combination[1],all_paths_filtered,combination[2],seq_infos,consensus_info_log)
-                    for node in all_paths_filtered[0][0]:
-                        marked.append(node)
-                    #marked.append()
-                    for node in all_paths_filtered[1][0]:
-                        marked.append(node)
-                    print("marked",marked)
+                path1=all_paths_filtered[0][0]
+                path2=all_paths_filtered[1][0]
+                #for path in all_paths_filtered:
+                #print("current_path",path)
+                if len(path1)>1:
+                    pathnode1=path1[1]
                 else:
-                    print("not poppable")
-                    not_viable_global.add(combination)"""
-            #elif len(all_paths_filtered)>2:#we have more than two paths connecting s' and t'. We now want to efficiently compare those paths
-            if len(all_paths)>1:
+                        pathnode1=combination[1]
+                if len(path2)>1:
+                        pathnode2 = path2[1]
+                else:
+                        pathnode2 = combination[1]
+                print("pathnode ",pathnode1)
+                print("pathnode2",pathnode2)
+                p_set1=set(path1[1:])
+                p_set2=set(path2[1:])
+                intersect=p_set1.intersection(p_set2)
+                print("intersect ",intersect)
+                if not intersect:
+                        print("no intersect")
+                        consensus_infos[pathnode1]=get_consensus_positions(combination[0], combination[1], DG, all_paths_filtered[0][1])
+                        consensus_infos[pathnode2] = get_consensus_positions(combination[0], combination[1], DG, all_paths_filtered[1][1])
+                else:
+                        print("inter found")
+                        not_viable_global.add(combination)
+                        is_alignable=False
+                print("our consensus infos:",consensus_infos)
+                if is_alignable:
+                    is_poppable,cigar,seq_infos,consensus_info_log=align_bubble_nodes(all_reads,consensus_infos,work_dir,k_size)
+                    if is_poppable:
+                        linearize_bubble(DG,consensus_infos,combination[0],combination[1],all_paths_filtered,combination[2],seq_infos,consensus_info_log)
+                        for node in all_paths_filtered[0][0]:
+                            marked.add(node)
+                    #marked.append()
+                        for node in all_paths_filtered[1][0]:
+                            marked.add(node)
+                        print("marked",marked)
+                    else:
+                        print("not poppable")
+                        not_viable_global.add(combination)
+            elif len(all_paths_filtered)>2:#we have more than two paths connecting s' and t'. We now want to efficiently compare those paths
+            #if len(all_paths)>1:
                 print("NVM",not_viable_multibubble)
                 print("more paths in", combination)
                 print(all_paths_filtered)
@@ -1428,7 +1358,6 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                     not_viable_global.add(combination)
                     continue
                 print("APF",all_paths_filtered)
-                #TODO: use import itertools.combinations and use this instead of zip
                 for path_combi in listing:
                     print("path_combi", path_combi)
                     p1=path_combi[0]
@@ -1440,9 +1369,29 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                     p1_filtered=filter_path_if_marked(marked,p1[0])
                     p2_filtered = filter_path_if_marked(marked, p2[0])
                     if not (p1_filtered) and not(p2_filtered):
-                        print(p1)
-                        pathnode1 = p1[0][1]
-                        pathnode2 = p2[0][1]
+                        print("PATh1",p1)
+                        print("PATh2",p2)
+                        if not len(p1[0])>1:
+                            pathnode1=combination[1]
+                        else:
+                            pathnode1 = p1[0][1]
+                        if not len(p2[0])>1:
+                            pathnode2=combination[1]
+                        else:
+                            pathnode2 = p2[0][1]
+                        p_set1=set(p1[0][1:])
+                        p_set2=set(p2[0][1:])
+                        intersect=p_set1.intersection(p_set2)
+                        print("intersect",intersect)
+                        if intersect:
+                            this_combi_reads = tuple(sorted(set(p1[1]) | set(p2[1])))
+                            # combi_reads_sorted=tuple(sorted(this_combi_reads))
+                            print("thiscombireadsType", type(this_combi_reads))
+                            print("this combi reads", this_combi_reads)
+                            this_combi = (combination[0], combination[1], this_combi_reads)
+                            print(this_combi)
+                            not_viable_multibubble.add(this_combi)
+                            continue
                         print("And now for the pathnodes")
                         print(pathnode1)
                         print(pathnode2)
@@ -1461,10 +1410,10 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                             linearize_bubble(DG, consensus_infos, combination[0], combination[1], all_paths_filtered,
                                          combination[2], seq_infos, consensus_info_log)
                             for node in all_paths_filtered[0][0]:
-                                marked.append(node)
+                                marked.add(node)
                             # marked.append()
                             for node in all_paths_filtered[1][0]:
-                                marked.append(node)
+                                marked.add(node)
                             print("marked", marked)
             #TODO: for both of these else cases we want to sort the reads before putting them into a tuple
                         else:
@@ -1513,6 +1462,8 @@ def simplifyGraph(DG, all_reads, work_dir, k_size):
     #print(DG.edges(data=True))
     #draw_Graph(DG)
     new_bubble_popping_routine(DG, all_reads, work_dir, k_size)
+    list_of_cycles = find_repetative_regions(DG)
+    print("Cycles:",list_of_cycles)
     print("Popping bubbles done")
     #draw_Graph(DG)
     merge_nodes(DG)
