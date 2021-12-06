@@ -553,7 +553,7 @@ def get_avg_interval_length(DG,node):
         i += 1
         sum += (positions.end_mini_start-positions.start_mini_end)
         print(sum)
-    finalresult=int(sum/(i+1))
+    finalresult=int(sum/(i))
     #finalresult=100000
     print("finalresult",finalresult)
     return finalresult
@@ -580,8 +580,9 @@ def additional_node_support(DG, new_support, node_dist_dict, s_infos, node, prev
     this_reads = DG.nodes[node]['reads']
     print("Node_dist", this_dist)
     print("node",node," thisreads ",this_reads)
+    print("bubble_Start",bubble_start)
     print("s_infos",s_infos)
-    this_reads=DG.nodes[node]['reads']
+    #this_reads=DG.nodes[node]['reads']
     avg_len=get_avg_interval_length(DG,node)
     #a lot of print statements used to debug
     print("avg_len",avg_len)
@@ -689,12 +690,12 @@ def compare_by_length(nextnode1,nextnode2,node_dist,bubble_end):
     # print("FinalEdges",DG.edges(data=True))
 def find_real_nextnode(nextnode1,nextnode2,node_dist,bubble_end,conn_edges,DG):
     if DG.has_edge(nextnode1,nextnode2):
-        return nextnode1, nextnode2
+        return nextnode1
     elif DG.has_edge(nextnode2,nextnode1):
-        return nextnode2,nextnode1
+        return nextnode2
     else:
         nextnode = compare_by_length(nextnode1, nextnode2, node_dist, bubble_end)
-        return nextnode,None
+        return nextnode
     #TODO: we can just take the 0th element of the path bc this is what we did before. Nextnode1 is located at pos 1
 def get_next_node(path, bubble_end):
     print("get_ndex_node")
@@ -719,9 +720,13 @@ def find_connecting_edges(path_nodes,DG):
         print("connecting_edges",connecting_edges)
     return connecting_edges
 def test_conn_end(conn_edges,overall_nextnode):
+    conn_list=[]
+    print("connedges",conn_edges)
     for conn_edge in conn_edges:
-        if overall_nextnode==conn_edge[1]:
-            return True
+        print(conn_edge[1])
+        if overall_nextnode == conn_edge[1]:
+            conn_list.append(conn_edge)
+    return conn_list
 #TODO: we still need to make sure that we have the correct edge support if we encounter a connecting edge
 def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nodes,node_dist,seq_infos):  # ,node_dist):
     counter = 0
@@ -787,28 +792,31 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
         print("P1",path1)
         print("P2", path2)
 
-        overall_nextnode,conn_end=find_real_nextnode(nextnode1,nextnode2,node_dist,bubble_end,conn_edges,DG)
-        is_conn_end=test_conn_end(conn_edges,overall_nextnode)
+        overall_nextnode=find_real_nextnode(nextnode1,nextnode2,node_dist,bubble_end,conn_edges,DG)
+        print("overall_nextnode",overall_nextnode)
+        conn_list=test_conn_end(conn_edges,overall_nextnode)
+        print("CONNEND?",conn_list)
         new_edge_supp1 = edges_to_delete[prevnode1, nextnode1]['edge_supp']
         print("NES1 from ",prevnode1," to ",nextnode1,": ",new_edge_supp1)
         new_edge_supp2 = edges_to_delete[prevnode2, nextnode2]['edge_supp']
         print("NES1 from ", prevnode2, " to ", nextnode2, ": ", new_edge_supp2)
 
-
-        if not conn_end:
+        assert len(conn_list)<2,"conn_list too long"
+        if not conn_list:
             full_edge_supp = new_edge_supp1 + new_edge_supp2
             print("FES: ", full_edge_supp)
         else:
-            print("Wanting to add edge support from",prevnode," to ",overall_nextnode)
-            this_edge_supp=DG[prevnode][overall_nextnode]["edge_supp"]
+            print("Wanting to add edge support from", prevnode, " to ", overall_nextnode)
+            this_edge_supp=DG[conn_list[0][0]][overall_nextnode]["edge_supp"]
             full_edge_supp=new_edge_supp1+new_edge_supp2+this_edge_supp
+
         #TODO:seperate the finding of next node from the actual adding of edges to make it easier to hunt down bugs
         if overall_nextnode in path1:
             nextnode1=get_next_node(path1,bubble_end)
             print("nextnode1",nextnode1)
             #TOD: we need to add the support of global_prev for both additional_node_support occurrences
             additional_supp = additional_node_support(DG, new_edge_supp2, node_dist, s_infos, overall_nextnode,
-                                                      prevnode1, prevnode2, bubble_start,is_conn_end,prevnode)
+                                                      prevnode1, prevnode2, bubble_start,conn_list,prevnode)
             print("additionalNodeSupport1 for",overall_nextnode)
             print("path 1 before remove", path1)
             path1.remove(overall_nextnode)
@@ -818,7 +826,7 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
         elif overall_nextnode in path2:
             nextnode2=get_next_node(path2,bubble_end)
             additional_supp = additional_node_support(DG, new_edge_supp1, node_dist, s_infos, overall_nextnode,
-                                                      prevnode2, prevnode1, bubble_start,is_conn_end,prevnode)
+                                                      prevnode2, prevnode1, bubble_start,conn_list,prevnode)
             print("additionalNodeSupport2 for", overall_nextnode)
             print("path 2 before remove", path2)
             path2.remove(overall_nextnode)
@@ -941,7 +949,7 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size):
     print(cigar_string)
     print(cigar_tuples)
     print("cigar done")
-    delta=0.2
+    delta=0.1
     good_to_pop=parse_cigar_diversity(cigar_tuples, delta)
     #good_to_pop = parse_cigar_differences(cigar_tuples, delta_len)
     cigar_alignment=(s1_alignment,s2_alignment)
