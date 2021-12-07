@@ -2,24 +2,37 @@ import matplotlib.pyplot as plt
 import pylab
 import numpy as np
 from statistics import mean
-def plot_scatter(nr_nodes):
-
+def plot_scatter(nr_nodes,list):
+    import matplotlib.lines as mlines
     ax = plt.gca()
     #for xe, ye in zip(getkeysList(nr_nodes), getValsList(nr_nodes)):
     #    ax.scatter([xe] * len(ye), ye)
     #x = np.linspace(*ax.get_xlim())
     #ax.plot(x, x)
-    #ax.yaxis.set_major_locator(plt.MaxNLocator(15))
-    ax.scatter(getkeysList(nr_nodes),getValsList(nr_nodes), c='blue', edgecolors='none')
     ax.yaxis.set_major_locator(plt.MaxNLocator(15))
+    plt.plot(list, list, c='red')
+    plt.figtext(.8, .9, "Diversity: 20%")
+    plt.title("Isoforms detected over actual Isoforms")
+    ax.scatter(getkeysList(nr_nodes),getValsList(nr_nodes), c='blue', edgecolors='none')
+    #ax.yaxis.set_major_locator(plt.MaxNLocator(15))
     #set log scales for both axes
     #ax.set_yscale('log')
     #ax.set_xscale('log')
     #label the plot to make the figure better comprehensible
-    ax.set_xlabel("# Isoforms")
-    ax.set_ylabel("# Isoforms found by IsONform(avg 15 experiments)")
+    ax.set_xlabel("# Isoforms Simulated")
+    ax.set_ylabel("# Isoforms found by IsONform (avg 20 experiments)")
 
     pylab.show()
+def plot_box(resultsdict):
+    labels, data = resultsdict.keys(), resultsdict.values()
+    plt.figtext(.8, .9, "Diversity: 20%")
+    plt.title("Isoforms detected over actual Isoforms")
+    plt.boxplot(data)
+    plt.xticks(range(1, len(labels) + 1), labels)
+    ax = plt.gca()
+    ax.set_xlabel("# Isoforms Simulated")
+    ax.set_ylabel("# Isoforms found by IsONform ( 20 experiments)")
+    plt.show()
 def load_tsv(filename):
     file1 = open(filename, 'r')
     elems = file1.readlines()#[1:]
@@ -43,23 +56,37 @@ def main():
         line=entry.split("\t")
         #line=line.replace("\n","")
         print(line)
-        firstentry=line[0]
+        firstentry=int(line[0])
+        print(firstentry)
         if not firstentry in resultsdict:
             values=[]
-            values.append(line[1])
-            resultsdict[firstentry]=values
+            print(line[1])
+            if not int(line[1])==-1:
+                values.append(int(line[1]))
+                resultsdict[firstentry]=values
         else:
             values=resultsdict[firstentry]
-            values.append(line[1])
-            resultsdict[firstentry] = values
+            print(line[1])
+            if not int(line[1]) ==-1:
+                values.append(int(line[1]))
+                resultsdict[firstentry] = values
+    print("resdict",resultsdict)
+    keys=resultsdict.keys()
+    max_key = max(keys)
+    print("max_key",max_key)
+    l = list(range(2, max_key+1))
     for actualnumber, listofresults in resultsdict.items():
-        listofresults = [int(i) for i in listofresults]
+        #listofresults = [int(i) for i in listofresults]
+        #filtered = list(filter(lambda result: result != -1, listofresults))
         print("List")
         print(listofresults)
+        #print(filtered)
         avg=mean(listofresults)
         print("avg for "+str(actualnumber)+": "+str(avg))
         updatedresultsdict[actualnumber]=avg
-    plot_scatter(updatedresultsdict)
+    plot_scatter(updatedresultsdict,l)
+    plot_box(resultsdict)
+    # or backwards compatable
 
 
 if __name__ == '__main__':
