@@ -9,6 +9,7 @@ from SimplifyGraph import *
 from IsoformGeneration import *
 import tempfile
 import shutil
+from OriginalSimplifyGraph import *
 from ordered_set import OrderedSet
 from SimplifyGraph import simplifyGraph
 
@@ -259,12 +260,11 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                             edge_support[previous_node,name].append(r_id)
                         else:
                             # update the read information of node name
-                            prev_nodelist = nodes_for_graph[name]
+                            #prev_nodelist = nodes_for_graph[name]
                             seq = all_reads[r_id][1]
                             r_infos = Read_infos(inter[0], inter[1], True)
-                            end_mini_seq = seq[inter[1]:inter[1] + k]
-                            if not(end_mini_seq==DG.nodes[name]['end_mini_seq']):
-                                print("ERROR: ",end_mini_seq," not equal to ",DG.nodes[name]['end_mini_seq'])
+                            #end_mini_seq = seq[inter[1]:inter[1] + k]
+
                             #node_sequence[name] = end_mini_seq
                             prev_nodelist[r_id] = r_infos
                             nodes_for_graph[name] = prev_nodelist
@@ -280,6 +280,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                         this_len = inter[0] - previous_end
                         # add a node into nodes_for_graph
                         name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
+                        end_mini_seq = seq[inter[1]:inter[1] + k]
+                        node_sequence[name] = end_mini_seq
                         DG.add_node(name)
                         # get the length between the previous end and this nodes start
                         length = this_len
@@ -553,7 +555,8 @@ def main():
     #draw_Graph(DG)
     #simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
     print("Calling the method")
-    simplifyGraph(DG,delta_len, all_reads, work_dir, k_size,known_intervals)
+    simplifyGraph(DG,all_reads,work_dir,k_size)
+    #simplifyGraphOriginal(DG,delta_len, all_reads, work_dir, k_size,known_intervals)
     #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
     #draw_Graph(DG)
     #print(DG.nodes["s"]["reads"])
@@ -573,6 +576,7 @@ def main():
     possible_cycles=list(nx.simple_cycles(DG))#find_repetative_regions(DG)
     print("Found cycle(s) ",possible_cycles)
     if not (possible_cycles):
+        print("gerating isoforms")
         generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa)
     else:
         flat_list = [item for sublist in possible_cycles for item in sublist]
