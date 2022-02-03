@@ -9,7 +9,7 @@ from SimplifyGraph import *
 from IsoformGeneration import *
 import tempfile
 import shutil
-from OriginalSimplifyGraph import *
+#from OriginalSimplifyGraph import *
 from ordered_set import OrderedSet
 from SimplifyGraph import simplifyGraph
 
