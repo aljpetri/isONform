@@ -11,7 +11,7 @@ import itertools
 import tempfile
 import shutil
 import matplotlib
-import parsefasta
+# import parsefasta
 import math
 import re
 import subprocess
@@ -587,7 +587,7 @@ def main(args):
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         # edgelist = list(DG.edges.data())
         # print(edgelist)
-        simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
+        simplifyGraph(DG, all_reads,work_dir,k_size)
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         #draw_Graph(DG)
         #print("finding the reads, which make up the isoforms")

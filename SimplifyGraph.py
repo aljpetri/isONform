@@ -1030,7 +1030,7 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size):
     consensus2 = consensus_list[1]
     s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
                                                                                        match_score=2,
-                                                                                       missmatch_penalty=-2,
+                                                                                       mismatch_penalty=-2,
                                                                                        opening_penalty=5, gap_ext=1)
     #print(s1_alignment)
     #print(s2_alignment)

@@ -51,7 +51,7 @@ def main():
         print(equalreads)
     print("calling spoa")
     reads="/home/alexanderpetri/spoa/reads_tmp.fa"
-    subprocess.check_call(["/home/alexanderpetri/spoa/build/bin/spoa", reads, "-l", "0", "-r", "0", "-g", "-2"])
+    subprocess.check_call(["spoa", reads, "-l", "0", "-r", "0", "-g", "-2"])
     print("calling done")
     # for mainid,otherids in isoforms_by_reads.items():
     #    print("Read "+str(mainid) +" is equal to the following reads:")
