@@ -37,8 +37,14 @@ Line2: List of read names </p>
 Line1: >consensusID<br />
 Line2: consensus sequence<br />
 ## Running the code <a name="Running"></a>
-If you want to generate Simulated Isoforms for testing:<br />
-(On my machine:)<br />
+
+To run the test analysis pipeline:
+
+```
+./generateTestResults.sh  </path/to/input/reference.fa> <output_root>
+```
+
+If you want to generate Simulated Isoforms for testing,(On my machine:)
 ```
 python generateTestCases.py --ref /home/alexanderpetri/Desktop/RAWDATA_PhD1/Isoform_Test_data.fa 
 					--sim_genome_len 1344 --nr_reads 10 --outfolder testout 
