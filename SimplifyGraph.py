@@ -950,17 +950,17 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
     for key,value in edge_params.items():
         ##print(key,value)
         DG.add_edge(key[0],key[1],edge_supp=value)
-    possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
-    if possible_cycles:
-        #print("Found cycle(s) ", possible_cycles)
-        #print(DG.edges(data=True))
-        #print("Nodes")
-        for cycle in possible_cycles:
-            for node in cycle:
-                #print(node)
-            ##print(DG.node[node]['reads'])
-                allnodes=nx.get_node_attributes(DG,'reads')
-                #print(allnodes[node])
+    # possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
+    # if possible_cycles:
+    #     #print("Found cycle(s) ", possible_cycles)
+    #     #print(DG.edges(data=True))
+    #     #print("Nodes")
+    #     for cycle in possible_cycles:
+    #         for node in cycle:
+    #             #print(node)
+    #         ##print(DG.node[node]['reads'])
+    #             allnodes=nx.get_node_attributes(DG,'reads')
+    #             #print(allnodes[node])
         ##print("Adding edge fa from ", key[0], "to ", key[1])
     # this is the main part of the linearization. We iterate over all_nodes and try to find out which path the nodes belong to.
     # This info is needed as we need the current state ob both paths to add the correct edge_support and node_support to the graph
@@ -1422,11 +1422,11 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
         #print("Current State of Graph:")
         ##print(DG.nodes(data=True))
         ##print(DG.edges(data=True))
-        possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
-        if possible_cycles:
-            print("Found cycle(s) ", possible_cycles)
-            #print(DG.edges(data=True))
-            #print(DG.nodes(data=True))
+        # possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
+        # if possible_cycles:
+        #     print("Found cycle(s) ", possible_cycles)
+        #     #print(DG.edges(data=True))
+        #     #print(DG.nodes(data=True))
         #TopoNodes is a topologically order of the nodes in our graph
         # print(type(nx.topological_sort(DG)))
         TopoNodes = list(nx.topological_sort(DG))
@@ -1460,9 +1460,9 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
         #print("sorted_combis",sorted_combinations)
         #draw_Graph(DG)
         for combination in sorted_combinations:
-            possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
-            if possible_cycles:
-                print("Found cycle(s) ", possible_cycles)
+            # possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
+            # if possible_cycles:
+            #     print("Found cycle(s) ", possible_cycles)
             #assert len(possible_cycles) == 0, "cycle found"
             ##print("Current State of Graph:")
             ##print(DG.nodes(data=True))
@@ -1588,9 +1588,9 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                             #print("ALL_Paths_filtered",all_paths_filtered)
                             linearize_bubble(DG, consensus_infos, combination[0], combination[1], all_paths_filtered,
                                          combination[2], seq_infos, consensus_info_log, topo_nodes_dict)
-                            possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
-                            if possible_cycles:
-                                print("Found cycle(s) ", possible_cycles)
+                            # possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
+                            # if possible_cycles:
+                            #     print("Found cycle(s) ", possible_cycles)
                             for node in all_paths_filtered[0][0]:
                                 marked.add(node)
                             # marked.append()
