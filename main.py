@@ -11,7 +11,7 @@ import itertools
 import tempfile
 import shutil
 import matplotlib
-import parsefasta
+# import parsefasta
 import math
 import re
 import subprocess
@@ -28,6 +28,42 @@ from modules import create_augmented_reference, help_functions, correct_seqs  # 
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
+
+def syncmers(seq, k, s, t ):
+    window_smers = deque([hash(seq[i:i+s]) for i in range(0, k - s + 1 )])
+    curr_min = min(window_smers)
+    pos_min =  window_smers.index(curr_min)
+    syncmers = []
+    if pos_min == t:
+        syncmers = [ (curr_min, 0) ]
+
+    for i in range(k - s + 1, len(seq) - s):
+        new_smer = hash(seq[i:i+s])
+        # updating window
+        discarded_smer = window_smers.popleft()
+        window_smers.append(new_smer)
+
+        # Make this faster by storing pos of minimum
+        curr_min = min(window_smers)
+        pos_min = window_smers.index(curr_min)
+        if pos_min == t:
+            kmer = seq[i - (k - s) : i - (k - s) + k]
+            syncmers.append( (kmer,  i - (k - s) ) )
+
+
+        # # we have discarded previous windows minimum s-mer, look for new minimum brute force
+        # if curr_min == discarded_smer:
+        #     curr_min = min(window_smers)
+        #     pos_min = window_smers.index(curr_min)
+        #     if pos_min == t:
+        #       syncmers.append( (curr_min,  i - (k - s) ) )
+
+        # # Previous minimum still in window, we only need to compare with the recently added kmer
+        # elif new_kmer < curr_min:
+        #     curr_min = new_kmer
+        #     syncmers.append( (curr_min, i) )
+
+    return syncmers
 
 
 def get_kmer_minimizers(seq, k_size, w_size):
@@ -111,6 +147,9 @@ def get_minimizers_and_positions(reads, w, k, hash_fcn):
         (acc, seq, qual) = reads[r_id]
         if hash_fcn == "lex":
             minimizers = get_kmer_minimizers(seq, k, w)
+            # s = k - 4 # roughly w=10
+            # t = 4//2
+            # minimizers = syncmers(seq, k, s, t )
         elif hash_fcn == "rev_lex":
             minimizers = get_kmer_maximizers(seq, k, w)
 
@@ -587,7 +626,7 @@ def main(args):
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         # edgelist = list(DG.edges.data())
         # print(edgelist)
-        simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
+        simplifyGraph(DG, all_reads,work_dir,k_size)
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         #draw_Graph(DG)
         #print("finding the reads, which make up the isoforms")

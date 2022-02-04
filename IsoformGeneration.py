@@ -219,7 +219,7 @@ def run_spoa(reads, spoa_out_file, spoa_path):
         #print('Running spoa...', end=' ')
         stdout.flush()
         null = open("/dev/null", "w")
-        subprocess.check_call(["/home/alexanderpetri/spoa/build/bin/spoa", reads, "-l", "0", "-r", "0", "-g", "-2"],
+        subprocess.check_call(["spoa", reads, "-l", "0", "-r", "0", "-g", "-2"],
                                   stdout=output_file, stderr=null)
         #print('Done.')
         stdout.flush()
