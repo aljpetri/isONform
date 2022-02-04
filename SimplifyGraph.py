@@ -278,12 +278,12 @@ def find_paths(DG,combination,poss_start):
             for edge in out_edges:
                 #print("edge",edge)
                 edge_supp=DG[edge[0]][edge[1]]['edge_supp']
-                print("edge_supp",edge_supp)
+                #print("edge_supp",edge_supp)
                 if read in edge_supp:
                     node=edge[1]
                     node_supp=DG.nodes[node]['reads']
                     all_supp_for_this_path.update(node_supp)
-                    print("all_supp",all_supp_for_this_path)
+                    #print("all_supp",all_supp_for_this_path)
                     current_node_support=current_node_support.intersection(edge_supp)
                     #print("intersect",current_node_support)
                     #print("node'",node)
@@ -294,13 +294,13 @@ def find_paths(DG,combination,poss_start):
                 #already_visited_nodes.update(visited_nodes)
                 curr_supp.update(current_node_support)
                 node_support_left-=current_node_support
-                print("All_sup",all_supp_for_this_path)
-                print("Curr Supp",curr_supp)
+                #print("All_sup",all_supp_for_this_path)
+                #print("Curr Supp",curr_supp)
                 final_add_support=all_supp_for_this_path-curr_supp
-                print("Final_add_supp",final_add_support)
+                #print("Final_add_supp",final_add_support)
                 #print("nodeSupport_Left",node_support_left)
                 path_supp_tup=(visited_nodes,tuple(curr_supp),final_add_support)
-                print("PST", path_supp_tup)
+                #print("PST", path_supp_tup)
                 path_and_support.append(path_supp_tup)
     #print("DONE")
     #print("PAS",path_and_support)
@@ -700,14 +700,26 @@ def compare_by_length(nextnode1,nextnode2,node_dist,bubble_end):
         #print("is ", nextnode1, " < ", nextnode2, "? As we got ", dist1, "== ", dist2)
     return nextnode1
     # #print("FinalEdges",DG.edges(data=True))
-def find_real_nextnode(nextnode1,nextnode2,node_dist,bubble_end,conn_edges,DG):
-    if DG.has_edge(nextnode1,nextnode2):
-        return nextnode1
-    elif DG.has_edge(nextnode2,nextnode1):
-        return nextnode2
-    else:
-        nextnode = compare_by_length(nextnode1, nextnode2, node_dist, bubble_end)
-        return nextnode
+def find_real_nextnode(nextnode1,nextnode2,node_dist,bubble_end,conn_edges,DG,inter_supp_nodes,linearization_order):
+    print(linearization_order)
+    if nextnode1 in inter_supp_nodes:
+        nextnode_pred=inter_supp_nodes[nextnode1]
+        print("nextnode_pred",nextnode_pred)
+        if nextnode_pred not in linearization_order:
+            return nextnode2
+        else:
+            print("node ",nextnode_pred," not in ",linearization_order)
+    elif nextnode2 in inter_supp_nodes:
+        nextnode_pred = inter_supp_nodes[nextnode2]
+        print("nextnode_pred", nextnode_pred)
+        if nextnode_pred not in linearization_order:
+            return nextnode1
+    #"""if DG.has_edge(nextnode1,nextnode2):
+    #    return nextnode1
+    #elif DG.has_edge(nextnode2,nextnode1):
+    #    return nextnode2"""
+    nextnode = compare_by_length(nextnode1, nextnode2, node_dist, bubble_end)
+    return nextnode
     #TODO: we can just take the 0th element of the path bc this is what we did before. Nextnode1 is located at pos 1
 def get_next_node(path, bubble_end):
     #print("get_ndex_node")
@@ -782,15 +794,35 @@ def find_intersect_supp_nodes(DG,intersect_supp,path1,path2):
     print("P1Info",p1_info_dict)
     print("P2Info", p2_info_dict)
     key_dict={}
+    intersect_dict={}
     if len(p1_info_dict)>0 and len(p2_info_dict)>0:
         for key in p1_info_dict:
             if key in p2_info_dict:
+                list_of_dict_ids=[]
                 p_infos=p1_info_dict[key]+p2_info_dict[key]
-                print("P_infos",p_infos)
+
+                #print("P_infos",p_infos)
                 p_infos.sort(key=lambda x:x[1])
-                print("P_infos_s",p_infos)
+                for info in p_infos:
+                    print("info",info)
+                    if info in p1_info_dict[key]:
+                        info_tup=(1,info)
+                        list_of_dict_ids.append(info_tup)
+                    else:
+                        info_tup=(2,info)
+                        list_of_dict_ids.append(info_tup)
+                print("LODI(",key,") ",list_of_dict_ids)
+                for i,tupl in enumerate(list_of_dict_ids):
+                    print("i",i)
+                    if not i==0:
+                        if tupl[0]!=list_of_dict_ids[i-1][0]:
+                            val=list_of_dict_ids[i-1][1][0]
+                            intersect_dict[tupl[1][0]]=val
+                print("inter_dict",intersect_dict)
+                #print("P_infos_s",p_infos)
                 key_dict[key]=p_infos
-    print("KD",key_dict)
+    return intersect_dict
+    #print("KD",key_dict)
 
 
 
@@ -856,14 +888,14 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
 
     if path1:
         nextnode1 = path1[0]
-        #print("nextnode1",nextnode1)
+        print("nextnode1",nextnode1)
 
     else:
         nextnode1=bubble_end
         ##print("Creepy ands", actual_node_distances)
     if path2:
         nextnode2 = path2[0]
-        #print("nextnode2", nextnode2)
+        print("nextnode2", nextnode2)
     else:
         nextnode2 = bubble_end
         ##print("Creepy ands", actual_node_distances)
@@ -872,8 +904,8 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
         #print("P1",path1)
         #print("P2", path2)
 
-        overall_nextnode=find_real_nextnode(nextnode1,nextnode2,node_dist,bubble_end,conn_edges,DG)
-        #print("overall_nextnode",overall_nextnode)
+        overall_nextnode=find_real_nextnode(nextnode1,nextnode2,node_dist,bubble_end,conn_edges,DG,inter_supp_nodes,linearization_order)
+        print("overall_nextnode",overall_nextnode)
         conn_list=test_conn_end(conn_edges,overall_nextnode)
         #print("CONNEND?",conn_list)
         new_edge_supp1 = edges_to_delete[prevnode1, nextnode1]['edge_supp']
@@ -965,7 +997,7 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size):
     endseqlist = []
     #print(consensus_attributes)
     for i, (q_id, pos1, pos2) in enumerate(consensus_attributes):
-        #print("consensus_atm:",q_id,", ",pos1,",",pos2)
+        print("consensus_atm:",q_id,", ",pos1,",",pos2)
         #print("read ",q_id)
         #print(pos2)
         #print("Printing full seq:", reads[q_id][1])
@@ -981,14 +1013,14 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size):
         endseq = reads[q_id][1][pos2:pos2 + k_size]
         # startseqlist.append(startseq)
         endseqlist.append(endseq)
-        #print(q_id, "from ", pos1, "to", pos2 + k_size, ": ", seq)
+        print(q_id, "from ", pos1, "to", pos2 + k_size, ": ", seq)
         reads_path.write(">{0}\n{1}\n".format(str(q_id) + str(pos1) + str(pos2), seq))
     # #print("start",startseqlist)
     #print("end", endseqlist)
     reads_path.close()
     # #print(reads_path.name)
     # sys.exit()
-    ##print("seq_infos",seq_infos)
+    print("seq_infos",seq_infos)
     spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
     #print("spoa_ref", spoa_ref)
     return spoa_ref,seq_infos
@@ -1006,8 +1038,8 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size):
     consensus_log= {}
     seq_infos={}
     for path_node, consensus_attributes in consensus_infos.items():
-        #print("consensus", consensus_attributes)
-        #print("path_node",path_node)
+        print("consensus", consensus_attributes)
+        print("path_node",path_node)
         if len(consensus_attributes) > 1:
             con,seq_infos_from_fun = generate_consensus_path(work_dir, consensus_attributes, all_reads, k_size)
 
@@ -1245,7 +1277,7 @@ def find_disjoint_bubbles(poppable_bubbles):
 
 
 def linearize_bubble(DG, pre_consensus_infos, bubble_start, bubble_end, path_nodes, support_dict,seq_infos,consensus_log):
-    #print("seq_infos",seq_infos)
+    print("seq_infos",seq_infos)
     #print("time for linearization")
     # edges_to_delete: A dictionary holding all edges which we want to delete and their respective attributes (needed for adding edges)
     edges_to_delete,node_dist = remove_edges(DG, pre_consensus_infos, bubble_start, bubble_end, path_nodes,support_dict,consensus_log)
@@ -1618,9 +1650,9 @@ def simplifyGraph(DG, all_reads, work_dir, k_size):
     #print("Simplifying the Graph (Merging nodes, popping bubbles)")
     list_of_cycles = find_repetative_regions(DG)
     #print(list_of_cycles)
-    ##print("Current State of Graph:")
-    ##print(DG.nodes(data=True))
-    ##print(DG.edges(data=True))
+    print("Current State of Graph:")
+    print(DG.nodes(data=True))
+    print(DG.edges(data=True))
     #draw_Graph(DG)
     new_bubble_popping_routine(DG, all_reads, work_dir, k_size)
     list_of_cycles = find_repetative_regions(DG)
