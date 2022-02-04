@@ -22,6 +22,7 @@ filedirectory=$2
 mkdir -p $filedirectory
 mkdir -p $filedirectory/errors/
 mkdir -p $filedirectory/reads/
+mkdir -p $filedirectory/isonform/
 outputfile=$filedirectory/resultserror1.tsv
 #if results.tsv already exists 
 if [ -s $outputfile ]
@@ -38,7 +39,7 @@ errorcounter=0
 #echo -e "Number of Isoforms \t Found isoforms by IsONform \n">>results.tsv
 #ls
 #define the file we want to use as indicator for our algos performance
-file=out/mapping.txt
+file=$filedirectory/isonform/mapping.txt
 
 #iterate over different numbers of isoforms
 for ((i=2; i<=15; i++))
@@ -53,19 +54,24 @@ do
 		outputs=0
 		#python generateTestCases.py --ref $input_ref --sim_genome_len 1344 --nr_reads 20 --outfolder testout --coords 50 100 150 200 250 300 350 400 450 500 --probs 0.4 0.4 0.4 0.4 0.4 --n_isoforms 2 --e True
 		#run the test case generation script with the parameters needed
+		
+		number="${i}_${j}"
+		############ COMMENT THE FOLLOWING TWO LINES FOR BUGFIXING ON IDENTICAL READ FILES ############
+		###############################################################################################
 		python generateTestCases.py --ref $input_ref --sim_genome_len 1344 --nr_reads $n_reads --outfolder $filedirectory/reads --coords 50 100 150 200 250 300 350 400 450 500 --probs 0.4 0.4 0.4 0.4 0.4 --n_isoforms $i --e True
-		cp $filedirectory/reads/reads.fq $filedirectory
+		mv $filedirectory/reads/reads.fq $filedirectory/reads_$number.fq
+		###############################################################################################
+		###############################################################################################
+
+		# cp $filedirectory/reads/reads.fq $filedirectory
 		#we want to figure out how many reads were actually generated
-		read_amount=$(< $filedirectory/reads/reads.fq wc -l)
+		read_amount=$(< $filedirectory/reads_$number.fq wc -l)
 		#As fastq entries have 4 lines divide by 4 to get the actual number of reads
 		var=4
 		true_read_amount=$((read_amount / var))
-		number="${i}_${j}"
-		echo $number
-		mv $filedirectory/reads.fq $filedirectory/reads_$number.fq
 		#run IsONform
 		#if e=True
-		python main.py --fastq $filedirectory/reads/reads.fq --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 5 --outfolder out
+		python -m pyinstrument main.py --fastq $filedirectory/reads_$number.fq --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 5 --outfolder $filedirectory/isonform/
 		#if e=False
 		#python main.py --fastq $filedirectory/reads/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 3 --outfolder out
 		had_issue=$?
@@ -79,20 +85,20 @@ do
 		then
 		errorcounter=$((errorcounter+1))
 		result=-1
-		cp $filedirectory/reads/reads.fq $filedirectory/errors/error_${errorcounter}.fq
+		cp $filedirectory/reads/reads.fq $filedirectory/errors/error_${errorcounter}_$number.fq
 
 		else
 		if [[ "$result" == "$true_read_amount" ]]
 		then
-		cp $filedirectory/reads/reads.fq $filedirectory/errors/strange_error_${errorcounter}.fq
+		cp $filedirectory/reads/reads.fq $filedirectory/errors/strange_error_${errorcounter}_$number.fq
 
 		elif [[ "$result" -gt "$otherres" ]]
 		then 
-		cp $filedirectory/reads/reads.fq $filedirectory/errors/other_error_${errorcounter}.fq
+		cp $filedirectory/reads/reads.fq $filedirectory/errors/other_error_${errorcounter}_$number.fq
 
 		elif [[ "$result" -lt "$i" ]]
 		then 
-		cp $filedirectory/reads/reads.fq $filedirectory/errors/isoform_error_${errorcounter}.fq
+		cp $filedirectory/reads/reads.fq $filedirectory/errors/isoform_error_${errorcounter}_$number.fq
 		fi
 		fi
 		#echo "$result"
