@@ -156,6 +156,7 @@ def compute_equal_reads(DG,reads):
     #print("Startreads")
     #print(startreads)
     #endnode='t'
+    visited_nodes_for_isoforms= {}
     supported_reads=[]
     reads_for_isoforms=reads
     isoforms= {}
@@ -202,15 +203,17 @@ def compute_equal_reads(DG,reads):
         clean_graph(DG,visited_nodes,visited_edges,supported_reads)
         #print(DG.edges(data=True))
         isoforms[supported_reads[0]]=supported_reads
+        #reads_for_isoforms[supported_reads[0]]=visited_nodes
+        visited_nodes_for_isoforms[supported_reads[0]]=set(visited_nodes)
         #print(reads_for_isoforms)
         for sup_read in supported_reads:
             #print(sup_read)
             reads_for_isoforms.remove(sup_read)
-        #print("Isoforms")
-        #print(isoforms)
-        #print("VisitedNodes")
+        print("Isoforms")
+        print(isoforms)
+        print("VisitedNodes" , supported_reads[0],"has ", len(visited_nodes)," elements: ",visited_nodes)
         #print(visited_nodes)
-    return isoforms
+    return isoforms,visited_nodes_for_isoforms
 
     """calls spoa and returns the consensus sequence for the given reads"""
 
@@ -271,6 +274,7 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_se
                 mapping[name].append(singleread[0])
                 if i > max_seqs_to_spoa:
                     break
+                print("read ", q_id,": ",seq)
                 reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
             reads_path.close()
             spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
@@ -294,12 +298,29 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_se
     # reads_path.close()
     #print("Isoforms generated")
 
+def calculate_isoform_similarity(isoform_paths):
+    for id, path in isoform_paths.items():
+        l1 = len(path)
+        #print(id, ": ", path)
+        for id2,path2 in isoform_paths.items():
+
+            if not id==id2:
+                equal_elements_nr=len(path.intersection(path2))
+                l2=len(path2)
+                equality_1=equal_elements_nr/l1
+                equality_2=equal_elements_nr/l2
+                if equality_2>equality_1:
+                    min_equality=equality_1
+                else:
+                    min_equality=equality_2
+                print("Equality of ",id," vs ",id2,": ",equality_1)
 
 """
 Wrapper method used for the isoform generation
 """
 def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,max_seqs_to_spoa=200):
-    equal_reads=compute_equal_reads(DG,reads)
+    equal_reads,isoform_paths=compute_equal_reads(DG,reads)
+    calculate_isoform_similarity(isoform_paths)
     generate_isoform_using_spoa(equal_reads,all_reads, work_dir,outfolder, max_seqs_to_spoa)
 
 

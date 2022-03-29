@@ -966,17 +966,7 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
     for key,value in edge_params.items():
         ##print(key,value)
         DG.add_edge(key[0],key[1],edge_supp=value)
-    possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
-    if possible_cycles:
-        #print("Found cycle(s) ", possible_cycles)
-        #print(DG.edges(data=True))
-        #print("Nodes")
-        for cycle in possible_cycles:
-            for node in cycle:
-                #print(node)
-            ##print(DG.node[node]['reads'])
-                allnodes=nx.get_node_attributes(DG,'reads')
-                #print(allnodes[node])
+
         ##print("Adding edge fa from ", key[0], "to ", key[1])
     # this is the main part of the linearization. We iterate over all_nodes and try to find out which path the nodes belong to.
     # This info is needed as we need the current state ob both paths to add the correct edge_support and node_support to the graph
@@ -1026,8 +1016,8 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size):
     reads_path.close()
     # #print(reads_path.name)
     # sys.exit()
-    #print("seq_infos",seq_infos)
-    #print("RPL",reads_path_len)
+    print("seq_infos",seq_infos)
+    print("RPL",reads_path_len)
     if reads_path_len>0:
         spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
         #print("spoa_ref", spoa_ref)
@@ -1050,7 +1040,7 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size):
     seq_infos={}
     too_short=False
     for path_node, consensus_attributes in consensus_infos.items():
-        #print("consensus", consensus_attributes)
+        print("consensus", consensus_attributes)
         #print("path_node",path_node)
         if len(consensus_attributes) > 1:
             con,seq_infos_from_fun = generate_consensus_path(work_dir, consensus_attributes, all_reads, k_size)
@@ -1553,11 +1543,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
         #print("Current State of Graph:")
         ##print(DG.nodes(data=True))
         ##print(DG.edges(data=True))
-        possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
-        if possible_cycles:
-            print("Found cycle(s) ", possible_cycles)
-            #print(DG.edges(data=True))
-            #print(DG.nodes(data=True))
+
         #TopoNodes is a topologically order of the nodes in our graph
         # print(type(nx.topological_sort(DG)))
         TopoNodes = list(nx.topological_sort(DG))
@@ -1593,9 +1579,6 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
         #iterate over all combinations
         for combination in sorted_combinations:
             #print("Combi ",combination)
-            possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
-            if possible_cycles:
-                print("Found cycle(s) ", possible_cycles)
             #assert len(possible_cycles) == 0, "cycle found"
             ##print("Current State of Graph:")
             ##print(DG.nodes(data=True))
@@ -1681,9 +1664,6 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
 
                         itere+=1
                         linearize_bubble(DG,consensus_infos,combination[0],combination[1],all_paths_filtered,combination[2],seq_infos,consensus_info_log, topo_nodes_dict)
-                        #subgraph_bubble(DG,itere,all_paths_filtered,combination[0],combination[1],error_bubble)
-                        #if combination[0] == '398, 409, 80' and combination[1] == '590, 603, 49':
-                        #    print("Current State of Graph:")
                            # print(DG.nodes(data=True))
                            # print(DG.edges(data=True))
                         itere += 1
@@ -1786,9 +1766,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                                # print(DG.nodes(data=True))
                                # print(DG.edges(data=True))
                             itere += 1
-                            possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
-                            if possible_cycles:
-                                print("Found cycle(s) ", possible_cycles)
+
                             for node in all_paths_filtered[0][0]:
                                 marked.add(node)
                             # marked.append()

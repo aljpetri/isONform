@@ -11,7 +11,7 @@ import tempfile
 import shutil
 # from OriginalSimplifyGraph import *
 from ordered_set import OrderedSet
-from SimplifyGraph import simplifyGraph
+from SimplifyGraph import *
 
 """IsONform script containing the methods used to generate the Directed Graph from the Intervals coming from the Weighted Interval Scheduling Problem
 Author: Alexander Petri
@@ -106,7 +106,7 @@ def find_next_node(thisstartpos,info_array,known_cycles,current_read_state,k,cyc
     for key,value in known_cycles.items():
         known_cycle_rid=key[0]
         node_appearance=value[0]
-        for i in range(0, len(info_array)):
+        for i in range(0, len(info_array)-2):
             if info_array[i] ==known_cycle_rid and info_array[i+1]==node_appearance[0]-k and info_array[i+2]==node_appearance[2]:
                 intermediate_cycles.append(value)
     print("Intermediate")
@@ -544,7 +544,7 @@ def main():
     DG,known_intervals,node_overview_read,reads_for_isoforms,reads_list = generateGraphfromIntervals(all_intervals_for_graph, k_size,delta_len,read_len_dict,all_reads)
     print(known_intervals)
     print("edges with attributes:")
-    print(DG.edges(data=True))
+    #print(DG.edges(data=True))
 
     #check_graph_correctness(known_intervals,all_intervals_for_graph)
     #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
