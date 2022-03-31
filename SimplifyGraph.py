@@ -985,9 +985,9 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size):
     endseqlist = []
     reads_path_len=0
     max_len=0
-    #print(consensus_attributes)
+    print(consensus_attributes)
     for i, (q_id, pos1, pos2) in enumerate(consensus_attributes):
-        #print("consensus_atm:",q_id,", ",pos1,",",pos2)
+        print("consensus_atm:",q_id,", ",pos1,",",pos2)
         #print("read ",q_id)
         #print(pos2)
         #print("Printing full seq:", reads[q_id][1])
@@ -995,7 +995,10 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size):
             #print("TRUE")
             pos2 = len(reads[q_id][1]) - k_size
         #print(pos2)
-        seq = reads[q_id][1][pos1: (pos2 + k_size)]
+        if pos1<(pos2+k_size):
+            seq = reads[q_id][1][pos1: (pos2 + k_size)]
+        else:
+            seq=""
         #print(seq)
         seq_infos[q_id]=(pos1,pos2+k_size,seq)
         #print("seq_infos",seq_infos)
@@ -1004,9 +1007,12 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size):
         # startseqlist.append(startseq)
         endseqlist.append(endseq)
         #print(q_id, "from ", pos1, "to", pos2 + k_size, ": ", seq)
-        if len(seq)<3:
+        if len(seq)<k_size:
             if len(seq)>max_len:
                 max_len=len(seq)
+            elif len(seq)<1:
+                print("Seq too short: ",q_id,", ",pos1,",",pos2)
+                max_len=1
             #print("not popping ",q_id)
         else:
             reads_path_len+=1
