@@ -3,6 +3,7 @@ from collections import Counter, namedtuple
 from consensus import *
 import matplotlib.pyplot as plt
 from IsoformGeneration import *
+from MemoryAnalysis import *
 import copy
 from functools import cmp_to_key
 from ordered_set import OrderedSet
@@ -11,6 +12,95 @@ import itertools
 """Helper function used to plot the graph. Taken from GraphGeneration.
     INPUT: DG   Directed Graph to plot
 """
+
+#Use https://www.geeksforgeeks.org/detect-cycle-in-a-graph/
+def isCyclicUtil(DG, nodes_dict, node):
+    # Mark current node as visited and
+    # adds to recursion stack
+    CNode = namedtuple('CNode', 'visited recStack')
+    cnode = CNode(True, True)
+    nodes_dict[node]=cnode
+    #print(nodes_dict)
+    #nodes_dict[node].recStack=True
+     #visited[v] = True
+    #recStack[v] = True
+
+    # Recur for all neighbours
+    # if any neighbour is visited and in
+    # recStack then graph is cyclic
+    for out_edge in DG.out_edges(node):
+        neighbour=out_edge[1]
+        if nodes_dict[neighbour].visited == False:
+            if isCyclicUtil(DG, nodes_dict,neighbour) == True:
+                print(neighbour)
+                return True
+        elif nodes_dict[neighbour].recStack == True:
+            print(neighbour)
+            return True
+
+    # The node needs to be poped from
+    # recursion stack before function ends
+    prev_visited=nodes_dict[node].visited
+    nodes_dict[node] = CNode(prev_visited,False)
+    return False
+
+
+
+def isCyclic(DG):
+    # Returns true if graph contains cycles else false
+    nodes = DG.nodes
+    nodes_dict = {}
+    CNode = namedtuple('CNode', 'visited recStack',defaults=(False,False))
+    cnode = CNode(False, False)
+    for node in nodes:
+        nodes_dict[node] = cnode
+    for node in nodes:
+        if nodes_dict[node].visited == False:
+            if isCyclicUtil(DG,nodes_dict,node) == True:
+                return True
+    return False
+
+
+"""def find_cycles(DG):
+    visit_nodes_set= set("s")
+    visit_edges_set=set()
+
+    startnode="s"
+    follow_edges=list(DG.out_edges([startnode]))
+    #we use a BFS-based algo to find our cycles. Instead of queue we actually use a list (maybe not the most efficient)
+    for edge in follow_edges:
+        curr_node=edge[1]
+
+        if edge in visit_edges_set:
+                if not curr_node in visit_nodes_set:
+                    visit_nodes_set.add(curr_node)
+                print(edge[0])
+                print(edge[1])
+                curr_dict=DG.nodes[edge[0]]
+                other_dict=DG.nodes[edge[1]]
+                print("Node",edge[0]," is in cycle",curr_dict)
+                print("Node", edge[1], " is also in cycle",other_dict )
+                return True, edge[0],edge[1]
+        visit_edges_set.add(edge)
+        add_edges=[]
+        for poss_edge in list(DG.edges([curr_node])):
+            if not poss_edge in follow_edges:
+                add_edges.append(poss_edge)
+        follow_edges.extend(add_edges)
+    return False,"","" """
+def full_cycle_nodes(DG,node1, node2):
+    reads1=tuple(DG.nodes[node1]['reads'])
+    reads2 = tuple(DG.nodes[node2]['reads'])
+    inter = tuple(sorted(set(reads1).intersection(set(reads2))))
+    print("Oedges1",DG.out_edges(node1))
+    print("Oedges1",DG.out_edges(node2))
+    combi1=(node1,node2,inter)
+    combi2=(node2,node1,inter)
+    print("combis",combi1,",",combi2)
+    pas1=find_paths(DG,combi1)
+    print("pas1", pas1)
+    #pas2=find_paths(DG,combi2)
+    #print("pas2",pas2)
 def draw_Graph(DG, outpath = '', id = 0):
     # defines the graph layout to use spectral_layout. Pos gives the position for each node
     pos = nx.spectral_layout(DG)
@@ -249,7 +339,7 @@ def filter_combinations(combinations,not_viable):
     return combinations_filtered
 """detect the paths in our bubble
 """
-def find_paths(DG,combination,poss_start):
+def find_paths(DG,combination):
     path_and_support=[]
     end=combination[1]
     node_support_left=set(combination[2])
@@ -299,7 +389,7 @@ def find_paths(DG,combination,poss_start):
                     #print("node'",node)
                     #print("allSuppForThisPath",all_supp_for_this_path)
                     break
-        #print("visited",visited_nodes)
+        print("visited",visited_nodes)
         if current_node_support:
                 #already_visited_nodes.update(visited_nodes)
                 curr_supp.update(current_node_support)
@@ -310,7 +400,7 @@ def find_paths(DG,combination,poss_start):
                 # print("Final_add_supp",final_add_support)
                 #print("nodeSupport_Left",node_support_left)
                 path_supp_tup=(visited_nodes,tuple(curr_supp),final_add_support)
-                # print("PST", path_supp_tup)
+                print("PST", path_supp_tup)
                 path_and_support.append(path_supp_tup)
     #print("DONE")
     #print("PAS",path_and_support)
@@ -1513,7 +1603,7 @@ INPUT:      DG:         our directed graph
 """
 def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
     # find all bubbles present in the graph which are to be popped
-
+    print("BubblePopping started")
     popped_bubbles = []
     old_bubbles=[]
     no_pop_list = []
@@ -1526,7 +1616,6 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
     it = 0
     iter=10
     itere=20
-    error_bubble=['1425, 1474, 69', '497, 507, 4','1485, 1504, 27','1518, 1570, 74','1505, 1538, 27' ]
     #TODO: This function does decide that a multibubble is globally not poppable while only a subbubble is not poppable! (Has something to do with filtering)
     #we want to continue the bubble_popping process as long as we find combinations that have not been deemed to be "not viable" to pop
     while has_combinations:
@@ -1565,9 +1654,10 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
         #print("endnodes", str(poss_ends))
         #generate all combination of bubble start nodes and bubble end nodes in which the poss_starts comes before poss_end in TopoNodes
         combinations = generate_combinations(poss_starts, poss_ends, TopoNodes)
+        print(getsize(combinations)//100000)
         #print("Length of combinations",len(combinations))
         #sort the combinations so that the shortest combinations come first
-        sorted_combinations = sorted(combinations, key=lambda x: TopoNodes.index(x[1]) - TopoNodes.index(x[0]))
+        #sorted_combinations = sorted(combinations, key=lambda x: TopoNodes.index(x[1]) - TopoNodes.index(x[0]))
         #print(" unfiltered", sorted_combinations)
         #filter out the combinations we already have analysed in a previous iteration
         combinations_filtered = filter_combinations(combinations, not_viable_global)
@@ -1592,7 +1682,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
             #print("marked",marked)
             is_alignable=True
             #we find all paths from s' to t' via find_paths
-            all_paths = find_paths(DG,combination,combination[0])
+            all_paths = find_paths(DG,combination)
             #print("all_paths:", all_paths,"len",len(all_paths))
             initial_all_paths=len(all_paths)
             #print("initial_all_paths", initial_all_paths)
@@ -1823,15 +1913,19 @@ OUTPUT: DG: Graph after simplification took place    """
 
 def simplifyGraph(DG, all_reads, work_dir, k_size):
     #TODO: add true minimizers
-    #print("Simplifying the Graph (Merging nodes, popping bubbles)")
-    list_of_cycles = find_repetative_regions(DG)
-    #print(list_of_cycles)
-    ##print("Current State of Graph:")
+    print("trying to find cycles")
+    print("FoundCycle",isCyclic(DG))
+    print("Simplifying the Graph (Merging nodes, popping bubbles)")
+    #list_of_cycles = find_repetative_regions(DG)
+    #possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
+    #if possible_cycles:
+    #    print("Found cycle(s) ", possible_cycles)
+    print("Current State of Graph:")
     ##print(DG.nodes(data=True))
     ##print(DG.edges(data=True))
     #draw_Graph(DG)
     new_bubble_popping_routine(DG, all_reads, work_dir, k_size)
-    list_of_cycles = find_repetative_regions(DG)
+    #list_of_cycles = find_repetative_regions(DG)
     #print("Cycles:",list_of_cycles)
     #print("Popping bubbles done")
     #draw_Graph(DG)

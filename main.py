@@ -399,8 +399,8 @@ def listToString(s):
 
     # return string
     return (str1.join(str(s)))
-
 def main(args):
+    graph_id=1
     # start = time()
     if os.path.exists("mapping.txt"):
         os.remove("mapping.txt")
@@ -547,6 +547,7 @@ def main(args):
             all_intervals.extend(prev_visited_intervals)
 
             if previously_corrected_regions[r_id]:  # add previously corrected regions in to the solver
+
                 all_intervals.extend(previously_corrected_regions[r_id])
                 del previously_corrected_regions[r_id]
 
@@ -562,7 +563,8 @@ def main(args):
                 # assert opt_indicies == opt_indicies2
                 # print(opt_indicies)
                 intervals_to_correct = get_intervals_to_correct(opt_indicies[::-1], all_intervals)
-                all_intervals_for_graph[r_id] = intervals_to_correct
+                all_intervals_for_graph[graph_id] = intervals_to_correct
+                graph_id+=1
                 #if r_id == 2:
                 #    print("Intervals to correct read 60:")
                 #    print(intervals_to_correct)
@@ -576,7 +578,6 @@ def main(args):
         # if r_id == 10:
         #     sys.exit()
         # print(type(intervals_to_correct))
-
         with open('all_intervals.txt', 'wb') as file:
             file.write(pickle.dumps(all_intervals_for_graph))
         with open('all_reads.txt', 'wb') as file:
@@ -620,7 +621,8 @@ def main(args):
         DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
             all_intervals_for_graph, k_size, delta_len, read_len_dict,all_reads)
         print("Known intervals")
-        print(known_intervals)
+        #print(known_intervals)
+        print("Graph built up!")
         #print("edges with attributes:")
         #print(DG.edges(data=True))
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
