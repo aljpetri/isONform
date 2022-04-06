@@ -22,7 +22,7 @@ import edlib
 import _pickle as pickle
 from sys import stdout
 
-from SimplifyGraph import simplifyGraph
+from SimplifyGraph import simplifyGraph,isCyclic
 from modules import create_augmented_reference, help_functions, correct_seqs  # ,align
 
 
@@ -434,11 +434,12 @@ def main(args):
     for batch_id, reads in enumerate(batch(all_reads, args.max_seqs)):
         print("correcting {0} reads in a batch".format(len(reads)))
         batch_start_time = time()
-
+        iso_abundance=args.iso_abundance
         w = args.w
         x_high = args.xmax
         x_low = args.xmin
         hash_fcn = "lex"
+        not_used=0
         # for hash_fcn in ["lex"]: # ["lex"]: #  add "rev_lex" # add four others
         if args.compression:
             minimizer_database = get_minimizers_and_positions_compressed(reads, w, k_size, hash_fcn)
@@ -552,6 +553,7 @@ def main(args):
                 del previously_corrected_regions[r_id]
 
             if not all_intervals:
+                not_used+=1
                 eprint("Found nothing to correct")
                 corrected_seq = seq
             else:
@@ -583,6 +585,7 @@ def main(args):
         with open('all_reads.txt', 'wb') as file:
             file.write(pickle.dumps(all_reads))
         print("All_intervals were written into file")
+        print("Skipped ",not_used," reads due to not having high enough interval abundance")
         #for r_id,intervals_to_correct in all_intervals_for_graph.items():
             #if(r_id==2):
                 #print("intervals to correct")
@@ -617,9 +620,17 @@ def main(args):
         # nx.write_graphml_lxml(DG2, "outputgraph2.graphml")
         #print("Type of Allreads")
         #print(type(all_reads))
-        read_len_dict = get_read_lengths(all_reads)
-        DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
-            all_intervals_for_graph, k_size, delta_len, read_len_dict,all_reads)
+        is_cyclic=True
+        while is_cyclic:
+            read_len_dict = get_read_lengths(all_reads)
+            DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
+                all_intervals_for_graph, k_size, delta_len, read_len_dict,all_reads)
+            is_cyclic=isCyclic(DG)
+            if is_cyclic:
+                k_size+=1
+                if k_size>w:
+                    w+=1
+                print("Regenerating Graph, increasing k to be",k_size)
         print("Known intervals")
         #print(known_intervals)
         print("Graph built up!")
@@ -635,12 +646,12 @@ def main(args):
 
         # for iso in isoform_reads:
         #print("hello")
-        possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
-        print("Found cycle(s) ", possible_cycles)
-        if not (possible_cycles):
-            generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa)
-        else:
-            print("found cycle. Terminate")
+        #possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
+        #print("Found cycle(s) ", possible_cycles)
+        #if not (possible_cycles):
+        generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa,iso_abundance)
+        #else:
+        #    print("found cycle. Terminate")
         #for key,value in all_reads.items():
         #    print(key,value)
         #print("Allreads written in file")
@@ -711,7 +722,7 @@ if __name__ == '__main__':
                                                                         could be to adjust upper interval legnth dynamically to guarantee a certain number of spanning intervals.')
     parser.add_argument('--outfolder', type=str, default=None,
                         help='A fasta file with transcripts that are shared between samples and have perfect illumina support.')
-    # parser.add_argument('--pickled_subreads', type=str, help='Path to an already parsed subreads file in pickle format')
+    parser.add_argument('--iso_abundance', type=int,default=1, help='Minimum abundance of reads that have to support an isoform to show in results')
     # parser.set_defaults(which='main')
     args = parser.parse_args()
 

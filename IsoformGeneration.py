@@ -209,9 +209,9 @@ def compute_equal_reads(DG,reads):
         for sup_read in supported_reads:
             #print(sup_read)
             reads_for_isoforms.remove(sup_read)
-        print("Isoforms")
-        print(isoforms)
-        print("VisitedNodes" , supported_reads[0],"has ", len(visited_nodes)," elements: ",visited_nodes)
+        #print("Isoforms")
+        #print(isoforms)
+        #print("VisitedNodes" , supported_reads[0],"has ", len(visited_nodes)," elements: ",visited_nodes)
         #print(visited_nodes)
     return isoforms,visited_nodes_for_isoforms
 
@@ -240,7 +240,7 @@ def run_spoa(reads, spoa_out_file, spoa_path):
         curr_best_seqs is an array with q_id, pos1, pos2
         the current read is on index 0 in curr_best_seqs array
     """
-def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_seqs_to_spoa=200):
+def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_seqs_to_spoa=200,iso_abundance=1):
     #print("reads")
     #print(reads)
     mapping = {}
@@ -254,38 +254,42 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_se
         mapping[name] = []
         reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
         #if len(equalreads) == 1:
-        if len(value) == 1:
+        if len(value)>iso_abundance:
+            if len(value) == 1:
             #rid = equalreads[0]
-            rid = key
-            singleread = reads[rid]
+                rid = key
+                singleread = reads[rid]
             #print(singleread)
-            seq = singleread[1]
+                seq = singleread[1]
             # name='consensus'+str(rid)
-            mapping[name].append(singleread[0])
-            consensus_file.write(">{0}\n{1}\n".format(name, seq))
-            reads_path.close()
-        else:
+                mapping[name].append(singleread[0])
+                consensus_file.write(">{0}\n{1}\n".format(name, seq))
+                reads_path.close()
+            else:
             #print("Equalreads has different size")
             #for i, q_id in enumerate(equalreads):
-            for i, q_id in enumerate(value):
-                singleread = reads[q_id]
-                seq = singleread[1]
+                for i, q_id in enumerate(value):
+                    singleread = reads[q_id]
+                    seq = singleread[1]
                 #print(seq)
-                mapping[name].append(singleread[0])
-                if i > max_seqs_to_spoa:
-                    break
-                print("read ", q_id,": ",seq)
-                reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
-            reads_path.close()
-            spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
+                    mapping[name].append(singleread[0])
+                    if i > max_seqs_to_spoa:
+                        break
+                #print("read ", q_id,": ",seq)
+                    reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
+                reads_path.close()
+                spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
             #print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
-            consensus_file.write(">{0}\n{1}\n".format(name, spoa_ref))
+                consensus_file.write(">{0}\n{1}\n".format(name, spoa_ref))
     #print(mapping)
 
     #print("Mapping has length "+str(len(mapping)))
-    mappingfile = open(os.path.join(outfolder, "mapping.txt"), "w")
-    for id, seq in mapping.items():
-        mappingfile.write("{0}\n{1}\n".format(id, seq))
+
+        print("Mapping",mapping)
+        mappingfile = open(os.path.join(outfolder, "mapping.txt"), "w")
+        for id, seq in mapping.items():
+            if len(seq)>iso_abundance:
+                mappingfile.write("{0}\n{1}\n".format(id, seq))
     mappingfile.close()
     # consensus_file.write(">{0}\n{1}\n".format('consensus', spoa_ref))
 
@@ -313,15 +317,15 @@ def calculate_isoform_similarity(isoform_paths):
                     min_equality=equality_1
                 else:
                     min_equality=equality_2
-                print("Equality of ",id," vs ",id2,": ",equality_1)
+                #print("Equality of ",id," vs ",id2,": ",equality_1)
 
 """
 Wrapper method used for the isoform generation
 """
-def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,max_seqs_to_spoa=200):
+def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,max_seqs_to_spoa=200,iso_abundance=1):
     equal_reads,isoform_paths=compute_equal_reads(DG,reads)
     calculate_isoform_similarity(isoform_paths)
-    generate_isoform_using_spoa(equal_reads,all_reads, work_dir,outfolder, max_seqs_to_spoa)
+    generate_isoform_using_spoa(equal_reads,all_reads, work_dir,outfolder, max_seqs_to_spoa,iso_abundance)
 
 
 

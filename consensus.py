@@ -47,20 +47,22 @@ def cigar_to_seq(cigar, query, ref):
             r_index += length_
         
         else:
-            print("error")
-            print(cigar)
+            #print("error")
+            #print(cigar)
             sys.exit()
 
     return  "".join([s for s in q_aln]), "".join([s for s in r_aln]), cigar_tuples
 
 
 def parasail_alignment(s1, s2, match_score = 2, mismatch_penalty = -2, opening_penalty = 3, gap_ext = 1):
+    #print("s1", s1)
+    #print("s2",s2)
     user_matrix = parasail.matrix_create("ACGT", match_score, mismatch_penalty)
     result = parasail.sg_trace_scan_16(s1, s2, opening_penalty, gap_ext, user_matrix)
     if result.saturated:
-        print("SATURATED!",len(s1), len(s2))
+        #print("SATURATED!",len(s1), len(s2))
         result = parasail.sg_trace_scan_32(s1, s2, opening_penalty, gap_ext, user_matrix)
-        print("computed 32 bit instead")
+        #print("computed 32 bit instead")
 
     # difference in how to obtain string from parasail between python v2 and v3... 
     if sys.version_info[0] < 3:
@@ -146,7 +148,7 @@ def detect_reverse_complements(centers, rc_identity_threshold):
         merged_cluster_id = c_id
         merged_nr_reads = nr_reads_in_cl
         if c_id in already_removed:
-            print("has already been merged, skipping")
+            #print("has already been merged, skipping")
             continue
 
         elif i == len(centers) - 1: # last sequence and it is not in already removed
@@ -162,10 +164,10 @@ def detect_reverse_complements(centers, rc_identity_threshold):
                 nr_mismatching_pos = len([1 for n1, n2 in zip(seq_aln, seq2_rc_aln) if n1 != n2])
                 total_pos = len(seq_aln)
                 aln_identity =  (total_pos - nr_mismatching_pos) / float(total_pos)
-                print(aln_identity)
+                #print(aln_identity)
 
                 if aln_identity >= rc_identity_threshold:
-                    print("Detected alignment identidy above threchold for reverse complement. Keeping center with the most read support and adding rc reads to supporting reads.")
+                    #print("Detected alignment identidy above threchold for reverse complement. Keeping center with the most read support and adding rc reads to supporting reads.")
                     merged_nr_reads += nr_reads_in_cl2
                     already_removed.add(c_id2)
 
@@ -177,7 +179,7 @@ def detect_reverse_complements(centers, rc_identity_threshold):
 
             filtered_centers.append( [merged_nr_reads, c_id, seq, all_reads] )
 
-    print(len(filtered_centers), "consensus formed.")
+    #print(len(filtered_centers), "consensus formed.")
     return filtered_centers
 
 
@@ -252,7 +254,7 @@ def form_draft_consensus(clusters, representatives, sorted_reads_fastq_file, wor
                 # reads_path.write(">{0}\n{1}\n".format(str(q_id)+str(pos1)+str(pos2), seq))
             reads_path.close()
             # spoa_ref = create_augmented_reference.run_spoa(reads_path.name, os.path.join(work_dir,"spoa_tmp.fa"), "spoa")
-            print("creating center of {0} sequences.".format(nr_reads_in_cluster))
+            #print("creating center of {0} sequences.".format(nr_reads_in_cluster))
             center = run_spoa(reads_path.name, os.path.join(work_dir,"spoa_tmp.fa"), "spoa")
             centers.append( [nr_reads_in_cluster, c_id, center, reads_path.name])
     return centers

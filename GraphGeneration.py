@@ -72,7 +72,9 @@ def convert_array_to_hash(info_array):
 
     #preprocessing: Delete the first three elements from the array, as they contain the information about this occurrence
     for x in range(0, 3):
-       info_array.pop(0)
+        if info_array:
+             #print("IA",info_array)
+             info_array.pop(0)
 
     tup=tuple(info_array)
     return(hash(tup))
@@ -180,11 +182,11 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
     for i in range(1,len(read_len_dict)+1):
         reads_at_end_dict[i]=Read_infos(read_len_dict[i],read_len_dict[i],True)
         #reads_for_isoforms.append(i)
-    print(reads_at_start_dict)
-    print(reads_at_end_dict)
+    #print(reads_at_start_dict)
+    #print(reads_at_end_dict)
     # a source and a sink node are added to the graph in order to have a well-defined start and end for the paths
     DG.add_node("s",reads=reads_at_start_dict,end_mini_seq='')
-    print("REads at end dict",reads_at_end_dict)
+    #print("REads at end dict",reads_at_end_dict)
     DG.add_node("t",reads=reads_at_end_dict,end_mini_seq='')
 
     # holds the r_id as key and a list of tuples as value: For identification of reads, also used to ensure correctness of graph
@@ -208,14 +210,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
     # iterate through the different reads stored in all_intervals_for_graph. For each read one path is built up from source to sink if the nodes needed for that are not already present
     # intervals_for_read holds all intervals which make up the solution for the WIS of a read
     for r_id, intervals_for_read in all_intervals_for_graph.items():
-        if r_id==29:
-            #DEBUG=True
-            print(r_id)
-            print(isCyclic(DG))
-        elif r_id==30:
-            print("Current state of Graph")
-            print(DG.nodes(data=True))
-            print(DG.edges(data=True))
+
         #elif r_id==31:
             #DEBUG==False
         containscycle=False
@@ -233,8 +228,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
             if DEBUG:
                 Cyclic=isCyclic(DG)
                 if Cyclic:
-                    print("ITUP",info_tuple)
-                    print("KI",known_intervals)
                     break
             #generate hash value of the intervals' infos
             curr_hash=convert_array_to_hash(inter[3])
@@ -249,11 +242,11 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
 
                 #if the interval repeats during this read
                 if is_repetative:
-                    if DEBUG:
-                        print(info_tuple)
-                        print("Repetative")
-                        print(known_cycles)
-                        print(inter[3])
+                    #if DEBUG:
+                        #print(info_tuple)
+                        #print("Repetative")
+                        #print(known_cycles)
+                        #print(inter[3])
 
                     #use find_next_node to access all previously recorded cycles and find the one matching with the current cycle
                     foundnode,merge_address=find_next_node(inter[0],inter[3],known_cycles,known_intervals[r_id-1],k,cycle_start,previous_end,DG,delta_len)
@@ -334,8 +327,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                         edge_support[previous_node, name].append(r_id)
                     #if there is an edge connecting previous_node and name: test if length difference is not higher than delta_len
                     else:
-                        if DEBUG:
-                            print(previous_node,name)
+                        #if DEBUG:
+                            #print(previous_node,name)
                         prev_len = DG[previous_node][name]["length"]
                         #print("Prev_len:"+str(prev_len))
                         len_difference = abs(this_len - prev_len)
@@ -429,12 +422,12 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                 nodes_for_graph[name] = nodelist
                 nodes_for_graph[name] = nodelist
                 #keep known_intervals up to date
-                print(inter)
-                print(len(known_intervals))
-                print("Rid",r_id)
-                print((inter[0], name, inter[1]))
-                print("Hello")
-                print("AIL",len(all_intervals_for_graph))
+                #print(inter)
+                #print(len(known_intervals))
+                #print("Rid",r_id)
+                #print((inter[0], name, inter[1]))
+                #print("Hello")
+                #print("AIL",len(all_intervals_for_graph))
                 known_intervals[r_id - 1].append((inter[0], name, inter[1]))
                 node_overview_read[r_id - 1].append(name)
                 # get the length between the previous end and this nodes start
@@ -497,17 +490,17 @@ def check_graph_correctness(known_intervals,all_intervals_for_graph):
     for r_id, intervals_for_read in all_intervals_for_graph.items():
         if not (len(intervals_for_read)==len(known_intervals[r_id-1])):
             correct_graph=False
-            print("graph incorrect for read "+str(r_id))
-        print("All_intervals_for_graph at read "+str(r_id)+" has "+str(len(intervals_for_read))+" Intervals")
+            #print("graph incorrect for read "+str(r_id))
+        #print("All_intervals_for_graph at read "+str(r_id)+" has "+str(len(intervals_for_read))+" Intervals")
         for inter in intervals_for_read:
                 read_id = inter[3][slice(0, len(inter[3]),3)]
                 number_of_reads_all_intervals=len(read_id)
-        print("Known_intervals at read " + str(r_id) + " has " + str(len(known_intervals[r_id-1])) + " Intervals")
+        #print("Known_intervals at read " + str(r_id) + " has " + str(len(known_intervals[r_id-1])) + " Intervals")
 
-    if correct_graph:
-        print("Graph built up correctly")
-    else:
-        print("ERROR - Incorrect Graph")
+    #if correct_graph:
+    #    print("Graph built up correctly")
+    #else:
+    #    print("ERROR - Incorrect Graph")
 
 """
 Plots the given Directed Graph via Matplotlib
@@ -541,8 +534,8 @@ USED FOR DEBUGGING ONLY-deprecated in IsONform
 def main():
     import sys
     sys.stdout = open('log.txt', 'w')
-    print('test')
-
+    #print('test')
+    w=10
     reads=62
     max_seqs_to_spoa=200
     work_dir = tempfile.mkdtemp()
@@ -550,26 +543,31 @@ def main():
     k_size=9
     outfolder="out_local"
     cwd = os.getcwd()
-    print("CWD",cwd)
+    #print("CWD",cwd)
     file = open('all_intervals.txt', 'rb')
     all_intervals_for_graph = pickle.load(file)
     file.close()
-    print("All of them", len(all_intervals_for_graph))
+    #print("All of them", len(all_intervals_for_graph))
 
     file2 = open('all_reads.txt', 'rb')
 
     all_reads = pickle.load(file2)
     #print("Allreads type")
     #print(type(all_reads))
-    print(all_reads)
+    #print(all_reads)
     file2.close()
     delta_len=2*k_size
-    read_len_dict=get_read_lengths(all_reads)
-    #print(all_intervals_for_graph)
-    print()
-    DG,known_intervals,node_overview_read,reads_for_isoforms,reads_list = generateGraphfromIntervals(all_intervals_for_graph, k_size,delta_len,read_len_dict,all_reads)
-
-    #print(known_intervals)
+    is_cyclic = True
+    while is_cyclic:
+        read_len_dict = get_read_lengths(all_reads)
+        DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
+            all_intervals_for_graph, k_size, delta_len, read_len_dict, all_reads)
+        is_cyclic = isCyclic(DG)
+        if is_cyclic:
+            k_size += 1
+            if k_size > w:
+                w += 1
+            print("Regenerating Graph, increasing k to be", k_size)
     print("edges with attributes:")
     #print(DG.edges(data=True))
     #check_graph_correctness(known_intervals,all_intervals_for_graph)
@@ -581,10 +579,8 @@ def main():
     #draw_Graph(DG)
     #simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
     print("Calling the method")
-    if(isCyclic(DG)):
-        k_size=k_size+1
     #TODO: REINVOKE SIMPLIFYGAPH
-    #simplifyGraph(DG,all_reads,work_dir,k_size)
+    simplifyGraph(DG,all_reads,work_dir,k_size)
 
     #simplifyGraphOriginal(DG,delta_len, all_reads, work_dir, k_size,known_intervals)
     #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
@@ -602,7 +598,7 @@ def main():
     #print(known_intervals)
     #The call for the isoform generation (deprecated during implementation)
     #TODO: invoke isoform_generation again
-    #generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa)
+    generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa)
     """
     else:
         flat_list = [item for sublist in possible_cycles for item in sublist]
