@@ -1076,63 +1076,81 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size,spoa_c
     endseqlist = []
     reads_path_len=0
     max_len=0
-    #print(consensus_attributes)
-    for i, (q_id, pos1, pos2) in enumerate(consensus_attributes):
+    longest_seq_len=-1
+    if len(consensus_attributes)>2:
+        for i, (q_id, pos1, pos2) in enumerate(consensus_attributes):
         #print("consensus_atm:",q_id,", ",pos1,",",pos2)
         #print("read ",q_id)
         #print(pos2)
         #print("Printing full seq:", reads[q_id][1])
-        if pos2 == 0:
+            if pos2 == 0:
             #print("TRUE")
-            pos2 = len(reads[q_id][1]) - k_size
+                pos2 = len(reads[q_id][1]) - k_size
         #print(pos2)
-        if pos1<(pos2+k_size):
-            seq = reads[q_id][1][pos1: (pos2 + k_size)]
-        else:
-            seq=""
+            if pos1<(pos2+k_size):
+                seq = reads[q_id][1][pos1: (pos2 + k_size)]
+            else:
+                seq=""
         #print(seq)
-        seq_infos[q_id]=(pos1,pos2+k_size,seq)
+            seq_infos[q_id]=(pos1,pos2+k_size,seq)
         #print("seq_infos",seq_infos)
         # startseq=reads[q_id][1][pos1:pos1+k_size]
-        endseq = reads[q_id][1][pos2:pos2 + k_size]
+            endseq = reads[q_id][1][pos2:pos2 + k_size]
         # startseqlist.append(startseq)
-        endseqlist.append(endseq)
+            endseqlist.append(endseq)
         #print(q_id, "from ", pos1, "to", pos2 + k_size, ": ", seq)
-        if len(seq)<k_size:
-            if len(seq)>max_len:
-                max_len=len(seq)
-            elif len(seq)<1:
+            if len(seq)<k_size:
+                if len(seq)>max_len:
+                    max_len=len(seq)
+                elif len(seq)<1:
                 #print("Seq too short: ",q_id,", ",pos1,",",pos2)
-                max_len=1
+                    max_len=1
             #print("not popping ",q_id)
-        else:
-            reads_path_len+=1
-            reads_path.write(">{0}\n{1}\n".format(str(q_id) + str(pos1) + str(pos2), seq))
+            else:
+                reads_path_len+=1
+                reads_path.write(">{0}\n{1}\n".format(str(q_id) + str(pos1) + str(pos2), seq))
     # #print("start",startseqlist)
     #print("end", endseqlist)
-    reads_path.close()
+        reads_path.close()
     # #print(reads_path.name)
     # sys.exit()
     #print("seq_infos",seq_infos)
     #print("RPL",reads_path_len)
-    if reads_path_len>0:
-        spoa_count+=1
-        if (spoa_count%100)==0:
-            print("Spoa_count",spoa_count)
-        spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
+        if reads_path_len>0:
+            spoa_count+=1
+            if (spoa_count%100)==0:
+                print("Spoa_count",spoa_count)
+            spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
         #print("spoa_ref", spoa_ref)
-        return spoa_ref,seq_infos,spoa_count
+            return spoa_ref,seq_infos,spoa_count
+        else:
+            string_val = "X" * max_len  # gives you "xxxxxxxxxx"
+            return string_val,seq_infos,spoa_count
     else:
-        string_val = "X" * max_len  # gives you "xxxxxxxxxx"
-        return string_val,seq_infos,spoa_count
+        f_id,fstart,fend=consensus_attributes[0]
+        e_id,estart,eend=consensus_attributes[1]
+        fdist=fend-fstart
+        edist=eend-estart
+        if fdist>edist:
+            consensus=reads[f_id][1][fstart: (fend + k_size)]
+            seq_infos[f_id] = (fstart, fend + k_size, consensus)
+        else:
+            consensus = reads[e_id][1][estart: (eend + k_size)]
+            seq_infos[f_id] = (estart, eend + k_size, consensus)
+        return consensus, seq_infos, spoa_count
 """ Method to simplify the graph. 
     INPUT:  DG  Directed Graph
            delta_len   parameter giving the maximum length difference between two paths to still pop the bubble
     OUTPUT: DG Directed Graph without bubbles
         """
-
-
-def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count):
+def collect_consensus_reads(consensus_attributes):
+    con_reads=set()
+    for con_att in consensus_attributes:
+        con_reads.add(con_att[0])
+    con_reads_fin=frozenset(con_reads)
+    return con_reads_fin
+#TODO adding the is_megabubble seems to break this method: Figure out what is wrong here!!!!!
+def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,multi_consensuses,is_megabubble,combination):
     #print("aligning")
     #print("current consensus_infos",consensus_infos)
     consensus_list = []
@@ -1141,36 +1159,56 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count):
     too_short=False
     for path_node, consensus_attributes in consensus_infos.items():
         #print("consensus", consensus_attributes)
+        con_reads=collect_consensus_reads(consensus_attributes)
+        combi = (combination[0], combination[1], con_reads)
+        #print("This_combi ", combi)
+        #combi=frozenset(init_combi)
         #print("path_node",path_node)
-        if len(consensus_attributes) > 1:
-            con,seq_infos_from_fun,spoa_count = generate_consensus_path(work_dir, consensus_attributes, all_reads, k_size,spoa_count)
-            if len(con)<3:
-                consensus_log[path_node] = ""
-                too_short=True
-                consensus_list.append("")
-            else:
-                consensus_log[path_node]=con
-                seq_infos.update(seq_infos_from_fun)
-            #print(con)
-                consensus_list.append(con)
+        if combi in multi_consensuses:
+            contains_combi=True
         else:
-            (q_id, pos1, pos2) = consensus_attributes[0]
-            if abs(pos2-pos1)<3:
-                consensus_log[path_node] = ""
-                too_short = True
-                consensus_list.append("")
-            elif pos2<pos1:
-                consensus_log[path_node] = ""
-                too_short = True
-                consensus_list.append("")
-
+            contains_combi=False
+        if is_megabubble and contains_combi:
+            con_infos=multi_consensuses[combi]
+            con = con_infos[0]
+            #seq_infos_from_fun=con_infos[1]
+            #seq_infos.update(seq_infos_from_fun)
+            spoa_count=con_infos[2]
+            consensus_log[path_node] = con
+            consensus_list.append(con)
+        else:
+        #if True:
+            if len(consensus_attributes) > 1:
+                con,seq_infos_from_fun,spoa_count = generate_consensus_path(work_dir, consensus_attributes, all_reads, k_size,spoa_count)
+                if is_megabubble:
+                    multi_consensuses[combi]=(con,seq_infos_from_fun,spoa_count)
+                if len(con)<3:
+                    consensus_log[path_node] = ""
+                    too_short=True
+                    consensus_list.append("")
+                else:
+                    consensus_log[path_node]=con
+                    seq_infos.update(seq_infos_from_fun)
+                #print(con)
+                    consensus_list.append(con)
             else:
-            #print("consensus_attributes", q_id, ", ", pos1, ", ", pos2)
-                con = all_reads[q_id][1][pos1: pos2 + k_size]
-                seq_infos[q_id]=(pos1,pos2+k_size,con)
-            #print("single consensus",con)
-                consensus_log[path_node]=con
-                consensus_list.append(con)
+                (q_id, pos1, pos2) = consensus_attributes[0]
+                if abs(pos2-pos1)<3:
+                    consensus_log[path_node] = ""
+                    too_short = True
+                    consensus_list.append("")
+                elif pos2<pos1:
+                    consensus_log[path_node] = ""
+                    too_short = True
+                    consensus_list.append("")
+
+                else:
+                #print("consensus_attributes", q_id, ", ", pos1, ", ", pos2)
+                    con = all_reads[q_id][1][pos1: pos2 + k_size]
+                    seq_infos[q_id]=(pos1,pos2+k_size,con)
+                #print("single consensus",con)
+                    consensus_log[path_node]=con
+                    consensus_list.append(con)
     #print("TOOSHORT",too_short)
     #print("CITEMS",consensus_infos)
     #if too_short:
@@ -1622,6 +1660,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
     iter=10
     itere=20
     spoa_count=0
+    multi_consensuses={}
     #TODO: This function does decide that a multibubble is globally not poppable while only a subbubble is not poppable! (Has something to do with filtering)
     #we want to continue the bubble_popping process as long as we find combinations that have not been deemed to be "not viable" to pop
     while has_combinations:
@@ -1681,7 +1720,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
         #iterate over all combinations
         for combination in sorted_combinations:
             if (len(not_viable_global)%100)==0:
-                print("not_viable ",len(not_viable_global))
+                print("not_viable ",len(not_viable_global), "of ", len(combinations))
             #print("Combi ",combination)
             #assert len(possible_cycles) == 0, "cycle found"
             ##print("Current State of Graph:")
@@ -1758,8 +1797,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                     #print("FlatList_StartEND",flat_list)
                     flat_list.extend(all_paths_filtered[0][0])
                     flat_list.extend(all_paths_filtered[1][0])
-                    #print("FLatList",flat_list)
-                    is_poppable,cigar,seq_infos,consensus_info_log,spoa_count=align_bubble_nodes(all_reads,consensus_infos,work_dir,k_size,spoa_count)
+                    is_poppable,cigar,seq_infos,consensus_info_log,spoa_count=align_bubble_nodes(all_reads,consensus_infos,work_dir,k_size,spoa_count,multi_consensuses,False,this_combi)
 
                     if is_poppable:
 
@@ -1800,6 +1838,9 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                 #print(all_paths_filtered)
                 listing=[(p1,p2) for (p1,p2) in itertools.combinations(all_paths_filtered, 2) if (combination[0],combination[1],tuple(sorted( set(p1[1]) | set(p2[1])))) not in not_viable_multibubble]
                 #print(listing)
+                #this_combi_reads = tuple(sorted(set(p1[1]) | set(p2[1])))
+                #this_path_id=(combination[0],combination[1],this_combi_reads)
+                #if not this_path_id in multi_consensuses:
                 if not listing:
                     #print("Not viable now bef :",not_viable_global)
                     not_viable_global.add(combination)
@@ -1834,12 +1875,13 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                         p_set2=set(p2[0][1:])
                         intersect=p_set1.intersection(p_set2)
                         #print("intersect",intersect)
+                        this_combi_reads = tuple(sorted(set(p1[1]) | set(p2[1])))
+                        # combi_reads_sorted=tuple(sorted(this_combi_reads))
+                        # print("thiscombireadsType", type(this_combi_reads))
+                        # print("this combi reads", this_combi_reads)
+                        this_combi = (combination[0], combination[1], this_combi_reads)
                         if intersect:
-                            this_combi_reads = tuple(sorted(set(p1[1]) | set(p2[1])))
-                            # combi_reads_sorted=tuple(sorted(this_combi_reads))
-                            #print("thiscombireadsType", type(this_combi_reads))
-                            #print("this combi reads", this_combi_reads)
-                            this_combi = (combination[0], combination[1], this_combi_reads)
+
                             #print(this_combi)
                             not_viable_multibubble.add(this_combi)
                             continue
@@ -1856,7 +1898,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                            # print(DG.nodes(data=True))
                             #print(DG.edges(data=True))
                         is_poppable, cigar, seq_infos, consensus_info_log,spoa_count = align_bubble_nodes(all_reads, consensus_infos,
-                                                                                           work_dir, k_size,spoa_count)
+                                                                                           work_dir, k_size,spoa_count,multi_consensuses,True,this_combi)
                         if is_poppable:
                             all_paths_filtered=[]
                             all_paths_filtered.append(p1)
@@ -1947,4 +1989,4 @@ def simplifyGraph(DG, all_reads, work_dir, k_size):
     #print("Cycles:",list_of_cycles)
     #print("Popping bubbles done")
     #draw_Graph(DG)
-    merge_nodes(DG)
+    #merge_nodes(DG)

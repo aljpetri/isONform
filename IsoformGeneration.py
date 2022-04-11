@@ -153,8 +153,7 @@ OUPUT:      filename    file which contains all the final isoforms
 def compute_equal_reads(DG,reads):
     startnode = 's'
     startreads=DG._node['s']['reads']
-    #print("Startreads")
-    #print(startreads)
+    #print("Startreads",startreads)
     #endnode='t'
     visited_nodes_for_isoforms= {}
     supported_reads=[]
@@ -177,8 +176,8 @@ def compute_equal_reads(DG,reads):
             #add current node to the list of visited_nodes
             visited_nodes.append(current_node)
             prev_node=current_node
-            #print("CurrnodebefMethod")
-            #print(current_node)
+            #print("CurrnodebefMethod",current_node)
+            #print()
             current_node,supported_reads=get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr)
             #print("current node returned by get best supported edge node", current_node)
             edge_tup=(prev_node,current_node)
@@ -254,7 +253,8 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_se
         mapping[name] = []
         reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
         #if len(equalreads) == 1:
-        if len(value)>iso_abundance:
+    #TODO: add information of how many reads support this isoform by consensusx_support
+        if len(value)>=iso_abundance:
             if len(value) == 1:
             #rid = equalreads[0]
                 rid = key
@@ -285,10 +285,10 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_se
 
     #print("Mapping has length "+str(len(mapping)))
 
-        print("Mapping",mapping)
+        #print("Mapping",mapping)
         mappingfile = open(os.path.join(outfolder, "mapping.txt"), "w")
         for id, seq in mapping.items():
-            if len(seq)>iso_abundance:
+            if len(seq)>=iso_abundance:
                 mappingfile.write("{0}\n{1}\n".format(id, seq))
     mappingfile.close()
     # consensus_file.write(">{0}\n{1}\n".format('consensus', spoa_ref))

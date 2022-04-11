@@ -628,9 +628,8 @@ def main(args):
             is_cyclic=isCyclic(DG)
             if is_cyclic:
                 k_size+=1
-                if k_size>w:
-                    w+=1
-                print("Regenerating Graph, increasing k to be",k_size)
+                w+=1
+                print("Regenerating Graph, increasing k to be",k_size,"and w to be ",w)
         print("Known intervals")
         #print(known_intervals)
         print("Graph built up!")
@@ -646,10 +645,11 @@ def main(args):
 
         # for iso in isoform_reads:
         #print("hello")
-        #possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
-        #print("Found cycle(s) ", possible_cycles)
+        #print("FoundCycles:",isCyclic(DG))
         #if not (possible_cycles):
+        print("Starting to generate Isoforms")
         generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa,iso_abundance)
+        print("Isoforms generated")
         #else:
         #    print("found cycle. Terminate")
         #for key,value in all_reads.items():
@@ -722,7 +722,7 @@ if __name__ == '__main__':
                                                                         could be to adjust upper interval legnth dynamically to guarantee a certain number of spanning intervals.')
     parser.add_argument('--outfolder', type=str, default=None,
                         help='A fasta file with transcripts that are shared between samples and have perfect illumina support.')
-    parser.add_argument('--iso_abundance', type=int,default=1, help='Minimum abundance of reads that have to support an isoform to show in results')
+    parser.add_argument('--iso_abundance', type=int,default=1, help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
     # parser.set_defaults(which='main')
     args = parser.parse_args()
 
