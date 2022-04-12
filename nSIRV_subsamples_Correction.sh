@@ -1,5 +1,7 @@
 #!/bin/bash
 
+#RUN conda activate isoncorrect
+
 #Author: Alexander Petri
 # Modifications by Kristoffer Sahlin
 
@@ -65,6 +67,8 @@ do
 		###############################################################################################
 		###############################################################################################
 
+		isONcorrect --fastq $filedirectory/reads_$number.fq --outfolder $filedirectory/corrections
+		mv $filedirectory/corrections/corrected_reads.fastq $filedirectory/reads_corr_$number.fq
 		# cp $filedirectory/reads/reads.fq $filedirectory
 		#we want to figure out how many reads were actually generated
 		#read_amount=$(< $filedirectory/reads_$number.fq wc -l)
@@ -73,7 +77,8 @@ do
 		#true_read_amount=$((read_amount / var))
 		#run IsONform
 		#if e=True
-		python -m pyinstrument main.py --fastq $filedirectory/reads_$number.fq --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 5 --outfolder $filedirectory/isonform/
+		
+		python -m pyinstrument main.py --fastq $filedirectory/reads_corr_$number.fq --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 5 --outfolder $filedirectory/isonform/
 		#if e=False
 		#python main.py --fastq $filedirectory/reads/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 3 --outfolder out
 		had_issue=$?
@@ -124,4 +129,5 @@ do
 	done
 	#echo -e"\n">>$outputfile
 done
+
 

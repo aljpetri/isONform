@@ -99,21 +99,21 @@ def record_cycle(current_read_state,cycle_start):
 """Helper method for generateGraphfromIntervals
 """
 def find_next_node(thisstartpos,info_array,known_cycles,current_read_state,k,cycle_start,previous_end,DG,delta_len):
-    print(current_read_state)
+    #print(current_read_state)
     feasible_cycles=[]
     intermediate_cycles=[]
     indices = [i for i, tupl in enumerate(current_read_state) if tupl[1] == cycle_start]
     index = indices[0]
     #print("Known_cycles")
-    print(known_cycles)
+    #print(known_cycles)
     for key,value in known_cycles.items():
         known_cycle_rid=key[0]
         node_appearance=value[0]
         for i in range(0, len(info_array)-2):
             if info_array[i] ==known_cycle_rid and info_array[i+1]==node_appearance[0]-k and info_array[i+2]==node_appearance[2]:
                 intermediate_cycles.append(value)
-    print("Intermediate")
-    print(intermediate_cycles)
+    #print("Intermediate")
+    #print(intermediate_cycles)
     found=False
     found_next_node=None
     for cyc in intermediate_cycles:
@@ -122,7 +122,7 @@ def find_next_node(thisstartpos,info_array,known_cycles,current_read_state,k,cyc
             next_node=node[1]
 
             if index+i<len(current_read_state):
-                print(current_read_state[index+i][1])
+                #print(current_read_state[index+i][1])
                 if not node[1]==current_read_state[index+i][1]:
                     possible_cyc=False
                     break
@@ -131,11 +131,11 @@ def find_next_node(thisstartpos,info_array,known_cycles,current_read_state,k,cyc
                 break
         if(possible_cyc):
             #TODO figure out whether delta len-(thisstart-previousend)<3. If yes: add this occurence to the cycles' last node,if not:just continue the loop in the hope there are more intermediate cycles
-            print("Possible:")
-            print(cyc)
+            #print("Possible:")
+            #print(cyc)
             this_len = thisstartpos - previous_end
-            print("Previous node"+previous_node)
-            print("Nextnode: "+next_node)
+            #print("Previous node"+previous_node)
+            #print("Nextnode: "+next_node)
             prev_len = DG[previous_node][next_node]["length"]
             len_difference = abs(this_len - prev_len)
             # print("Len_difference:"+str(len_difference))
@@ -143,8 +143,8 @@ def find_next_node(thisstartpos,info_array,known_cycles,current_read_state,k,cyc
                 found_next_node=next_node
                 found=True
                 break
-    if found:
-        print("Found next node: "+found_next_node)
+    #if found:
+        #print("Found next node: "+found_next_node)
     return(found,found_next_node)
 
 
@@ -568,7 +568,7 @@ def main():
             if k_size > w:
                 w += 1
             print("Regenerating Graph, increasing k to be", k_size)
-    print("edges with attributes:")
+    #print("edges with attributes:")
     #print(DG.edges(data=True))
     #check_graph_correctness(known_intervals,all_intervals_for_graph)
     #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
