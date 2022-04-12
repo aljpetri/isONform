@@ -18,18 +18,21 @@
 5. `edlib`
 6. `pyinstrument`
 
-1. Create a new environment for isONform (at least python 3.7 required):
-		conda create -n isonform python=3.10 pip 
-		conda activate isonform
-2.  Install isONcorrect and SPOA (strongly recommended)
-		pip install isONcorrect
-		conda install -c bioconda spoa
-3.  Install other dependencies of isONform:
-		conda install networkx
-		pip install ordered-set
-		conda install matplotlib
-		pip install parasail
-		pip install pyinstrument
+
+### Installation guide
+
+1. Create a new environment for isONform (at least python 3.7 required):<br />
+		`conda create -n isonform python=3.10 pip` <br />
+		`conda activate isonform` <br />
+2.  Install isONcorrect and SPOA (strongly recommended)<br />
+		`pip install isONcorrect` <br />
+		`conda install -c bioconda spoa` <br />
+3.  Install other dependencies of isONform:<br />
+		`conda install networkx`<br />
+		`pip install ordered-set`<br />
+		`conda install matplotlib`<br />
+		`pip install parasail`<br />
+		`pip install pyinstrument`
 		
 
 
