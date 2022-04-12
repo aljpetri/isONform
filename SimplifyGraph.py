@@ -1719,8 +1719,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
         #print("sorted_combis",sorted_combinations)
         #iterate over all combinations
         for combination in sorted_combinations:
-            if (len(not_viable_global)%100)==0:
-                print("not_viable ",len(not_viable_global), "of ", len(combinations))
+            #if (len(not_viable_global)%100)==0:
+                #print("not_viable ",len(not_viable_global), "of ", len(combinations))
             #print("Combi ",combination)
             #assert len(possible_cycles) == 0, "cycle found"
             ##print("Current State of Graph:")

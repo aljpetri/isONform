@@ -51,7 +51,7 @@ def cigar_to_seq(cigar, query, ref):
             #print(cigar)
             sys.exit()
 
-    return  "".join([s for s in q_aln]), "".join([s for s in r_aln]), cigar_tuples
+    return "".join([s for s in q_aln]), "".join([s for s in r_aln]), cigar_tuples
 
 
 def parasail_alignment(s1, s2, match_score = 2, mismatch_penalty = -2, opening_penalty = 3, gap_ext = 1):
