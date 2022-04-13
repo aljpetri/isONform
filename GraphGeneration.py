@@ -293,6 +293,9 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                         name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
                         end_mini_seq = seq[inter[1]:inter[1] + k]
                         node_sequence[name] = end_mini_seq
+                        r_infos = Read_infos(inter[0], inter[1], True)
+                        nodelist[r_id] = r_infos
+                        nodes_for_graph[name] = nodelist
                         DG.add_node(name)
                         # get the length between the previous end and this nodes start
                         length = this_len
@@ -420,7 +423,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
                 node_sequence[name] = end_mini_seq
                 nodelist[r_id] = r_infos
                 nodes_for_graph[name] = nodelist
-                nodes_for_graph[name] = nodelist
                 #keep known_intervals up to date
                 #print(inter)
                 #print(len(known_intervals))
@@ -476,6 +478,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k,delta_len,read_len_dic
         #print("Finished for read "+str(r_id))
         #print(edge_support[name,"t"])
     #set the node attributes to be nodes_for_graph, very convenient way of solving this
+    #print("NFG",nodes_for_graph)
     nx.set_node_attributes(DG,nodes_for_graph,name="reads")
     nx.set_node_attributes(DG,node_sequence,name="end_mini_seq")
     nx.set_edge_attributes(DG,edge_support,name='edge_supp')

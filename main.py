@@ -630,7 +630,7 @@ def main(args):
                 k_size+=1
                 w+=1
                 print("Regenerating Graph, increasing k to be",k_size,"and w to be ",w)
-        print("Known intervals")
+        #print("Known intervals")
         #print(known_intervals)
         print("Graph built up!")
         #print("edges with attributes:")
