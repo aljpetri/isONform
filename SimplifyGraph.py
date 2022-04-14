@@ -9,7 +9,6 @@ from functools import cmp_to_key
 from ordered_set import OrderedSet
 from pyinstrument import Profiler
 import itertools
-#TODO: possibily better to use hybrid approach to finding node positions: calculations as well as finding the index of the minimizer in the original read
 """Helper function used to plot the graph. Taken from GraphGeneration.
     INPUT: DG   Directed Graph to plot
 """
@@ -62,33 +61,7 @@ def isCyclic(DG):
     return False
 
 
-"""def find_cycles(DG):
-    visit_nodes_set= set("s")
-    visit_edges_set=set()
 
-    startnode="s"
-    follow_edges=list(DG.out_edges([startnode]))
-    #we use a BFS-based algo to find our cycles. Instead of queue we actually use a list (maybe not the most efficient)
-    for edge in follow_edges:
-        curr_node=edge[1]
-
-        if edge in visit_edges_set:
-                if not curr_node in visit_nodes_set:
-                    visit_nodes_set.add(curr_node)
-                print(edge[0])
-                print(edge[1])
-                curr_dict=DG.nodes[edge[0]]
-                other_dict=DG.nodes[edge[1]]
-                print("Node",edge[0]," is in cycle",curr_dict)
-                print("Node", edge[1], " is also in cycle",other_dict )
-                return True, edge[0],edge[1]
-        visit_edges_set.add(edge)
-        add_edges=[]
-        for poss_edge in list(DG.edges([curr_node])):
-            if not poss_edge in follow_edges:
-                add_edges.append(poss_edge)
-        follow_edges.extend(add_edges)
-    return False,"","" """
 def full_cycle_nodes(DG,node1, node2):
     reads1=tuple(DG.nodes[node1]['reads'])
     reads2 = tuple(DG.nodes[node2]['reads'])
@@ -319,7 +292,7 @@ def find_possible_ends(DG,TopoNodes):
     return possible_ends
 """used to generate the combinations of start and end nodes
 """
-#TODO sort the intersecting elements before creating the tuple
+
 def generate_combinations(possible_starts,possible_ends,TopoNodes):
     combis=[]
     for startnode in possible_starts:
@@ -329,6 +302,7 @@ def generate_combinations(possible_starts,possible_ends,TopoNodes):
                 if len(inter)>=2:
                     combi=(startnode[0],endnode[0],inter)
                     combis.append(combi)
+    print(len(combis)," combinations of nodes generated")
     return combis
 """we filter out combinations that already have been deemed as not_viable
 """
@@ -448,42 +422,6 @@ def get_end_reads(DG, endnode, listofnodes):
             end_reads.update(DG[i_edge[0]][i_edge[1]]['edge_supp'])
     # #print(end_reads)
     return end_reads
-
-
-"""Helper method for get_bubble_start_end: This method finds the minimum and maximum nodes in the bubble
-The method iterates through the nodes in a bubble and collects all their out_nodes. For The minimum node there will not be an out_node
-INPUT:      listofnodes:  A list of nodes which make up the bubble(found to be a bubble by being a cycle in an undirected graph
-            DG:         the directed graph we want to pop the bubble in
-OUTPUT:     startnode: The node deemed to be the starting node of the bubble (given as tuple)
-            still_viable: Boolean value denoting whether the cycle is still a contender for being a bubble
-            start_reads: All reads that are supporting the bubble_start_node as well as one edge towards a bubble node
-            """
-"""
-#get all incoming edges for node x. If start of incoming edge in bubble-> this is not the source node of the bubble
-def find_bubble_start(DG,listofnodes):
-    #startnodes: a dictionary holding all nodes that
-    startnodes= set()
-    viable=False
-    #final_startnodes=[]
-    #startnode=None
-    bubble_nodes=set(listofnodes)
-    #we iterate over all nodes in our bubble
-    for n in listofnodes:
-        #print("n",n)
-        if len(startnodes)>1:
-            #print(startnodes)
-            return startnodes
-        in_edges=DG.in_edges(n)
-        for edge in in_edges:
-            #if the source of the edge is in the bubble
-            if (edge[0] in bubble_nodes):
-                #print(edge[0])
-                #set the indicator value to be TRUE
-                #TODO:THis simply does not work->no double breaking out of loops
-                break
-        startnodes.add(n)
-        #print(startnodes)
-    return startnodes"""
 
 
 def parse_cigar_diversity(cigar_tuples,delta_perc,delta_len):
@@ -753,7 +691,6 @@ def merge_two_dicts(dict1, dict2):
             merged_dict[key2] = val2
     return merged_dict
 
-#TODO:this may not be sufficient
 def sort_by_node_label(seq):
     seq_duplicates = sorted(seq, key=lambda x: x[1])
     return seq_duplicates
@@ -810,7 +747,6 @@ def find_real_nextnode(nextnode1,nextnode2,node_dist,bubble_end,conn_edges,DG, t
     else:
         nextnode = compare_by_length(nextnode1, nextnode2, node_dist, bubble_end, topo_nodes_dict)
         return nextnode
-    #TODO: we can just take the 0th element of the path bc this is what we did before. Nextnode1 is located at pos 1
 
 
 def get_next_node(path, bubble_end):
@@ -907,7 +843,6 @@ def find_intersect_supp_nodes(DG,intersect_supp,path1,path2):
 
 
 
-#TODO: we still need to make sure that we have the correct edge support if we encounter a connecting edge
 def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nodes,node_dist,seq_infos, topo_nodes_dict):  # ,node_dist):
     counter = 0
     path1 = []
@@ -1004,7 +939,6 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
             this_edge_supp=DG[conn_list[0][0]][overall_nextnode]["edge_supp"]
             full_edge_supp=new_edge_supp1+new_edge_supp2+this_edge_supp
 
-        #TODO:seperate the finding of next node from the actual adding of edges to make it easier to hunt down bugs
         if overall_nextnode in path1:
             nextnode1=get_next_node(path1,bubble_end)
             #print("nextnode1",nextnode1)
@@ -1062,7 +996,6 @@ INPUT:      work_dir:               The work directory we are in
 OUTPUT:     spoa_ref:               the consensus sequence generated from the reads
 
 """
-#TODO: for one read the positions do not fit(it has a shorter sequence for our consensus->somewhere we have the wrong position)
 def generate_consensus_path(work_dir, consensus_attributes, reads, k_size,spoa_count):
     reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
     seq_infos={}
@@ -1142,7 +1075,9 @@ def collect_consensus_reads(consensus_attributes):
         con_reads.add(con_att[0])
     con_reads_fin=frozenset(con_reads)
     return con_reads_fin
-#TODO adding the is_megabubble seems to break this method: Figure out what is wrong here!!!!!
+
+
+
 def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,multi_consensuses,is_megabubble,combination):
     #print("aligning")
     #print("current consensus_infos",consensus_infos)
@@ -1204,19 +1139,6 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,m
                     consensus_list.append(con)
     #print("TOOSHORT",too_short)
     #print("CITEMS",consensus_infos)
-    #if too_short:
-    #    first_len=0
-    #    snd_len=0
-    #    for node,cons in consensus_log.items():
-    #        if first_len:
-    #            snd_len=len(cons)
-    #        else:
-    #            first_len=len(cons)
-    #    delta=abs(snd_len-first_len)
-    #    if delta<=3:
-    #        return True, "", "", consensus_log
-    #    else:
-    #        return False,"","",consensus_log
     #print(consensus_list)
     #print("consensus_log",consensus_log)
     consensus1 = consensus_list[0]
@@ -1233,8 +1155,6 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,m
         shorter_len = s1_len
     delta = 0.20
     delta_len = k_size
-
-    delta_diff=0.25
     if shorter_len > delta_len and longer_len > delta_len:
         #print("long:", longer_len, " , short ", shorter_len, "ratio ", (longer_len - shorter_len) / longer_len)
         if (longer_len - shorter_len) / longer_len < delta:
@@ -1254,7 +1174,6 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,m
         return True, "","",consensus_log,spoa_count
 
     else:
-        #TODO: this case results in more errors in the isoform generation of simulated reads, as some reads are popped together due to
         if (longer_len - shorter_len) < delta_len:
             return True, "", "", consensus_log,spoa_count
         else:
@@ -1266,18 +1185,6 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,m
     #print(cigar_string)
     #print(cigar_tuples)
     #print("cigar done")
-
-    #TODO: Here we want to prohibit parasail alignment as soon as we have too big of a sequence len difference as we will never have a suitable alignment (Error in parasail)
-
-    #delta_len =  k_size+1
-
-
-    #TODO comment good_to_pop back out
-    #good_to_pop_diff = parse_cigar_differences(cigar_tuples, delta_len)
-    #if good_to_pop and not good_to_pop_diff:
-    #    print("Difference does not allow pop")
-    #if good_to_pop_diff and not good_to_pop:
-    #    print("Difference would have popped")
 
 
 

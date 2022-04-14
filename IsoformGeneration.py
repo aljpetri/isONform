@@ -36,7 +36,7 @@ def remove_reads_from_edge(DG,edge,supported_reads):
         if read in reads:
             reads.remove(read)
     return reads
-"""Method to delete nodes and edges which do not support any reads any more
+"""Method to delete nodes and edges which do are not supported by any reads anymore
 INPUT:      DG                  Directed Graph
             visitee_nodes       Nodes which make up an isoform and from which we delete the reads
             visited_edges       Edges which make up an isoform and from which we delete the reads
@@ -49,25 +49,20 @@ def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
     #print("Visited nodes",visited_nodes)
 
     #print("supported_reads",supported_reads)
-    all_edges_dict={}
+    #all_edges_dict={}
     update_dict={}
-    edge_update_dict={}
+    #edge_update_dict={}
     for edge in visited_edges:
         #print("visited_edge:",edge)
         new_reads = remove_reads_from_edge(DG, edge, supported_reads)
-    #for node in visited_nodes:
-     #print(node)
-      #  new_reads=remove_reads_from_node(DG, node, supported_reads)
-
         #print("New_reads",new_reads)
         if new_reads:
-            #print("true")
             edge_tuple=(edge[0],edge[1])
             update_dict[edge_tuple]=new_reads
-            nx.set_node_attributes(DG,update_dict,'reads')
         else:
             #print("removing edge",edge)
             DG.remove_edge(edge[0],edge[1])
+    nx.set_node_attributes(DG, update_dict, 'reads')
     for node in visited_nodes:
         if DG.degree(node)==0:
             DG.remove_node(node)

@@ -10,9 +10,9 @@ def plot_scatter(nr_nodes,list):
     #x = np.linspace(*ax.get_xlim())
     #ax.plot(x, x)
     ax.yaxis.set_major_locator(plt.MaxNLocator(15))
-    plt.plot(list, list, c='red')
+    #plt.plot(list, list, c='red')
     plt.figtext(.8, .9, "Diversity: 20%")
-    plt.title("Isoforms detected over actual Isoforms")
+    plt.title("Isoforms detected over actual Isoforms \n preprocessing isONcorrect")
     ax.scatter(getkeysList(nr_nodes),getValsList(nr_nodes), c='blue', edgecolors='none')
     #ax.yaxis.set_major_locator(plt.MaxNLocator(15))
     #set log scales for both axes
@@ -20,18 +20,18 @@ def plot_scatter(nr_nodes,list):
     #ax.set_xscale('log')
     #label the plot to make the figure better comprehensible
     ax.set_xlabel("# Isoforms Simulated")
-    ax.set_ylabel("# Isoforms found by IsONform (avg 20 experiments)")
+    ax.set_ylabel("# Isoforms found by IsONform (5 experiments)")
 
     pylab.show()
 def plot_box(resultsdict):
     labels, data = resultsdict.keys(), resultsdict.values()
     plt.figtext(.8, .9, "Diversity: 20%")
-    plt.title("Isoforms detected over actual Isoforms")
+    plt.title("Isoforms detected over actual Isoforms \n preprocessing isONcorrect")
     plt.boxplot(data)
     plt.xticks(range(1, len(labels) + 1), labels)
     ax = plt.gca()
     ax.set_xlabel("# Isoforms Simulated")
-    ax.set_ylabel("# Isoforms found by IsONform ( 20 experiments)")
+    ax.set_ylabel("# Isoforms found by IsONform ( 5 experiments)")
     plt.show()
 def load_tsv(filename):
     file1 = open(filename, 'r')
