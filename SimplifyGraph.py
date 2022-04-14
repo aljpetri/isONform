@@ -371,7 +371,7 @@ def find_paths(DG,combination):
 
             for edge in out_edges:
                 #print("edge",edge)
-                edge_supp=DG[edge[0]][edge[1]]['edge_supp']
+                edge_supp = DG[edge[0]][edge[1]]['edge_supp']
                 # print("edge_supp",edge_supp)
                 if read in edge_supp:
                     node=edge[1]
