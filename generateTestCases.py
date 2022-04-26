@@ -246,7 +246,7 @@ def simulate_reads(args, isoforms):
     #error_lvls = [0.6, 0.7, 0.8, 0.9, 0.92, 0.94, 0.96, 0.98, 0.99, 0.995]
     #error_lvls=[0.9,0.95,0.96,0.98,0.99,0.995]#3.94%error rate
     #error_lvls=[0.8, 0.875,0.9,0.92,0.96,0.98,0.99,0.995]#7%error rate
-    error_lvls=[0.99]
+    error_lvls=[0.97]
     for i_acc, isoform in isoforms.items():
         #print(i_acc)
         read = []

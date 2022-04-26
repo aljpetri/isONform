@@ -181,7 +181,7 @@ def compute_equal_reads(DG,reads):
             if not supported_reads:
                 break
             #print("Supported:")
-            #print(supported_reads)
+
             if current_node=="t":
                 reached_t=True
             #print("Still supported")
@@ -194,6 +194,7 @@ def compute_equal_reads(DG,reads):
         #print("Cleaning graph")
         #print("visited_edges:",visited_edges)
         #print(DG.edges(data=True))
+        #print("Supported", supported_reads)
         clean_graph(DG,visited_nodes,visited_edges,supported_reads)
         #print(DG.edges(data=True))
         isoforms[supported_reads[0]]=supported_reads

@@ -551,6 +551,7 @@ def get_qvs(reads):
             quality_values_database[r_id].append( tmp_tot_sum + qv )  #= [D[char_] for char_ in qual]
             tmp_tot_sum += qv
     return quality_values_database
+#TODO:it seems simplify_graph uses wrong read ids. Fixing this should improve result quality again
 def main(args):
 
     # start = time()
@@ -586,6 +587,8 @@ def main(args):
     w = args.w
     x_high = args.xmax
     x_low = args.xmin
+    new_all_reads= {}
+    #print("AR",all_reads)
     for batch_id, reads in enumerate(batch(all_reads, args.max_seqs)):
         is_cyclic = True
         while is_cyclic:
@@ -729,7 +732,10 @@ def main(args):
                     # print(opt_indicies)
                     intervals_to_correct = get_intervals_to_correct(opt_indicies[::-1], all_intervals)
                     all_intervals_for_graph[graph_id] = intervals_to_correct
+                    #print("GID",graph_id," ",acc)
+                    new_all_reads[graph_id]=reads[r_id]
                     graph_id+=1
+
                     #if r_id == 2:
                     #    print("Intervals to correct read 60:")
                     #    print(intervals_to_correct)
@@ -786,7 +792,7 @@ def main(args):
             #print(all_intervals_for_graph.keys())
             read_len_dict = get_read_lengths(all_reads)
             DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
-                all_intervals_for_graph, k_size, delta_len, read_len_dict,all_reads)
+                all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
             print(DG.number_of_nodes()," Nodes in our Graph")
             is_cyclic=isCyclic(DG)
             if is_cyclic:
@@ -801,7 +807,7 @@ def main(args):
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         # edgelist = list(DG.edges.data())
         # print(edgelist)
-        simplifyGraph(DG, all_reads,work_dir,k_size)
+        simplifyGraph(DG, new_all_reads,work_dir,k_size)
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         #draw_Graph(DG)
         #print("finding the reads, which make up the isoforms")

@@ -11,7 +11,7 @@ def plot_scatter(nr_nodes,list):
     #ax.plot(x, x)
     ax.yaxis.set_major_locator(plt.MaxNLocator(15))
     plt.plot(list, list, c='red')
-    plt.figtext(.8, .9, "Diversity: 20%")
+    plt.figtext(.8, .9, "ErrorRate: 3%, Div:20")
     plt.title("Isoforms detected over actual Isoforms")
     ax.scatter(getkeysList(nr_nodes),getValsList(nr_nodes), c='blue', edgecolors='none')
     #ax.yaxis.set_major_locator(plt.MaxNLocator(15))
@@ -25,7 +25,7 @@ def plot_scatter(nr_nodes,list):
     pylab.show()
 def plot_box(resultsdict):
     labels, data = resultsdict.keys(), resultsdict.values()
-    plt.figtext(.8, .9, "Diversity: 20%")
+    plt.figtext(.8, .9, ",ErrorRate: 3%, Div:20")
     plt.title("Isoforms detected over actual Isoforms")
     plt.boxplot(data)
     plt.xticks(range(1, len(labels) + 1), labels)

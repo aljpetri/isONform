@@ -78,7 +78,7 @@ do
 		#run IsONform
 		#if e=True
 		
-		python -m pyinstrument main.py --fastq $filedirectory/reads_corr_$number.fq --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 5 --outfolder $filedirectory/isonform/
+		python -m pyinstrument main.py --fastq $filedirectory/reads_corr_$number.fq --k 9 --w 20 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 5 --outfolder $filedirectory/isonform/
 		#if e=False
 		#python main.py --fastq $filedirectory/reads/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 3 --outfolder out
 		had_issue=$?
