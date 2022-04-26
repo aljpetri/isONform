@@ -450,8 +450,10 @@ def parse_cigar_diversity(cigar_tuples,delta_perc,delta_len):
             #we want to add up all missmatches to compare to sequence length
             miss_match_length += cig_len
             #we also want to make sure that we do not have too large internal sequence differences
-            if miss_match_length>2*delta_len:
+            if cig_len > 2*delta_len:
                 if i>1 and i<(len(cigar_tuples)-1):
+                    #print("ELE",elem)
+                    #print("No pop due to delta_len")
                     return False
     diversity = (miss_match_length/alignment_len)
 
@@ -463,6 +465,7 @@ def parse_cigar_diversity(cigar_tuples,delta_perc,delta_len):
     if diversity < mod_div_rate: #delta_perc:
         return True
     else:
+        #print("no pop due to diversity")
         return False
 """Helper method used to test whether two sequences are close enough to pop their underlying bubble
 INPUT:      cigar_string    a string denoting the cigar output of the alignment

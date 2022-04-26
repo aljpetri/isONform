@@ -230,7 +230,7 @@ def fill_p2(p, all_intervals_sorted_by_finish):
     stop_to_max_j = {stop: j for j, (start, stop, w, _) in enumerate(all_intervals_sorted_by_finish)}
     all_choord_to_max_j = []
     j_max = 0
-    for i in range(0, all_intervals_sorted_by_finish[-1][1]):
+    for i in range(0, all_intervals_sorted_by_finish[-1][1]+1):
         if i in stop_to_max_j:
             j_max = stop_to_max_j[i]
 
