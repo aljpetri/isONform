@@ -252,8 +252,8 @@ def solve_WIS(all_intervals_sorted_by_finish):
     #     print(p)
     #     print(p2)
     # assert p == p2
-
-    v = [None] + [w * (stop - start) for (start, stop, w, _) in all_intervals_sorted_by_finish]
+    epsilon=0.0001
+    v = [None] + [(w-1) * (stop - start+epsilon) for (start, stop, w, _) in all_intervals_sorted_by_finish]
     OPT = [0]
     for j in range(1, len(all_intervals_sorted_by_finish) + 1):
         OPT.append(max(v[j] + OPT[p[j]], OPT[j - 1]))
