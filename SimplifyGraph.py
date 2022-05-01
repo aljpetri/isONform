@@ -626,7 +626,10 @@ def get_avg_interval_length(DG,node):
         i += 1
         sum += (positions.end_mini_start-positions.start_mini_end)
         #print(sum)
-    finalresult=int(sum/(i))
+    if i==0:
+        finalresult=0
+    else:
+        finalresult=int(sum/(i))
     #finalresult=100000
     #print("finalresult",finalresult)
     return finalresult
@@ -1118,8 +1121,10 @@ def collect_consensus_reads(consensus_attributes):
 
 #TODO: Either we have to change the calculation of the positions or we have to think more about pop threshold
 def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,multi_consensuses,is_megabubble,combination):
-    #print("aligning")
-    #print("current consensus_infos",consensus_infos)
+
+    if DEBUG:
+        #print("aligning")
+        print("current consensus_infos",consensus_infos)
     consensus_list = []
     consensus_log= {}
     seq_infos={}
@@ -1208,25 +1213,29 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,m
             good_to_pop = parse_cigar_diversity(cigar_tuples, delta, delta_len)
             cigar_alignment = (s1_alignment, s2_alignment)
             # consensuses=(consensus1,consensus2)
-            #if good_to_pop:
-                #print("deemed to be poppable", cigar_alignment," ",combination,"$$$ ",consensus_infos,"€€",cigar_tuples)
+            if good_to_pop and DEBUG:
+                print("deemed to be poppable", cigar_alignment," ",combination,"$$$ ",consensus_infos,"€€",cigar_tuples)
             #else:
                 #print("No pop", cigar_alignment, " ", consensus_infos,"€€",cigar_tuples)
             return good_to_pop, cigar_alignment, seq_infos, consensus_log,spoa_count
         else:
-            #print("deemed to be poppable", cigar_alignment, "")
-            #print("No pop-too diverse ", combination)
+            if DEBUG:
+                #print("deemed to be poppable", cigar_alignment, "")
+                print("No pop-too diverse ", combination)
             return False,"","", consensus_log,spoa_count
     elif shorter_len < delta_len and longer_len < delta_len:
-        #print("deemed Poppable as short ",consensus_infos)
+        if DEBUG:
+            print("deemed Poppable as short ",consensus_infos)
         return True, "","",consensus_log,spoa_count
 
     else:
         if (longer_len - shorter_len) < delta_len:
-            #print("Poppable as short and not too different", consensus_infos)
+            if DEBUG:
+                print("Poppable as short and not too different", consensus_infos)
             return True, "", "", consensus_log,spoa_count
         else:
-            #print("Not poppable as short but too different", consensus_infos)
+            if DEBUG:
+                print("Not poppable as short but too different", consensus_infos)
             return False, "", "", consensus_log,spoa_count
         #good_to_pop=False
 
@@ -1563,6 +1572,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
         print()
         print("GRAPH NR NODES: {0} EDGES: {1} ".format(len(DG.nodes()), len(DG.edges())))
         print()
+        if DEBUG:
+            draw_Graph(DG,str(it))
         #if(isCyclic(DG)):
         #    print("Cyclic Graph")
         #    return-1
@@ -1587,8 +1598,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
         #if we haven't found any new combinations we successfully finished our bubble popping
         if not combinations_filtered:
             break
-
-        #print("combis",combinations_filtered)
+        if DEBUG:
+            print("combis",combinations_filtered)
 
         # sort the combinations so that the shortest combinations come first
         sorted_combinations=sorted(combinations_filtered, key=lambda x: TopoNodes.index(x[1])-TopoNodes.index(x[0]))
@@ -1600,7 +1611,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
 
             #if (len(not_viable_global)%100)==0:
                 #print("not_viable ",len(not_viable_global), "of ", len(combinations))
-            #print("Combi ",combination)
+            if DEBUG:
+                print("Combi ",combination)
             #assert len(possible_cycles) == 0, "cycle found"
             ##print("Current State of Graph:")
             ##print(DG.nodes(data=True))
@@ -1612,7 +1624,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
             all_paths = find_paths(DG,combination)
 
             #print("FINDPATHS ended")
-            #print("all_paths:", all_paths,"len",len(all_paths))
+            if DEBUG:
+                print("all_paths:", all_paths,"len",len(all_paths))
 
             initial_all_paths=len(all_paths)
 
@@ -1626,8 +1639,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
 
             #we cannot touch the same node over and over during one iteration as the bubbles do not display how the graph changed
             all_paths_filtered=filter_out_if_marked(all_paths,marked)
-
-            #print("all_paths_filtered",all_paths_filtered)
+            if DEBUG:
+                print("all_paths_filtered",all_paths_filtered)
             #print("all_paths after:", all_paths, "len", len(all_paths))
             #print("initial_all_paths",initial_all_paths)
 
@@ -1635,8 +1648,12 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
             consensus_infos={}
             #if we found two paths in our bubble
             if len(all_paths_filtered)==2:
+                if DEBUG:
+                    print("Found exactly 2 paths for this it->filtered")
                 if initial_all_paths>2:
                     is_megabubble = True
+                    if DEBUG:
+                        print("This is a megabubble")
                 else:
                     is_megabubble=False
 
@@ -1646,7 +1663,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                 this_combi = (combination[0], combination[1], this_combi_reads)
 
                 #print("NVMB",not_viable_multibubble)
-                #print("this_combi", this_combi)
+                if DEBUG:
+                    print("this_combi", this_combi)
 
                 if this_combi in not_viable_multibubble:
 
@@ -1686,10 +1704,19 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                         consensus_infos[pathnode2] = get_consensus_positions(combination[0], combination[1], DG, all_paths_filtered[1][1])
                 #The paths intersect
                 else:
-                    not_viable_global.add(combination)
+                    if initial_all_paths==2:
+                        not_viable_global.add(combination)
+                    else:
+                        this_combi_reads = tuple(set(all_paths_filtered[0][1]) | set(all_paths_filtered[1][1]))
+                        this_combi = (combination[0], combination[1], this_combi_reads)
+                        if DEBUG:
+                            print("not_viable_multibubble add", this_combi)
+                        # we only know about this combination of paths so we only set not_viable_multibubble
+                        not_viable_multibubble.add(this_combi)
                             #print("Not viable now:", not_viable_global)
                     is_alignable=False
-
+                    if DEBUG:
+                        print("Not POPPABLE")
                 #print("our consensus infos:",consensus_infos)
                 if is_alignable:
                     flat_list=[combination[0],combination[1]]
@@ -1699,7 +1726,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                     is_poppable,cigar,seq_infos,consensus_info_log,spoa_count=align_bubble_nodes(all_reads,consensus_infos,work_dir,k_size,spoa_count,multi_consensuses,is_megabubble,this_combi)
 
                     if is_poppable:
-
+                        if DEBUG:
+                            print("POPPED")
                         #subgraph_bubble(DG,itere,all_paths_filtered,combination[0],combination[1],error_bubble)
 
 
@@ -1722,10 +1750,14 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                         #print("not poppable")
                         if initial_all_paths==2:
                             not_viable_global.add(combination)
-                            #print("Not viable now:", not_viable_global)
+                            if DEBUG:
+                                print("Not viable now:", not_viable_global)
                         else:
+
                             this_combi_reads = tuple(set(all_paths_filtered[0][1]) | set(all_paths_filtered[1][1]))
                             this_combi = (combination[0], combination[1], this_combi_reads)
+                            if DEBUG:
+                                print("not_viable_multibubble add",this_combi)
                             # we only know about this combination of paths so we only set not_viable_multibubble
                             not_viable_multibubble.add(this_combi)
             # we have more than two paths connecting s' and t'. We now want to efficiently compare those paths
@@ -1806,7 +1838,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                             #subgraph_bubble(DG, itere, all_paths_filtered, combination[0], combination[1], error_bubble)
 
                             itere += 1
-                            #print("ALL_Paths_filtered",all_paths_filtered)
+                            if DEBUG:
+                                print("ALL_Paths_filtered",all_paths_filtered)
                             linearize_bubble(DG, consensus_infos, combination[0], combination[1], all_paths_filtered,
                                          combination[2], seq_infos, consensus_info_log, topo_nodes_dict)
                             nr_popped+=1
@@ -1849,7 +1882,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                         #print(this_combi)
                         not_viable_multibubble.add(this_combi)
 
-
+DEBUG=False
 """Overall method used to simplify the graph
 Works as wrapper script for new_bubble_popping_routine       
 INPUT:  DG: Directed Graph before simplifications,

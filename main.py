@@ -584,12 +584,22 @@ def main(args):
 
     #we set delta_len to be 2*k_size to make the algo feasible
     k_size = args.k
-    w = args.w
+    #w = args.w
     x_high = args.xmax
     x_low = args.xmin
     new_all_reads= {}
     #print("AR",all_reads)
     for batch_id, reads in enumerate(batch(all_reads, args.max_seqs)):
+        if args.set_w_dynamically:
+            # Activates for 'small' clusters with less than 700 reads
+            if len(reads) >= 100:
+                w = min(args.w, args.k + (
+                            len(reads) // 100 + 4))  # min(args.w,)  #args.w = args.k + min(7, int( len(all_reads)/500))
+            else:
+                w = args.k + 1 + len(reads) // 30  # min(args.w,)  #args.w = args.k + min(7, int( len(all_reads)/500))
+        else:
+            w = args.w
+        print("Window used for batch:", w)
         is_cyclic = True
         while is_cyclic:
             graph_id = 1
@@ -853,7 +863,7 @@ def main(args):
     print("removing temporary workdir")
     shutil.rmtree(work_dir)
 
-
+DEBUG=False
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo error correction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)

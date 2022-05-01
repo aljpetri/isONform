@@ -206,7 +206,8 @@ def compute_equal_reads(DG,reads):
             reads_for_isoforms.remove(sup_read)
         #print("Isoforms")
         #print(isoforms)
-        #print("VisitedNodes" , supported_reads[0],"has ", len(visited_nodes)," elements: ",visited_nodes)
+        if DEBUG==True:
+            print("VisitedNodes" , supported_reads[0],"has ", len(visited_nodes)," elements: ",visited_nodes)
         #print(visited_nodes)
     return isoforms,visited_nodes_for_isoforms
 
@@ -301,7 +302,7 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder, max_se
 def calculate_isoform_similarity(isoform_paths):
     for id, path in isoform_paths.items():
         l1 = len(path)
-        #print(id, ": ", path)
+        print(id, ": ", path)
         for id2,path2 in isoform_paths.items():
 
             if not id==id2:
@@ -313,8 +314,8 @@ def calculate_isoform_similarity(isoform_paths):
                     min_equality=equality_1
                 else:
                     min_equality=equality_2
-                #print("Equality of ",id," vs ",id2,": ",equality_1)
-
+                print("Equality of ",id," vs ",id2,": ",equality_1)
+DEBUG=False
 """
 Wrapper method used for the isoform generation
 """

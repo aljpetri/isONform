@@ -652,7 +652,7 @@ def main():
     #simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
     print("Calling the method")
     #TODO: REINVOKE SIMPLIFYGAPH
-    #simplifyGraph(DG,all_reads,work_dir,k_size)
+    simplifyGraph(DG,all_reads,work_dir,k_size)
     print("Graph simplified")
     #simplifyGraphOriginal(DG,delta_len, all_reads, work_dir, k_size,known_intervals)
     #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
