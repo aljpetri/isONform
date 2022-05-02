@@ -1766,22 +1766,25 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
             #if len(all_paths)>1:
                 #print("marked",marked)
                 #print("NVM",not_viable_multibubble)
-                #print("more paths in", combination)
-                #print(all_paths_filtered)
+                if DEBUG:
+                    print("more paths in", combination)
+                    print("APF",all_paths_filtered)
                 listing=[(p1,p2) for (p1,p2) in itertools.combinations(all_paths_filtered, 2) if (combination[0],combination[1],tuple(sorted( set(p1[1]) | set(p2[1])))) not in not_viable_multibubble]
-                #print(listing)
+                initial_listing=[(p1,p2) for (p1,p2) in itertools.combinations(all_paths_filtered, 2) if (combination[0],combination[1],tuple(sorted( set(p1[1]) | set(p2[1])))) not in not_viable_multibubble]
+                if DEBUG:
+                    print(listing)
                 #this_combi_reads = tuple(sorted(set(p1[1]) | set(p2[1])))
                 #this_path_id=(combination[0],combination[1],this_combi_reads)
                 #if not this_path_id in multi_consensuses:
-                if not listing:
+                if not initial_listing:
                     #print("Not viable now bef :",not_viable_global)
                     not_viable_global.add(combination)
                     #print("Not viable now:",not_viable_global)
                     continue
                 #print("APF",all_paths_filtered)
                 for path_combi in listing:
-
-                    #print("path_combi", path_combi)
+                    if DEBUG:
+                        print("path_combi", path_combi)
                     p1=path_combi[0]
                     p2=path_combi[1]
                 #for p1,p2 in zip(path_len_sorted[:-1],path_len_sorted[1:]):
@@ -1789,9 +1792,13 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                     #print("P2:", p2)
                     consensus_infos={}
                     if (not p1[0]) or (not p2[0]) and directpath_marked:
+                        if DEBUG:
+                            print("Marked")
                         continue
                     p1_filtered=filter_path_if_marked(marked,p1[0])
                     p2_filtered = filter_path_if_marked(marked, p2[0])
+                    if DEBUG:
+                        print
                     if not (p1_filtered) and not(p2_filtered):
                         #print("PATh1",p1)
                         #print("PATh2",p2)
@@ -1805,10 +1812,13 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                             pathnode2 = p2[0][1]
                         p_set1=set(p1[0][1:])
                         p_set2=set(p2[0][1:])
+                        if DEBUG:
+                            print("not filtered")
                         intersect=p_set1.intersection(p_set2)
 
                         this_combi_reads = tuple(sorted(set(p1[1]) | set(p2[1])))
-                        #print(this_combi_reads," intersect ",intersect)
+                        if DEBUG:
+                            print(this_combi_reads," intersect ",intersect)
                         # combi_reads_sorted=tuple(sorted(this_combi_reads))
                         # print("thiscombireadsType", type(this_combi_reads))
                         # print("this combi reads", this_combi_reads)
@@ -1831,6 +1841,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                             #print(DG.edges(data=True))
                         is_poppable, cigar, seq_infos, consensus_info_log,spoa_count = align_bubble_nodes(all_reads, consensus_infos,
                                                                                            work_dir, k_size,spoa_count,multi_consensuses,True,this_combi)
+                        if DEBUG:
+                            print("Do we pop?",is_poppable)
                         if is_poppable:
                             all_paths_filtered=[]
                             all_paths_filtered.append(p1)
@@ -1872,7 +1884,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                             #print(this_combi)
                             not_viable_multibubble.add(this_combi)
                             #print(not_viable_multibubble)
-                    else:
+                    """else:
                         #print("This combi is not viable")
                         this_combi_reads=tuple(sorted(set(p1[1]) | set(p2[1])))
                         #combi_reads_sorted = tuple(sorted(this_combi_reads))
@@ -1880,7 +1892,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                         #print("this combi reads",this_combi_reads)
                         this_combi=(combination[0],combination[1],this_combi_reads)
                         #print(this_combi)
-                        not_viable_multibubble.add(this_combi)
+                        not_viable_multibubble.add(this_combi)"""
 
 DEBUG=False
 """Overall method used to simplify the graph
