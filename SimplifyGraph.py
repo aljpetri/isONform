@@ -3,17 +3,17 @@ from collections import Counter, namedtuple
 from consensus import *
 import matplotlib.pyplot as plt
 from IsoformGeneration import *
-from MemoryAnalysis import *
+#from MemoryAnalysis import *
 import copy
 from functools import cmp_to_key
 from ordered_set import OrderedSet
-from pyinstrument import Profiler
+#from pyinstrument import Profiler
 import itertools
 """Helper function used to plot the graph. Taken from GraphGeneration.
     INPUT: DG   Directed Graph to plot
 """
 
-#Use https://www.geeksforgeeks.org/detect-cycle-in-a-graph/
+#Implemented according to https://www.geeksforgeeks.org/detect-cycle-in-a-graph/
 def isCyclicUtil(DG, nodes_dict, node):
     # Mark current node as visited and
     # adds to recursion stack
@@ -45,7 +45,10 @@ def isCyclicUtil(DG, nodes_dict, node):
     return False
 
 
-
+"""Helper method used to detect cycles in our graph:
+INPUT: DG       our directed Graph
+OUTPUT: iscyclic    A boolean value indicating whether a cycle was found
+"""
 def isCyclic(DG):
     # Returns true if graph contains cycles else false
     nodes = DG.nodes
@@ -60,21 +63,13 @@ def isCyclic(DG):
                 return True
     return False
 
-
-
-def full_cycle_nodes(DG,node1, node2):
-    reads1=tuple(DG.nodes[node1]['reads'])
-    reads2 = tuple(DG.nodes[node2]['reads'])
-    inter = tuple(sorted(set(reads1).intersection(set(reads2))))
-    #print("Oedges1",DG.out_edges(node1))
-    #print("Oedges1",DG.out_edges(node2))
-    combi1=(node1,node2,inter)
-    combi2=(node2,node1,inter)
-    #print("combis",combi1,",",combi2)
-    pas1=find_paths(DG,combi1)
-    #print("pas1", pas1)
-    #pas2=find_paths(DG,combi2)
-    #print("pas2",pas2)
+"""
+Helper method used to visualize the graph in a pdf file
+INPUT:      DG          our directed Graph object
+            outpath     path where we want to store the visualization
+            id          id of the visualization. Wewant to be able to tell different iterations apart from each other
+OUTPUT:     .pdf file holding the visualization        
+        """
 def draw_Graph(DG, outpath = '', id = 0):
     # defines the graph layout to use spectral_layout. Pos gives the position for each node
     pos = nx.spectral_layout(DG)
@@ -88,25 +83,14 @@ def draw_Graph(DG, outpath = '', id = 0):
     # plt.show()
 
 
-"""Helper method used to generate subgraphs for a list of subnodes
-INPUT:      DG          Directed Graph to plot
-            bubbles:    list of bubblenodelists to be plotted
-"""
 
-
-def generate_subgraphs(DG, bubbles):
-    for bubble in bubbles:
-        SG = DG.subgraph(bubble)
-        #draw_Graph(SG)
 
 
 """Helper method used to generate a subgraph for a list of nodes
 INPUT:              DG          Directed Graph to plot
                     bubbles:    list of bubblenodelists to be plotted
+OUTPUT:             pdf file holding the visualization of the subgraph
 """
-
-
-
 def generate_subgraph(DG, bubble,iter):
     # for bubble in bubbles:
     SG = DG.subgraph(bubble)
@@ -114,175 +98,33 @@ def generate_subgraph(DG, bubble,iter):
     print(list(SG.edges))
     draw_Graph(SG,id=iter)
 
-
-"""Method to reduce the number of nodes in our graph
-INPUT:      DG          Directed Graph 
-    """
-
-
-def merge_nodes(DG):
-    # iterate over the edges to find all pairs of nodes
-    edgesView = DG.edges.data()
-    for ed_ge in edgesView:
-        startnode = ed_ge[0]
-        endnode = ed_ge[1]
-        # we only need to know the out degree of the start node and the end degree of the end node
-        start_out_degree = DG.out_degree(startnode)
-        end_in_degree = DG.in_degree(endnode)
-        # if the degrees are both equal to 1 and if none of the nodes is s or t
-        if (start_out_degree == end_in_degree == 1 and startnode != "s" and endnode != "t"):
-            # #print("Merging nodes "+startnode+" and "+endnode)
-            # use the builtin function to merge nodes, prohibiting self_loops decreases the amount of final edges
-            DG = nx.contracted_nodes(DG, startnode, endnode, self_loops=False)
-
-
+"""Helper method which finds all possible bubble starts in our graph. This is done by collecting all nodes having at least 2 out nodes
+INPUT:  DG              Our directed graph object
+        TopoNodes       A list of our nodes in topological order
+OUTPUT: possible_starts:    A list holding start_tuples(node_id, start_supp:= all reads in this node)
 """
-function to detect cycles in the graph (which denote repetitive regions)
-INPUT:      DG             Directed Graph
-OUTPUT: List_of_cycles     A list holding all cycles present in DG
-"""
-
-
-def find_repetative_regions(DG):
-    # collect the cycles in the graph (denoting repetative regions) using the builtin networkx function
-    altcyc = list(nx.simple_cycles(DG))
-    #print("Alternative cycles:")
-    #print(altcyc)
-    # data structure which holds all the cycles in the graph
-    list_of_cycles = []
-    # iterate over the cycles to retrive all nodes which are part of the cycles
-    for comp in altcyc:
-        # if len(comp) > 1:
-        intermediate_cycle = []
-        # iterate over the nodes in each cycle to get a better output format (start, nodename,end)
-        for node_i in comp:
-            intermediate = tuple(map(int, node_i.split(', ')))
-            #print(intermediate)
-            intermediate_cycle.append((node_i, intermediate))
-            # real_cycles.append(intermediate_sorted)
-            # #print(intermediate_sorted)
-            # if not node_i in cycle_nodes:
-            #    cycle_nodes.append(node_i)
-            # sort the nodes in a cycle by start coordinates to simplify the resolving of cycles later on
-        cycle_sorted = sorted(intermediate_cycle, key=lambda x: x[0])
-        # #print("Cycle_sorted type")
-        # #print(str(type(cycle_sorted)))
-        # #print(cycle_sorted)
-        list_of_cycles.append(cycle_sorted)
-    #if list_of_cycles:
-        #print("Found repetative region in reads")
-        #for cyc in list_of_cycles:
-            #print(cyc)
-    #else:
-        #print("No cycles found in the graph")
-    return (list_of_cycles)
-
-
-"""
-This function was taken from https://networkx.org/documentation/stable/_modules/networkx/algorithms/cycles.html#cycle_basis
-As the original implementation relies on sets and therefore yields nondeterministic results, the code is altered to yield a deterministic behavior.
-"""
-
-
-def cycle_basis(G, root=None):
-    """ Returns a list of cycles which form a basis for cycles of G.
-    A basis for cycles of a network is a minimal collection of
-    cycles such that any cycle in the network can be written
-    as a sum of cycles in the basis.  Here summation of cycles
-    is defined as "exclusive or" of the edges. Cycle bases are
-    useful, e.g. when deriving equations for electric circuits
-    using Kirchhoff's Laws.
-    Parameters
-    ----------
-    G : NetworkX Graph
-    root : node, optional
-       Specify starting node for basis.
-    Returns
-    -------
-    A list of cycle lists.  Each cycle list is a list of nodes
-    which forms a cycle (loop) in G.
-    Examples
-    --------
-    >>> G = nx.Graph()
-    >>> nx.add_cycle(G, [0, 1, 2, 3])
-    >>> nx.add_cycle(G, [0, 3, 4, 5])
-    >>> #print(nx.cycle_basis(G, 0))
-    [[3, 4, 5, 0], [1, 2, 3, 0]]
-    Notes
-    -----
-    This is adapted from algorithm CACM 491 [1]_.
-    References
-    ----------
-    .. [1] Paton, K. An algorithm for finding a fundamental set of
-       cycles of a graph. Comm. ACM 12, 9 (Sept 1969), 514-518.
-    See Also
-    --------
-    simple_cycles
-    """
-    # replaced gnodes to be implemented by a sorted list rather than a set
-    gnodes = sorted(list(G.nodes()))
-    cycles = []
-    while gnodes:  # loop over connected components
-        if root is None:
-            root = gnodes.pop()
-        stack = [root]
-        pred = {root: root}
-        used = {root: list()}  # we use a list instead of a set
-        while stack:  # walk the spanning tree finding cycles
-            z = stack.pop()  # use last-in so cycles easier to find
-            zused = used[z]
-            for nbr in G[z]:
-                if nbr not in used:  # new node
-                    pred[nbr] = z
-                    stack.append(nbr)
-                    used[nbr] = {z}
-                elif nbr == z:  # self loops
-                    cycles.append([z])
-                elif nbr not in zused:  # found a cycle
-                    pn = used[nbr]
-                    cycle = [nbr, z]
-                    p = pred[z]
-                    while p not in pn:
-                        cycle.append(p)
-                        p = pred[p]
-                    cycle.append(p)
-                    cycles.append(cycle)
-                    used[nbr].add(z)
-        # altered to work with a list: we only remove the elements which were part of gnodes
-        for i in pred:
-            if i in gnodes:
-                gnodes.remove(i)
-        # gnodes -= sorted(list(pred)) #original code
-        root = None
-    return cycles
-
-"""Helper method that is used to detect bubbles in our graph by using the cycle_basis method
-INPUT: DG   our directed graph
-OUTPUT: list_of_bubbles   a list containing all bubbles found (represented as lists themselves)
-"""
-def find_bubbles(DG):
-    # draw_Graph(DG)
-    # get undirected version of the graph to find bubbles
-    UG = DG.to_undirected()
-    # collect the bubbles in the graph (Bubbles denote possible mutations in the minimizers)
-    # find all cycles in the undirected graph->bubbles
-    # list_of_bubbles =nx.cycle_basis(UG)
-    list_of_bubbles = cycle_basis(UG)
-    return list_of_bubbles
-
 def find_possible_starts(DG,TopoNodes):
     #Start_node_infos = namedtuple('Start_node_infos',
     #                        'node supporting_reads')
     possible_starts=[]
+    #iterate over all nodes in TopoNodes
     for node in TopoNodes:
+        #the current node is only a start node if it has an out_degree>1 (due to bubble definition)
         if DG.out_degree(node)>1:
+            #find all reads supporting this node
             start_supp=tuple(DG.nodes[node]['reads'])
+            #store node id and support in start_tup
             start_tup=(node, start_supp)
+            #append start_tup to the list of possible bubble_starts
             possible_starts.append(start_tup)
     return possible_starts
+"""Helper method which finds all possible bubble starts in our graph. This is done by collecting all nodes having at least 2 out nodes
+INPUT:  DG              Our directed graph object
+        TopoNodes       A list of our nodes in topological order
+OUTPUT: possible_starts:    A list holding start_tuples(node_id, start_supp:= all reads in this node)
+"""
 def find_possible_ends(DG,TopoNodes):
-    End_node_infos = namedtuple('End_node_infos',
-                                  'node supporting_reads')
+    #End_node_infos = namedtuple('End_node_infos','node supporting_reads')
     possible_ends=[]
     for node in TopoNodes:
         if DG.in_degree(node)>1:
@@ -460,9 +302,9 @@ def parse_cigar_diversity(cigar_tuples,delta_perc,delta_len):
 
     max_bp_diff = max(delta_perc*alignment_len, delta_len)
     mod_div_rate = max_bp_diff/alignment_len
-
-    #print("diversity",diversity)
-    if diversity < mod_div_rate: #delta_perc:
+    if DEBUG:
+        print("diversity",diversity,"mod_div",mod_div_rate)
+    if diversity <= mod_div_rate: #delta_perc:
         return True
     else:
         #print("no pop due to diversity")
@@ -1123,7 +965,7 @@ def collect_consensus_reads(consensus_attributes):
 def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,multi_consensuses,is_megabubble,combination):
 
     if DEBUG:
-        #print("aligning")
+        print("aligning")
         print("current consensus_infos",consensus_infos)
     consensus_list = []
     consensus_log= {}
@@ -1189,9 +1031,11 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,m
     #print(consensus_list)
     #print("consensus_log",consensus_log)
     consensus1 = consensus_list[0]
-    #print("consensus1",consensus1)
+
     consensus2 = consensus_list[1]
-    #print("consensus2",consensus2)
+    if DEBUG:
+        print("consensus1",consensus1)
+        print("consensus2",consensus2)
     s1_len = len(consensus1)
     s2_len = len(consensus2)
     if s1_len > s2_len:
@@ -1203,7 +1047,8 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,m
     delta = 0.20
     delta_len = k_size
     if shorter_len > delta_len and longer_len > delta_len:
-        #print("long:", longer_len, " , short ", shorter_len, "ratio ", (longer_len - shorter_len) / longer_len)
+        if DEBUG:
+            print("long:", longer_len, " , short ", shorter_len, "ratio ", (longer_len - shorter_len) / longer_len)
         if (longer_len - shorter_len) / longer_len < delta:
             #print("popping works")
             s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
@@ -1211,6 +1056,8 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,m
                                                                                        mismatch_penalty=-8,
                                                                                        opening_penalty=12, gap_ext=1)
             good_to_pop = parse_cigar_diversity(cigar_tuples, delta, delta_len)
+            if DEBUG:
+                print("GOODTOPOP?",good_to_pop)
             cigar_alignment = (s1_alignment, s2_alignment)
             # consensuses=(consensus1,consensus2)
             if good_to_pop and DEBUG:
@@ -1903,24 +1750,15 @@ INPUT:  DG: Directed Graph before simplifications,
         k_size: parameter k for our minimizers
 OUTPUT: DG: Graph after simplification took place    """
 def simplifyGraph(DG, all_reads, work_dir, k_size):
-    #print("trying to find cycles")
-    #print("FoundCycle",isCyclic(DG))
-    #print("Simplifying the Graph (Merging nodes, popping bubbles)")
-    #list_of_cycles = find_repetative_regions(DG)
-    #possible_cycles = list(nx.simple_cycles(DG))  # find_repetative_regions(DG)
-    #if possible_cycles:
-    #    print("Found cycle(s) ", possible_cycles)
     #print("Current State of Graph:")
     ##print(DG.nodes(data=True))
     ##print(DG.edges(data=True))
     #draw_Graph(DG)
-    profiler = Profiler()
-    profiler.start()
+   # profiler = Profiler()
+    #profiler.start()
     new_bubble_popping_routine(DG, all_reads, work_dir, k_size)
-    profiler.stop()
-    profiler.print()
-    #list_of_cycles = find_repetative_regions(DG)
+    #profiler.stop()
+    #profiler.print()
     #print("Cycles:",list_of_cycles)
     #print("Popping bubbles done")
     #draw_Graph(DG)
-    #merge_nodes(DG)

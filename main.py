@@ -4,6 +4,7 @@ from GraphGeneration import *
 from IsoformGeneration import *
 import os, sys
 import argparse
+import linecache
 import networkx as nx
 import errno
 from time import time, sleep
@@ -21,7 +22,7 @@ import matplotlib.pyplot as plt
 import edlib
 import _pickle as pickle
 from sys import stdout
-
+import tracemalloc
 from SimplifyGraph import simplifyGraph,isCyclic
 from modules import create_augmented_reference, help_functions, correct_seqs  # ,align
 
@@ -69,12 +70,12 @@ def syncmers(seq, k, s, t ):
 def get_kmer_minimizers(seq, k_size, w_size):
     # kmers = [seq[i:i+k_size] for i in range(len(seq)-k_size) ]
     w = w_size - k_size
-    window_kmers = deque([seq[i:i + k_size] for i in range(w + 1)])
+    window_kmers = deque([seq[i:i+k_size] for i in range(w +1)])
     curr_min = min(window_kmers)
-    minimizers = [(curr_min, list(window_kmers).index(curr_min))]
+    minimizers = [ (curr_min, list(window_kmers).index(curr_min)) ]
 
-    for i in range(w + 1, len(seq) - k_size):
-        new_kmer = seq[i:i + k_size]
+    for i in range(w+1,len(seq) - k_size):
+        new_kmer = seq[i:i+k_size]
         # updateing window
         discarded_kmer = window_kmers.popleft()
         window_kmers.append(new_kmer)
@@ -82,12 +83,12 @@ def get_kmer_minimizers(seq, k_size, w_size):
         # we have discarded previous windows minimizer, look for new minimizer brute force
         if curr_min == discarded_kmer:
             curr_min = min(window_kmers)
-            minimizers.append((curr_min, list(window_kmers).index(curr_min) + i - w))
+            minimizers.append( (curr_min, list(window_kmers).index(curr_min) + i - w ) )
 
         # Previous minimizer still in window, we only need to compare with the recently added kmer
         elif new_kmer < curr_min:
             curr_min = new_kmer
-            minimizers.append((curr_min, i))
+            minimizers.append( (curr_min, i) )
 
     return minimizers
 
@@ -95,12 +96,12 @@ def get_kmer_minimizers(seq, k_size, w_size):
 def get_kmer_maximizers(seq, k_size, w_size):
     # kmers = [seq[i:i+k_size] for i in range(len(seq)-k_size) ]
     w = w_size - k_size
-    window_kmers = deque([seq[i:i + k_size] for i in range(w + 1)])
+    window_kmers = deque([seq[i:i+k_size] for i in range(w +1)])
     curr_min = max(window_kmers)
-    minimizers = [(curr_min, list(window_kmers).index(curr_min))]
+    minimizers = [ (curr_min, list(window_kmers).index(curr_min)) ]
 
-    for i in range(w + 1, len(seq) - k_size):
-        new_kmer = seq[i:i + k_size]
+    for i in range(w+1,len(seq) - k_size):
+        new_kmer = seq[i:i+k_size]
         # updateing window
         discarded_kmer = window_kmers.popleft()
         window_kmers.append(new_kmer)
@@ -108,12 +109,12 @@ def get_kmer_maximizers(seq, k_size, w_size):
         # we have discarded previous windows minimizer, look for new minimizer brute force
         if curr_min == discarded_kmer:
             curr_min = max(window_kmers)
-            minimizers.append((curr_min, list(window_kmers).index(curr_min) + i - w))
+            minimizers.append( (curr_min, list(window_kmers).index(curr_min) + i - w ) )
 
         # Previous minimizer still in window, we only need to compare with the recently added kmer
         elif new_kmer > curr_min:
             curr_min = new_kmer
-            minimizers.append((curr_min, i))
+            minimizers.append( (curr_min, i) )
 
     return minimizers
 
@@ -131,10 +132,9 @@ def get_minimizers_and_positions_compressed(reads, w, k, hash_fcn):
         elif hash_fcn == "rev_lex":
             minimizers = get_kmer_maximizers(seq_hpol_comp, k, w)
 
-        indices = [i for i, (n1, n2) in enumerate(zip(seq[:-1], seq[1:])) if
-                   n1 != n2]  # indicies we want to take quality values from to get quality string of homopolymer compressed read
+        indices = [i for i, (n1,n2) in enumerate(zip(seq[:-1],seq[1:])) if n1 != n2] # indicies we want to take quality values from to get quality string of homopolymer compressed read
         indices.append(len(seq) - 1)
-        positions_in_non_compressed_sring = [(m, indices[p]) for m, p in minimizers]
+        positions_in_non_compressed_sring = [(m, indices[p]) for m, p in minimizers ]
         M[r_id] = positions_in_non_compressed_sring
 
     return M
@@ -147,9 +147,6 @@ def get_minimizers_and_positions(reads, w, k, hash_fcn):
         (acc, seq, qual) = reads[r_id]
         if hash_fcn == "lex":
             minimizers = get_kmer_minimizers(seq, k, w)
-            # s = k - 4 # roughly w=10
-            # t = 4//2
-            # minimizers = syncmers(seq, k, s, t )
         elif hash_fcn == "rev_lex":
             minimizers = get_kmer_maximizers(seq, k, w)
 
@@ -161,19 +158,19 @@ def get_minimizers_and_positions(reads, w, k, hash_fcn):
 from array import array
 
 
-def get_minimizer_combinations_database(reads, M, k, x_low, x_high):  # generates the Minimizer combinations
+def get_minimizer_combinations_database(reads, M, k, x_low, x_high):
     # M2 = defaultdict(lambda: defaultdict(list))
-    M2 = defaultdict(lambda: defaultdict(lambda: array("I")))
+    M2 = defaultdict(lambda: defaultdict(lambda :array("I")))
     tmp_cnt = 0
-    forbidden = 'A' * k
+    forbidden = 'A'*k
     for r_id in M:
         minimizers = M[r_id]
-        for (m1, p1), m1_curr_spans in minimizers_comb_iterator(minimizers, k, x_low, x_high):
+        for (m1,p1), m1_curr_spans in  minimizers_comb_iterator(minimizers, k, x_low, x_high):
             for (m2, p2) in m1_curr_spans:
                 if m2 == m1 == forbidden:
                     continue
 
-                tmp_cnt += 1
+                tmp_cnt +=1
                 # t = array('I', [r_id, p1, p2])
                 # M2[m1][m2].append( t )
                 # M2[m1][m2].append((r_id, p1, p2))
@@ -190,20 +187,27 @@ def get_minimizer_combinations_database(reads, M, k, x_low, x_high):  # generate
     avg_bundance = 0
     singleton_minimzer = 0
     cnt = 1
-    abundants = []
+    abundants=[]
     for m1 in list(M2.keys()):
         for m2 in list(M2[m1].keys()):
             if len(M2[m1][m2]) > 3:
-                avg_bundance += len(M2[m1][m2]) // 3
-                cnt += 1
+                avg_bundance += len(M2[m1][m2])//3
+                cnt +=1
             else:
                 del M2[m1][m2]
                 singleton_minimzer += 1
 
-            if len(M2[m1][m2]) // 3 > len(reads):
-                abundants.append((m1, m2, len(M2[m1][m2]) // 3))
-                if m2 == forbidden:  # poly A tail
+            if len(M2[m1][m2])// 3 > len(reads):
+                abundants.append((m1,m2, len(M2[m1][m2])//3 ))
+                if m2 == forbidden: # poly A tail
                     del M2[m1][m2]
+    for m1,m2,ab in sorted(abundants, key=lambda x: x[2], reverse=True):
+        print("Too abundant:", m1, m2, ab, len(reads))
+
+    print("Average abundance for non-unique minimizer-combs:", avg_bundance/float(cnt))
+    print("Number of singleton minimizer combinations filtered out:", singleton_minimzer)
+
+    return M2
     # for m1,m2,ab in sorted(abundants, key=lambda x: x[2], reverse=True):
     # print("Too abundant:", m1, m2, ab, len(reads))
 
@@ -217,9 +221,9 @@ def minimizers_comb_iterator(minimizers, k, x_low, x_high):
     # print("read")
     for i, (m1, p1) in enumerate(minimizers[:-1]):
         m1_curr_spans = []
-        for j, (m2, p2) in enumerate(minimizers[i + 1:]):
+        for j, (m2, p2) in enumerate(minimizers[i+1:]):
             if x_low < p2 - p1 and p2 - p1 <= x_high:
-                m1_curr_spans.append((m2, p2))
+                m1_curr_spans.append( (m2, p2) )
                 # yield (m1,p1), (m2, p2)
             elif p2 - p1 > x_high:
                 break
@@ -227,22 +231,27 @@ def minimizers_comb_iterator(minimizers, k, x_low, x_high):
 
 
 def fill_p2(p, all_intervals_sorted_by_finish):
-    stop_to_max_j = {stop: j for j, (start, stop, w, _) in enumerate(all_intervals_sorted_by_finish)}
+    stop_to_max_j = {stop: j for j, (start, stop, w, _) in enumerate(all_intervals_sorted_by_finish) if start < stop}
+    # print(stop_to_max_j)
     all_choord_to_max_j = []
     j_max = 0
-    for i in range(0, all_intervals_sorted_by_finish[-1][1]+1):
+    # print("L", all_intervals_sorted_by_finish[-1][1])
+    for i in range(0, all_intervals_sorted_by_finish[-1][1] + 1):
         if i in stop_to_max_j:
             j_max = stop_to_max_j[i]
 
         all_choord_to_max_j.append(j_max)
-
+    # print("AAAAAAAAA", len(all_choord_to_max_j))
+    # print(all_choord_to_max_j)
     for j, (start, stop, w, _) in enumerate(all_intervals_sorted_by_finish):
+        # print(start)
         j_max = all_choord_to_max_j[start]
         p.append(j_max)
     return p
 
 
 def solve_WIS(all_intervals_sorted_by_finish):
+    # Using notation from https://courses.cs.washington.edu/courses/cse521/13wi/slides/06dp-sched.pdf
     # print("instance size", len(all_intervals_sorted_by_finish))
     # p = [None]
     # fill_p(p, all_intervals_sorted_by_finish)
@@ -252,11 +261,19 @@ def solve_WIS(all_intervals_sorted_by_finish):
     #     print(p)
     #     print(p2)
     # assert p == p2
-    epsilon=0.0001
-    v = [None] + [(w-1) * (stop - start+epsilon) for (start, stop, w, _) in all_intervals_sorted_by_finish]
+    epsilon = 0.0001
+    # w - 1 since the read interval isself is included in the instance
+    v = [None] + [(w - 1)*(stop-start + epsilon) for (start, stop, w, _) in all_intervals_sorted_by_finish]
     OPT = [0]
-    for j in range(1, len(all_intervals_sorted_by_finish) + 1):
-        OPT.append(max(v[j] + OPT[p[j]], OPT[j - 1]))
+    # print(len(v), len(p), len(all_intervals_sorted_by_finish) +1)
+    # print(p)
+    for j in range(1, len(all_intervals_sorted_by_finish) +1):
+        # print(v[j])
+        # print(p[j])
+        # print( len(p), j, len(OPT),p[j] )
+        # print(OPT[p[j]])
+        # print(OPT[j-1])
+        OPT.append( max(v[j] + OPT[ p[j] ], OPT[j-1] ) )
 
     # assert len(p) == len(all_intervals_sorted_by_finish) + 1 == len(v) == len(OPT)
 
@@ -266,9 +283,8 @@ def solve_WIS(all_intervals_sorted_by_finish):
     while j >= 0:
         if j == 0:
             break
-        if v[j] + OPT[p[j]] > OPT[j - 1]:
-            opt_indicies.append(
-                j - 1)  # we have shifted all indices forward by one so we neew to reduce to j -1 because of indexing in python works
+        if v[j] + OPT[p[j]] > OPT[j-1]:
+            opt_indicies.append(j - 1) # we have shifted all indices forward by one so we neew to reduce to j -1 because of indexing in python works
             j = p[j]
         else:
             j -= 1
@@ -567,7 +583,10 @@ def main(args):
         args.exact = True
     if args.set_w_dynamically:
         args.w = args.k + min(7, int(len(all_reads) / 500))
-
+    merge_sub_isoforms_3=args.merge_sub_isoforms_3
+    merge_sub_isoforms_5 = args.merge_sub_isoforms_5
+    delta_iso_len_3=args.delta_iso_len_3
+    delta_iso_len_5 = args.delta_iso_len_5
     #eprint("ARGUMENT SETTINGS:")
     #for key, value in args.__dict__.items():
      #   eprint("{0}: {1}".format(key, value))
@@ -589,7 +608,16 @@ def main(args):
     x_low = args.xmin
     new_all_reads= {}
     #print("AR",all_reads)
+
     for batch_id, reads in enumerate(batch(all_reads, args.max_seqs)):
+        batchname=str(batch_id)+"_batchfile.fa"
+        batchfile = open(os.path.join(outfolder, batchname), "w")
+        #print(type(reads))
+        for id,vals in reads.items():
+            #print(id,vals)
+            (acc, seq, qual) = vals
+            batchfile.write(">{0}\n{1}\n".format(acc, seq))
+        batchfile.close()
         if args.set_w_dynamically:
             # Activates for 'small' clusters with less than 700 reads
             if len(reads) >= 100:
@@ -621,18 +649,8 @@ def main(args):
             minimizer_combinations_database = get_minimizer_combinations_database(reads, minimizer_database, k_size, x_low,
                                                                                   x_high)
             quality_values_database = get_qvs(reads)
-            # print(minimizer_database)
-            #if args.verbose:
-             #   eprint("done creating minimizer combinations")
-
-            # print( [ (xx, len(reads_to_M2[xx])) for xx in reads_to_M2 ])
-            # sys.exit()
-            # corrected_reads = {}
-            # tot_errors_before = {"subs" : 0, "del": 0, "ins": 0}
-            # tot_errors_after = {"subs" : 0, "del": 0, "ins": 0}
             tot_corr = 0
-            # previously_corrected_regions = defaultdict(list)
-            # stored_calculated_regions = defaultdict(lambda: defaultdict(int))
+
             tmp_cnt = 0
             all_intervals_for_graph = {}
             for r_id in sorted(reads):  # , reverse=True):
@@ -655,13 +673,14 @@ def main(args):
                     [tmp_pos for tmp_p1, tmp_p2, w_tmp, _ in previously_corrected_regions[r_id] for tmp_pos in
                      range(tmp_p1, tmp_p2)])
 
-                #if args.verbose:
-                 #   if read_previously_considered_positions:
-                 #       eprint("not corrected:", [(p1_, p2_) for p1_, p2_ in
-                    #                              zip(sorted(read_previously_considered_positions)[:-1],
-                     #                                 sorted(read_previously_considered_positions)[1:]) if p2_ > p1_ + 1])
-                  #  else:
-                  #      eprint("not corrected: entire read", )
+                if args.verbose:
+                    if read_previously_considered_positions:
+                        eprint("not corrected:", [(p1_, p2_) for p1_, p2_ in
+                                                  zip(sorted(read_previously_considered_positions)[:-1],
+                                                      sorted(read_previously_considered_positions)[1:]) if
+                                                  p2_ > p1_ + 1])
+                    else:
+                        eprint("not corrected: entire read", )
 
                 if previously_corrected_regions[r_id]:
                     read_previously_considered_positions = set(
@@ -669,16 +688,17 @@ def main(args):
                          range(tmp_p1, tmp_p2)])
                     group_id = 0
                     pos_group = {}
-                    sorted_corr_pos = sorted(read_previously_considered_positions)
-                    for p1, p2 in zip(sorted_corr_pos[:-1], sorted_corr_pos[1:]):
-                        if p2 > p1 + 1:
-                            pos_group[p1] = group_id
-                            group_id += 1
+                    if len(read_previously_considered_positions) > 1:
+                        sorted_corr_pos = sorted(read_previously_considered_positions)
+                        for p1, p2 in zip(sorted_corr_pos[:-1], sorted_corr_pos[1:]):
+                            if p2 > p1 + 1:
+                                pos_group[p1] = group_id
+                                group_id += 1
+                                pos_group[p2] = group_id
+                            else:
+                                pos_group[p1] = group_id
+                        if p2 == p1 + 1:
                             pos_group[p2] = group_id
-                        else:
-                            pos_group[p1] = group_id
-                    if p2 == p1 + 1:
-                        pos_group[p2] = group_id
                 else:
                     read_previously_considered_positions = set()
                     pos_group = {}
@@ -691,6 +711,7 @@ def main(args):
                 # old_cnt = 0
                 # test_cnt2 = 0
                 all_intervals = []
+                # prev_visited_intervals = []
                 prev_visited_intervals = []
 
                 for (m1, p1), m1_curr_spans in read_min_comb:
@@ -759,12 +780,16 @@ def main(args):
             # if r_id == 10:
             #     sys.exit()
             # print(type(intervals_to_correct))
-            with open('all_intervals.txt', 'wb') as file:
-                file.write(pickle.dumps(all_intervals_for_graph))
-            with open('all_reads.txt', 'wb') as file:
-                file.write(pickle.dumps(all_reads))
-            print("All_intervals were written into file")
-            print("Skipped ",not_used," reads due to not having high enough interval abundance")
+            if RUNAFTER:
+                with open('all_intervals.txt', 'wb') as file:
+                    file.write(pickle.dumps(all_intervals_for_graph))
+                with open('all_reads.txt', 'wb') as file:
+                    file.write(pickle.dumps(all_reads))
+                print("All_intervals were written into file")
+            if not_used>0:
+                print("Skipped ",not_used," reads due to not having high enough interval abundance")
+            else:
+                print("Working on all reads")
             #for r_id,intervals_to_correct in all_intervals_for_graph.items():
                 #if(r_id==2):
                     #print("intervals to correct")
@@ -800,9 +825,12 @@ def main(args):
             #print("Type of Allreads")
             #print(type(all_reads))
             #print(all_intervals_for_graph.keys())
+            print("Generating the graph")
             read_len_dict = get_read_lengths(all_reads)
             DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
                 all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
+            #snapshot = tracemalloc.take_snapshot()
+            #print(snapshot)
             print(DG.number_of_nodes()," Nodes in our Graph")
             is_cyclic=isCyclic(DG)
             if is_cyclic:
@@ -818,6 +846,8 @@ def main(args):
         # edgelist = list(DG.edges.data())
         # print(edgelist)
         simplifyGraph(DG, new_all_reads,work_dir,k_size)
+        #snapshot2 = tracemalloc.take_snapshot()
+        #print(snapshot2)
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         #draw_Graph(DG)
         #print("finding the reads, which make up the isoforms")
@@ -827,7 +857,9 @@ def main(args):
         #print("FoundCycles:",isCyclic(DG))
         #if not (possible_cycles):
         print("Starting to generate Isoforms")
-        generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder, max_seqs_to_spoa,iso_abundance)
+        generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,max_seqs_to_spoa,iso_abundance, delta_iso_len_3, delta_iso_len_5)
+        #snapshot3 = tracemalloc.take_snapshot()
+        #print(snapshot3)
         print("Isoforms generated")
         #else:
         #    print("found cycle. Terminate")
@@ -862,7 +894,7 @@ def main(args):
 
     print("removing temporary workdir")
     shutil.rmtree(work_dir)
-
+RUNAFTER=False
 DEBUG=False
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo error correction of long-read transcriptome reads",
@@ -902,6 +934,16 @@ if __name__ == '__main__':
     parser.add_argument('--outfolder', type=str, default=None,
                         help='A fasta file with transcripts that are shared between samples and have perfect illumina support.')
     parser.add_argument('--iso_abundance', type=int,default=1, help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
+    parser.add_argument('--merge_sub_isoforms_3', type=bool, default=True,
+                        help='Parameter to determine whether we want to merge sub isoforms (shorter at 3prime end) into bigger isoforms')
+    parser.add_argument('--merge_sub_isoforms_5', type=bool, default=True,
+                        help='Parameter to determine whether we want to merge sub isoforms (shorter at 5prime end) into bigger isoforms')
+
+    parser.add_argument('--delta_iso_len_3', type=int, default=50,
+                        help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
+    parser.add_argument('--delta_iso_len_5', type=int, default=50,
+                        help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
+
     # parser.set_defaults(which='main')
     args = parser.parse_args()
 

@@ -461,10 +461,11 @@ def generate_isoforms_def_start_end(args, ref_path):
             isoforms[actual_isoforms]=isoform
             known_isoforms.append(isoform)
             #now we want to make sure that we also have some equal isoforms in the data(to make sure we get the correct amount of isoforms)
-            double_seed=random.randrange(3,12)
+            #double_seed=random.randrange(99,101)
+            double_seed=100
             #TODO change this part. We always want isoforms to be supported by 1-10 reads
             if double_seed>1:
-                for i in range(1,double_seed+1):
+                for i in range(15,double_seed+1):
                     #name the second instance of an isoform so that we can identify it in the final output
                     name=str(actual_isoforms)+"."+str(i)
                     #isoforms_out.write(">sim|sim|{0}\n{1}\n".format(name, isoform))
