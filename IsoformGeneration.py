@@ -6,6 +6,7 @@ import subprocess
 import os, sys
 from EqualityObject import *
 import itertools
+from consensus import *
 import matplotlib.pyplot as plt
 from GraphGeneration import *
 """Method to delete read information from nodes
@@ -197,9 +198,10 @@ def compute_equal_reads(DG,reads):
         #print("Supported", supported_reads)
         clean_graph(DG,visited_nodes,visited_edges,supported_reads)
         #print(DG.edges(data=True))
-        isoforms[supported_reads[0]]=supported_reads
+        id=supported_reads[0]
+        isoforms[id]=supported_reads
         #reads_for_isoforms[supported_reads[0]]=visited_nodes
-        visited_nodes_for_isoforms[supported_reads[0]]=visited_nodes
+        visited_nodes_for_isoforms[id]=visited_nodes
         #print(reads_for_isoforms)
         for sup_read in supported_reads:
             #print(sup_read)
@@ -207,7 +209,7 @@ def compute_equal_reads(DG,reads):
         #print("Isoforms")
         #print(isoforms)
         if DEBUG==True:
-            print("VisitedNodes" , supported_reads[0],"has ", len(visited_nodes)," elements: ",visited_nodes)
+            print("VisitedNodes" , id,"has ", len(visited_nodes)," elements: ",visited_nodes)
         #print(visited_nodes)
     return isoforms,visited_nodes_for_isoforms
 
@@ -298,33 +300,47 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
     #    reads_path.write(">{0}\n{1}\n".format(str(q_id), seq))
     # reads_path.close()
     #print("Isoforms generated")
-def generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa):
-    reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
+def generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,called_consensuses):
+
     consensus_infos = {}
     consensuses={}
-    consensus_infos[id]=curr_best_seqs[id]
-    consensus_infos[id2]=curr_best_seqs[id2]
-    for key,value in consensus_infos.items():
+    print("CBS",curr_best_seqs)
+    if not (id in called_consensuses):
+        consensus_infos[id]=curr_best_seqs[id]
+    else:
+        consensus_infos[id]=called_consensuses[id]
+    print("ConInfos id",consensus_infos[id])
+    if not (id2 in called_consensuses):
+        consensus_infos[id2]=curr_best_seqs[id2]
+    else:
+        consensus_infos[id2] = called_consensuses[id2]
+    print("ConInfos id2", consensus_infos[id2])
+    print("CInfos",consensus_infos)
+    if bool(consensus_infos):
+        for key,value in consensus_infos.items():
+            reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
+            print("k",key,"vv",value)
             if len(value) == 1:
                 rid = key
                 singleread = reads[rid]
                 seq = singleread[1]
                 consensuses[key]=seq
                 #consensus_file.write(">{0}\n{1}\n".format(name, seq))
-                #reads_path.close()
+                reads_path.close()
             else:
                 for i, q_id in enumerate(value):
                     singleread = reads[q_id]
                     seq = singleread[1]
-
                     if i > max_seqs_to_spoa:
                         break
-                #print("read ", q_id,": ",seq)
+                    print("read ", q_id,": ",seq)
                     reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
+
                 reads_path.close()
                 spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
-            #print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
-                consensuses[key]=spoa_ref
+                    #print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
+                consensuses[key] = spoa_ref
+
     return consensuses
     #print(mapping)
 def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5):
@@ -387,6 +403,7 @@ INPUT: isoform_paths: List object of all nodes visited for each isoform
                                     A path file giving the paths of all final isoforms
 """
 def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delta_len,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,reads,max_seqs_to_spoa,delta_iso_len_3=0,delta_iso_len_5=0):
+    print("calculating similarity")
     consensus_name = "inter_spoa" + str(batch_id) + ".fa"
     called_consensuses={}
     consensus_file_inter = open(os.path.join(outfolder, consensus_name), 'w')
@@ -411,27 +428,29 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                 equality_1=equal_elements_nr/l1
                 equality_2=equal_elements_nr/l2
                 if equality_2>equality_1:
-                    if equality_2>0.7:
-                        similarity_file.write("{0} subisoform of {1} indicated by {3}\n".format(id2, id,equality_2))
+                    print("combi ",id,", ",id2,", eq2: ",equality_2,"\n")
+                    if equality_2 > 0.8:
+                        similarity_file.write("{0} subisoform of {1} indicated by {2}\n".format(id2, id, equality_2))
                         res=False
                         #the following code figures out whether path2 is a subisoform of path by finding out whether path2 is a sublist of path
-                        for idx in range(len(path) - len(path2) + 1):
-                            if path[idx: idx + len(path2)] == path2:
-                                res = True
-                                similarity_file.write("Sublist TRUE\n")
-                                break
-                        if res:
-
-                            consensuses=generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa)
-                            consensus1=consensuses[id]
-                            consensus2=consensuses[id2]
-                            merge_consensuses=align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5)
-                            if not merge_consensuses:
-                                called_consensuses[id]=consensus1
-                                called_consensuses[id2]=consensus2
-                            else:
-                                if len(reads[id])>50:
-
+                        #for idx in range(len(path) - len(path2) + 1):
+                        #    if path[idx: idx + len(path2)] == path2:
+                        #        res = True
+                        #        similarity_file.write("Sublist TRUE\n")
+                        #        break
+                        #if res:
+                        print("res true")
+                        consensuses=generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,called_consensuses)
+                        print(consensuses)
+                        consensus1=consensuses[id]
+                        consensus2=consensuses[id2]
+                        merge_consensuses=align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5)
+                        if not merge_consensuses:
+                            called_consensuses[id]=consensus1
+                            called_consensuses[id2]=consensus2
+                        else:
+                            if len(reads[id])>50:
+                                print("Hello World")
 
                 #    if equality_1==1.0:
                 #        similarity_file.write("{0} subisoform of {1}\n".format(id, id2))
@@ -445,18 +464,48 @@ DEBUG=False
 """
 Wrapper method used for the isoform generation
 """
-def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,max_seqs_to_spoa=200,iso_abundance=1,delta_iso_len_3=0,delta_iso_len_5=0):
+def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa=200,iso_abundance=1,delta_iso_len_3=0,delta_iso_len_5=0):
     equal_reads,isoform_paths=compute_equal_reads(DG,reads)
+    with open('equal_reads.txt', 'wb') as file:
+        file.write(pickle.dumps(equal_reads))
+    with open('isoform_paths.txt', 'wb') as file:
+        file.write(pickle.dumps(isoform_paths))
+    with open('all_reads.txt', 'wb') as file:
+        file.write(pickle.dumps(all_reads))
     calculate_isoform_similarity(equal_reads,work_dir,isoform_paths,outfolder,delta,delta_len,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,all_reads,max_seqs_to_spoa,delta_iso_len_3=0,delta_iso_len_5=0)
     generate_isoform_using_spoa(equal_reads,all_reads, work_dir,outfolder,batch_id, max_seqs_to_spoa,iso_abundance)
 
 
 
+def main():
+    print("Hello World")
+    file = open('equal_reads.txt', 'rb')
+    equal_reads = pickle.load(file)
+    file.close()
+    file = open('isoform_paths.txt', 'rb')
+    isoform_paths = pickle.load(file)
+    file.close()
+    file2 = open('all_reads.txt', 'rb')
+    all_reads = pickle.load(file2)
+    file2.close()
+    work_dir = tempfile.mkdtemp()
+    outfolder = "out_local"
+    delta=0.10
+    k_size=20
+    delta_len=2*k_size
+    batch_id=0
+    merge_sub_isoforms_3=True
+    merge_sub_isoforms_5 = True
+    max_seqs_to_spoa=200
+    iso_abundance=1
+    calculate_isoform_similarity(equal_reads, work_dir, isoform_paths, outfolder, delta, delta_len, batch_id,
+                                 merge_sub_isoforms_3, merge_sub_isoforms_5, all_reads, max_seqs_to_spoa,
+                                 delta_iso_len_3=0, delta_iso_len_5=0)
+    print("Hello World")
+    generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance)
 
-
-
-
-
+if __name__ == "__main__":
+    main()
     """
     main concept: 
     while reads_for_isoforms:

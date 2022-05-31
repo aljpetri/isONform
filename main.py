@@ -856,8 +856,13 @@ def main(args):
         #print("hello")
         #print("FoundCycles:",isCyclic(DG))
         #if not (possible_cycles):
+        delta = 0.10
         print("Starting to generate Isoforms")
-        generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,max_seqs_to_spoa,iso_abundance, delta_iso_len_3, delta_iso_len_5)
+        with open('DG.txt', 'wb') as file:
+            file.write(pickle.dumps(all_intervals_for_graph))
+        with open('all_reads.txt', 'wb') as file:
+            file.write(pickle.dumps(all_reads))
+        generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa,iso_abundance, delta_iso_len_3, delta_iso_len_5)
         #snapshot3 = tracemalloc.take_snapshot()
         #print(snapshot3)
         print("Isoforms generated")
