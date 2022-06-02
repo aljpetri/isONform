@@ -301,27 +301,29 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
     #    reads_path.write(">{0}\n{1}\n".format(str(q_id), seq))
     # reads_path.close()
     #print("Isoforms generated")
+    #TODO:mappingfile does not work
 def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance,merged_dict,merged_consensuses,called_consensuses,consensus_map):
     mapping = {}
     consensus_name = "spoa" + str(batch_id) + "merged.fa"
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
+    #we iterate over all items in curr_best_seqs
     for key, value in curr_best_seqs.items():
+        name = 'consensus' + str(key)
         #print(key,value)
+        #if our key is in merged_consensuses, we know that we merged this consensus during get_isoform_similarity
         if key in merged_consensuses:
-            #print(key," is a called_sonsensus")
-            name = 'consensus' + str(key)
+            mapping[name]=[]
+            #If the key is in merged_dict i.e.  key is still a consensus id
             if key in merged_dict:
-                #print(key, "is in merged_dict")
+                for i, q_id in enumerate(value):
+                    singleread = reads[q_id]
+                    mapping[name].append(singleread[0])
+                #we do not have to calculate consensus as already done
                 sequence=merged_dict[key].id_seq
                 consensus_file.write(">{0}\n{1}\n".format(name, sequence))
-            else:
-                #print(key, "NOT in merged_dict")
-                if not key in consensus_map:
-                    #print(key, "NOT in consensus_map")
-                    sequence=called_consensuses[key]
-                    consensus_file.write(">{0}\n{1}\n".format(name, sequence))
+        #there is no else case because we skip keys that are no merged_dict keys
         else:
-            # for equalreads in curr_best_seqs:
+            # This is exactly what we do in the normal generate_isoform_using_spoa
             name = 'consensus' + str(key)
             # name = 'consensus' + str(equalreads[0])
             mapping[name] = []
@@ -359,20 +361,21 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
 
             # print("Mapping has length "+str(len(mapping)))
 
-            # print("Mapping",mapping)
-    mapping_name = "mapping" + str(batch_id) + ".txt"
-    mappingfile = open(os.path.join(outfolder, mapping_name), "w")
-    for id, mapped_read_list in mapping.items():
-        if not id in merged_consensuses:
-            if len(mapped_read_list) >= iso_abundance:
-                mappingfile.write("{0}\n{1}\n".format(id, mapped_read_list))
+        # we have to treat the mapping file generation a bit different as we have to collect also the supporting reads of the subconsensuses
+        mapping_name = "mapping" + str(batch_id) + ".txt"
+        mappingfile = open(os.path.join(outfolder, mapping_name), "w")
+        for id, mapped_read_list in mapping.items():
+            if not id in merged_consensuses:
+                if len(mapped_read_list) >= iso_abundance:
+                    mappingfile.write("{0}\n{1}\n".format(id, mapped_read_list))
             else:
-                if id in merged_dict:
-                    full_read_list=[]
-                    full_read_list.extend(mapping[id])
-                    for cons_id in merged_dict[id].otherIDs:
-                        full_read_list.extend(mapping[cons_id])
-                    mappingfile.write("{0}\n{1}\n".format(id, full_read_list))
+                    if id in merged_dict:
+                        full_read_list=[]
+                        full_read_list.extend(mapping[id])
+                        for cons_id in merged_dict[id].otherIDs:
+                            single_read=reads[cons_id]
+                            full_read_list.append(single_read[0])
+                        mappingfile.write("{0}\n{1}\n".format(id, full_read_list))
 
     mappingfile.close()
     # consensus_file.write(">{0}\n{1}\n".format('consensus', spoa_ref))
