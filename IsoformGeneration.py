@@ -287,8 +287,8 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
                 spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
             #print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
                 consensus_file.write(">{0}\n{1}\n".format(name, spoa_ref))
-        else:
-            print("NOADD",key,value)
+        #else:
+            #print("NOADD",key,value)
     #print(mapping)
 
     #print("Mapping has length "+str(len(mapping)))
@@ -317,6 +317,7 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
     #print("Isoforms generated")
     #TODO:mappingfile does not work
 def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance,merged_dict,merged_consensuses,called_consensuses,consensus_map):
+    print("Generating the Isoforms")
     mapping = {}
     consensus_name = "spoa" + str(batch_id) + "merged.fa"
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
@@ -326,9 +327,9 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
         seq_counter+=len(value)
         name = 'consensus' + str(key)
         mapping[name] = []
-        print(key,value)
-        print(key,len(value))
-        print(merged_dict)
+        #print(key,value)
+        #print(key,len(value))
+        #print(merged_dict)
         #if our key is in merged_consensuses, we know that we merged this consensus during get_isoform_similarity
         if key in merged_consensuses:
             #If the key is in merged_dict i.e.  key is still a consensus id
@@ -374,8 +375,8 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                     spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
                     # print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
                     consensus_file.write(">{0}\n{1}\n".format(name, spoa_ref))
-            else:
-                print("HW")
+            #else:
+                #print("HW")
             # print(mapping)
 
             # print("Mapping has length "+str(len(mapping)))
@@ -394,7 +395,7 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                         full_read_list=[]
                         full_read_list.extend(mapping[id])
                         for cons_id in merged_dict[id].otherIDs:
-                            print("CID",mapping[cons_id])
+                            #print("CID",mapping[cons_id])
                             full_read_list.extend(mapping[cons_id])
                             #mapping_cter+=1
                             #single_read=reads[cons_id]
@@ -573,7 +574,7 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                         #        break
                         #if res:
                         #if True:
-                        print("ID2",id2)
+                        #print("ID2",id2)
                         if id2 not in merged_consensuses:
                             consensuses=generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,called_consensuses)
                         #print(consensuses)
@@ -697,7 +698,7 @@ def main():
     if merge_sub_isoforms_5 or merge_sub_isoforms_3:
         merged_dict,merged_consensuses,called_consensuses,consensus_map = calculate_isoform_similarity(equal_reads, work_dir, isoform_paths, outfolder, delta, delta_len, batch_id,
                                  merge_sub_isoforms_3, merge_sub_isoforms_5, all_reads, max_seqs_to_spoa,
-                                 delta_iso_len_3=0, delta_iso_len_5=0)
+                                 delta_iso_len_3, delta_iso_len_5)
         generate_isoform_using_spoa_merged(equal_reads, all_reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance,merged_dict,merged_consensuses,called_consensuses,consensus_map)
     else:
         generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance)
