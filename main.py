@@ -25,6 +25,7 @@ from sys import stdout
 import tracemalloc
 from SimplifyGraph import simplifyGraph,isCyclic
 from modules import create_augmented_reference, help_functions, correct_seqs  # ,align
+from batch_merging import *
 
 
 def eprint(*args, **kwargs):
@@ -567,16 +568,8 @@ def get_qvs(reads):
             quality_values_database[r_id].append( tmp_tot_sum + qv )  #= [D[char_] for char_ in qual]
             tmp_tot_sum += qv
     return quality_values_database
-"""The last step of our algorithm: We take all isoforms that were generated for each batch and align them to merge same isoforms
-"""
-def merge_batches(max_batchid,work_dir, outfolder,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa,iso_abundance, delta_iso_len_3, delta_iso_len_5):
-    for batchid in range(0,max_batchid+1):
 
-        #file = open("spoa" + str(batchid) + ".fa", 'r')
-        import itertools
-        with open("spoa" + str(batchid) + ".fa") as f:
-            for line1, line2 in itertools.zip_longest(*[f] * 2):
-                print(line1, line2)
+
 #TODO:it seems simplify_graph uses wrong read ids. Fixing this should improve result quality again
 def main(args):
 

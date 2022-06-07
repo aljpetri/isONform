@@ -49,8 +49,47 @@ def isONform(data):
     isoncorrect_location, read_fastq_file, outfolder, batch_id, isoncorrect_algorithm_params = data[0], data[1], data[
         2], data[3], data[4]
     mkdir_p(outfolder)
+    isoncorrect_exec = os.path.join(isoncorrect_location, "isONcorrect")
+    isoncorrect_error_file = os.path.join(outfolder, "stderr.txt")
+    with open(isoncorrect_error_file, "w") as error_file:
+        print('Running isoncorrect batch_id:{0}...'.format(batch_id), end=' ')
+        stdout.flush()
 
-    
+        racon_flag = "--use_racon" if isoncorrect_algorithm_params["use_racon"] else ''
+        # randstrobes_flag = "--randstrobes" if isoncorrect_algorithm_params["randstrobes"] else ''
+        dyn_flag = "--set_w_dynamically" if isoncorrect_algorithm_params["set_w_dynamically"] else ''
+        # null = open("/dev/null", "w")
+        isoncorrect_out_file = open(os.path.join(outfolder, "stdout.txt"), "w")
+        # print( " ".join([ "/usr/bin/time", isoncorrect_exec, "--fastq",  read_fastq_file,  "--outfolder",  outfolder,
+        #                         "--exact_instance_limit",  str(isoncorrect_algorithm_params["exact_instance_limit"]),
+        #                         "--set_w_dynamically" if isoncorrect_algorithm_params["set_w_dynamically"] else '',  "--max_seqs", str(isoncorrect_algorithm_params["max_seqs"]),
+        #                         "--use_racon" if isoncorrect_algorithm_params["use_racon"] else '',
+        #                         "--k",  str(isoncorrect_algorithm_params["k"]),  "--w",  str(isoncorrect_algorithm_params["w"]),
+        #                         "--xmin",  str(isoncorrect_algorithm_params["xmin"]),  "--xmax",  str(isoncorrect_algorithm_params["xmax"]),
+        #                         "--T",  str(isoncorrect_algorithm_params["T"]) ]))
+
+        # subprocess.check_call([ "/usr/bin/time", isoncorrect_exec, "--fastq {0} --outfolder {1} --exact_instance_limit {2} {3} {4} --max_seqs {5} --k {6} --w {7} --xmin {8} --xmax {9} --T {10}".format(read_fastq_file,  outfolder,
+        #                          str(isoncorrect_algorithm_params["exact_instance_limit"]),
+        #                         dyn_flag, racon_flag, str(isoncorrect_algorithm_params["max_seqs"]),
+        #                         str(isoncorrect_algorithm_params["k"]), str(isoncorrect_algorithm_params["w"]),
+        #                         str(isoncorrect_algorithm_params["xmin"]), str(isoncorrect_algorithm_params["xmax"]),
+        #                         str(isoncorrect_algorithm_params["T"])) ], stderr=error_file, stdout=isoncorrect_out_file)
+
+        subprocess.check_call(
+                ["/usr/bin/time", isoncorrect_exec, "--fastq", read_fastq_file, "--outfolder", outfolder,
+                 "--exact_instance_limit", str(isoncorrect_algorithm_params["exact_instance_limit"]),
+                 "--max_seqs", str(isoncorrect_algorithm_params["max_seqs"]),
+                 "--k", str(isoncorrect_algorithm_params["k"]), "--w", str(isoncorrect_algorithm_params["w"]),
+                 "--xmin", str(isoncorrect_algorithm_params["xmin"]), "--xmax",
+                 str(isoncorrect_algorithm_params["xmax"]),
+                 "--T", str(isoncorrect_algorithm_params["T"])], stderr=error_file, stdout=isoncorrect_out_file)
+
+        print('Done with batch_id:{0}.'.format(batch_id))
+        stdout.flush()
+    error_file.close()
+    isoncorrect_out_file.close()
+    return batch_id
+
 
 def isoncorrect(data):
     isoncorrect_location, read_fastq_file, outfolder, batch_id, isoncorrect_algorithm_params = data[0], data[1], data[
@@ -240,7 +279,7 @@ def join_back_corrected_batches_into_cluster(tmp_work_dir, outdir, split_mod, re
 
 def main(args):
     directory = args.fastq_folder  # os.fsencode(args.fastq_folder)
-    isoncorrect_location = os.path.dirname(os.path.realpath(__file__))
+    isONform_location = os.path.dirname(os.path.realpath(__file__))
     if args.split_wrt_batches:
         tmp_work_dir = tempfile.mkdtemp()
         print("Temporary workdirektory:", tmp_work_dir)
@@ -249,7 +288,7 @@ def main(args):
     else:
         split_directory = os.fsencode(directory)
 
-    print(isoncorrect_location)
+    print(isONform_location)
     instances = []
     for file_ in os.listdir(split_directory):
         read_fastq_file = os.fsdecode(file_)
@@ -280,7 +319,7 @@ def main(args):
                                                 "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
                                                 "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon}
                 instances.append(
-                    (isoncorrect_location, fastq_file_path, outfolder, batch_id, isoncorrect_algorithm_params))
+                    (isONform_location, fastq_file_path, outfolder, batch_id, isoncorrect_algorithm_params))
             # else:
             #     isoncorrect_algorithm_params = {  "set_w_dynamically" : args.set_w_dynamically, "exact_instance_limit" : args.exact_instance_limit, "k": args.k, "w" : args.w, "xmin" : args.xmin, "xmax" :  args.xmax, "T" : args.T }
             #     instances.append((isoncorrect_location, fastq_file_path, outfolder, int(batch_id), isoncorrect_algorithm_params) )
