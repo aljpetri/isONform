@@ -572,7 +572,7 @@ def get_qvs(reads):
 
 #TODO:it seems simplify_graph uses wrong read ids. Fixing this should improve result quality again
 def main(args):
-
+    all_batch_reads_dict={}
     # start = time()
     if os.path.exists("mapping.txt"):
         os.remove("mapping.txt")
@@ -769,6 +769,7 @@ def main(args):
                     all_intervals_for_graph[graph_id] = intervals_to_correct
                     #print("GID",graph_id," ",acc)
                     new_all_reads[graph_id]=reads[r_id]
+
                     graph_id+=1
 
                     #if r_id == 2:
@@ -830,6 +831,7 @@ def main(args):
             #print(type(all_reads))
             #print(all_intervals_for_graph.keys())
             print("Generating the graph")
+            all_batch_reads_dict[batch_id] = new_all_reads
             read_len_dict = get_read_lengths(all_reads)
             DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
                 all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
@@ -862,11 +864,12 @@ def main(args):
         #if not (possible_cycles):
         delta = 0.10
         print("Starting to generate Isoforms")
-        with open('DG.txt', 'wb') as file:
-            file.write(pickle.dumps(all_intervals_for_graph))
-        with open('all_reads.txt', 'wb') as file:
+        #with open('DG.txt', 'wb') as file:
+        #    file.write(pickle.dumps(all_intervals_for_graph))
+        all_reads_name="all_reads_"+str(batch_id)+".txt"
+        with open(os.path.join(outfolder, all_reads_name), 'wb') as file:
             file.write(pickle.dumps(all_reads))
-        generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa,iso_abundance, delta_iso_len_3, delta_iso_len_5)
+        generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa,iso_abundance, delta_iso_len_3, delta_iso_len_5)
         #snapshot3 = tracemalloc.take_snapshot()
         #print(snapshot3)
         print("Isoforms generated")
@@ -892,7 +895,9 @@ def main(args):
         # for index in opt_indicies:
         #    print(type(index))
         #    print(index)
-    merge_batches(max_batchid,work_dir, outfolder,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa,iso_abundance, delta_iso_len_3, delta_iso_len_5)
+    with open(os.path.join(outfolder, "all_batches_reads.txt"), 'wb') as file:
+        file.write(pickle.dumps(all_batch_reads_dict))
+    merge_batches(max_batchid,work_dir, outfolder,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa,iso_abundance, delta_iso_len_3, delta_iso_len_5,all_batch_reads_dict)
     # eprint("tot_before:", tot_errors_before)
     # eprint("tot_after:", sum(tot_errors_after.values()), tot_errors_after)
     # eprint(len(corrected_reads))

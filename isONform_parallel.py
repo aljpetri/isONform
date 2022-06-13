@@ -55,9 +55,9 @@ def isONform(data):
         print('Running isoncorrect batch_id:{0}...'.format(batch_id), end=' ')
         stdout.flush()
 
-        racon_flag = "--use_racon" if isoncorrect_algorithm_params["use_racon"] else ''
+        #racon_flag = "--use_racon" if isoncorrect_algorithm_params["use_racon"] else ''
         # randstrobes_flag = "--randstrobes" if isoncorrect_algorithm_params["randstrobes"] else ''
-        dyn_flag = "--set_w_dynamically" if isoncorrect_algorithm_params["set_w_dynamically"] else ''
+        #dyn_flag = "--set_w_dynamically" if isoncorrect_algorithm_params["set_w_dynamically"] else ''
         # null = open("/dev/null", "w")
         isoncorrect_out_file = open(os.path.join(outfolder, "stdout.txt"), "w")
         # print( " ".join([ "/usr/bin/time", isoncorrect_exec, "--fastq",  read_fastq_file,  "--outfolder",  outfolder,
@@ -372,72 +372,72 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="De novo clustering of long-read transcriptome reads",
+    parser = argparse.ArgumentParser(description="De novo error correction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--version', action='version', version='%(prog)s 0.0.8')
-    parser.add_argument('--fastq_folder', type=str, default=False,
-                        help='Path to input fastq folder with reads in clusters')
-    parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.0.6')
+
+    parser.add_argument('--fastq', type=str, default=False, help='Path to input fastq file with reads')
+    # parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
+
     parser.add_argument('--k', type=int, default=9, help='Kmer size')
-    parser.add_argument('--w', type=int, default=20, help='Window size')
-    parser.add_argument('--xmin', type=int, default=18, help='Lower interval length')
-    parser.add_argument('--xmax', type=int, default=80, help='Upper interval length')
+    parser.add_argument('--w', type=int, default=10, help='Window size')
+    parser.add_argument('--xmin', type=int, default=18, help='Upper interval length')
+    parser.add_argument('--xmax', type=int, default=80, help='Lower interval length')
     parser.add_argument('--T', type=float, default=0.1, help='Minimum fraction keeping substitution')
-    parser.add_argument('--exact_instance_limit', type=int, default=50,
-                        help='Do exact correction for clusters under this threshold')
-    # parser.add_argument('--w_equal_k_limit', type=int, default=100,  help='Do not recompute previous results')
-    parser.add_argument('--keep_old', action="store_true",
-                        help='Do not recompute previous results if corrected_reads.fq is found and has the smae number of reads as input file (i.e., is complete).')
-    parser.add_argument('--set_w_dynamically', action="store_true",
-                        help='Set w = k + max(2*k, floor(cluster_size/1000)).')
-    parser.add_argument('--max_seqs', type=int, default=2000,
+    # parser.add_argument('--C', type=float, default=0.05, help='Minimum fraction of keeping alternative refernece contexts')
+    parser.add_argument('--exact', action="store_true", help='Get exact solution for WIS for evary read (recalculating weights for each read (much slower but slightly more accuracy,\
+                                                                     not to be used for clusters with over ~500 reads)')
+    parser.add_argument('--disable_numpy', action="store_true",
+                        help='Do not require numpy to be installed, but this version is about 1.5x slower than with numpy.')
+    parser.add_argument('--delta_len', type=int, default=3,
+                        help='Maximum length difference between two reads intervals for which they would still be merged')
+    parser.add_argument('--max_seqs_to_spoa', type=int, default=200, help='Maximum number of seqs to spoa')
+    parser.add_argument('--max_seqs', type=int, default=1000,
                         help='Maximum number of seqs to correct at a time (in case of large clusters).')
     parser.add_argument('--use_racon', action="store_true",
                         help='Use racon to polish consensus after spoa (more time consuming but higher accuracy).')
 
+    parser.add_argument('--exact_instance_limit', type=int, default=0,
+                        help='Activates slower exact mode for instance smaller than this limit')
+    # parser.add_argument('--w_equal_k_limit', type=int, default=0,  help='Sets w=k which is slower and more memory consuming but more accurate and useful for smalled clusters.')
+    parser.add_argument('--set_w_dynamically', action="store_true",
+                        help='Set w = k + max(2*k, floor(cluster_size/1000)).')
+    parser.add_argument('--verbose', action="store_true", help='Print various developer stats.')
+
+    parser.add_argument('--compression', action="store_true", help='Use homopolymenr compressed reads. (Deprecated, because we will have fewer \
+                                                                            minmimizer combinations to span regions in homopolymenr dense regions. Solution \
+                                                                            could be to adjust upper interval legnth dynamically to guarantee a certain number of spanning intervals.')
+    parser.add_argument('--outfolder', type=str, default=None,
+                        help='A fasta file with transcripts that are shared between samples and have perfect illumina support.')
+    parser.add_argument('--iso_abundance', type=int, default=1,
+                        help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
+    parser.add_argument('--merge_sub_isoforms_3', type=bool, default=True,
+                        help='Parameter to determine whether we want to merge sub isoforms (shorter at 3prime end) into bigger isoforms')
+    parser.add_argument('--merge_sub_isoforms_5', type=bool, default=True,
+                        help='Parameter to determine whether we want to merge sub isoforms (shorter at 5prime end) into bigger isoforms')
+
+    parser.add_argument('--delta_iso_len_3', type=int, default=50,
+                        help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
+    parser.add_argument('--delta_iso_len_5', type=int, default=50,
+                        help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--split_mod', type=int, default=1, help='Splits cluster ids in n (default=1) partitions by computing residual of cluster_id divided by n.\
-                                                                    this parameter needs to be combined with  --residual to take effect.')
+                                                                        this parameter needs to be combined with  --residual to take effect.')
     parser.add_argument('--residual', type=int, default=0,
                         help='Run isONcorrect on cluster ids with residual (default 0) of cluster_id divided by --split_mod. ')
+args = parser.parse_args()
 
-    # parser.add_argument('--exact', action="store_true", help='Get exact solution for WIS for evary read (recalculating weights for each read (much slower but slightly more accuracy,\
-    #                                                              not to be used for clusters with over ~500 reads)')
+if args.xmin < 2 * args.k:
+    args.xmin = 2 * args.k
+    print("xmin set to {0}".format(args.xmin))
 
-    parser.add_argument('--split_wrt_batches', action="store_true",
-                        help='Process reads per batch (of max_seqs sequences) instead of per cluster. Significantly decrease runtime when few very large clusters are less than the number of cores used.')
+if len(sys.argv) == 1:
+    parser.print_help()
+    sys.exit()
+if not args.fastq and not args.flnc and not args.ccs:
+    parser.print_help()
+    sys.exit()
 
-    parser.add_argument('--outfolder', type=str, default=None, help='Outfolder with all corrected reads.')
-    parser.add_argument('--randstrobes', action="store_true", help='EXPERIMENTAL PARAMETER: IsONcorrect uses paired minimizers (described in isONcorrect paper). This experimental option\
-                                                                 uses randstrobes instead of paired minimizers to find shared regions. Randstrobes \
-                                                                 reduces memory footprint substantially (and runtime) with only slight increase in post correction quality.')
-
-    parser.add_argument('--layers', type=int, default=argparse.SUPPRESS, help='EXPERIMENTAL PARAMETER: Active when --randstrobes specified.\
-                                                                How many "layers" with randstrobes we want per sequence to sample.\
-                                                               More layers gives more accureate results but is more memory consuming and slower.\
-                                                               It is not reccomended to specify more than 5. ')
-    parser.add_argument('--set_layers_manually', action="store_true", help='EXPERIMENTAL PARAMETER: By default isONcorrect sets layers = 1 if nr seqs in batch to be corrected is >= 1000, else layers = 2.\
-                                                                            This command will manually pick the number of layers specified with the --layers parameter.')
-
-    args = parser.parse_args()
-
-    if len(sys.argv) == 1:
-        parser.print_help()
-        sys.exit()
-
-    # if not args.paired_minimizers and 'max_seqs' not in args:
-    #     print("max_seqs was not specified and paired_minimizer setting not used. Setting max_seqs to 2000")
-    #     args.max_seqs = 2000
-    # elif args.paired_minimizers and 'max_seqs' not in args:
-    #     print("max_seqs was not specified. Setting max_seqs to 1000")
-    #     args.max_seqs = 1000
-
-    if args.set_layers_manually and 'layers' not in args:
-        args.layers = 2
-
-    if args.split_mod > 1:
-        assert args.residual < args.split_mod
-
-    if args.outfolder and not os.path.exists(args.outfolder):
-        os.makedirs(args.outfolder)
+if args.outfolder and not os.path.exists(args.outfolder):
+    os.makedirs(args.outfolder)
 
     main(args)

@@ -322,11 +322,15 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
     consensus_name = "spoa" + str(batch_id) + "merged.fa"
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
     seq_counter=0
+    other_mapping_cter=0
     #we iterate over all items in curr_best_seqs
     for key, value in curr_best_seqs.items():
-        seq_counter+=len(value)
+        #print(key,value)
+        print(len(value))
+        seq_counter += len(value)
         name = 'consensus' + str(key)
-        mapping[name] = []
+        print("Sequence count:",seq_counter)
+        print("Mapping count:",other_mapping_cter)
         #print(key,value)
         #print(key,len(value))
         #print(merged_dict)
@@ -334,15 +338,25 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
         if key in merged_consensuses:
             #If the key is in merged_dict i.e.  key is still a consensus id
             if key in merged_dict:
+                #We generate a list as value for mapping[key]
+                if name not in mapping:
+                    mapping[name] = []
+                    #iterate over all reads in value and add them to mapping
                 for i, q_id in enumerate(value):
+                    print("Q_ID",q_id)
                     singleread = reads[q_id]
                     mapping[name].append(singleread[0])
                 #we do not have to calculate consensus as already done
                 sequence=merged_dict[key].id_seq
                 consensus_file.write(">{0}\n{1}\n".format(name, sequence))
             else:
+                name = 'consensus' + str(consensus_map[key])
                 for i, q_id in enumerate(value):
+                    print("Q_ID", q_id)
                     singleread = reads[q_id]
+                    if name not in mapping:
+                        mapping[name] = []
+
                     mapping[name].append(singleread[0])
         #there is no else case because we skip keys that are no merged_dict keys
         else:
@@ -350,12 +364,13 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
 
             # name = 'consensus' + str(equalreads[0])
             reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
-            # if len(equalreads) == 1:
-            # TODO: add information of how many reads support this isoform by consensusx_support
+            if name not in mapping:
+                mapping[name]=[]
             if len(value) >= iso_abundance:
                 if len(value) == 1:
                     # rid = equalreads[0]
                     rid = key
+                    print("R_ID", rid)
                     singleread = reads[rid]
                     # print(singleread)
                     seq = singleread[1]
@@ -366,6 +381,7 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                     # print("Equalreads has different size")
                     # for i, q_id in enumerate(equalreads):
                     for i, q_id in enumerate(value):
+                        print("Q_IDs", q_id)
                         singleread = reads[q_id]
                         seq = singleread[1]
                         mapping[name].append(singleread[0])
@@ -379,8 +395,10 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                 #print("HW")
             # print(mapping)
 
-            # print("Mapping has length "+str(len(mapping)))
-
+            print("Mapping has length "+str(len(mapping)))
+        other_mapping_cter=0
+        for key, value in mapping.items():
+            other_mapping_cter+=len(value)
         # we have to treat the mapping file generation a bit different as we have to collect also the supporting reads of the subconsensuses
     mapping_name = "mapping" + str(batch_id) + ".txt"
     mappingfile = open(os.path.join(outfolder, mapping_name), "w")
@@ -466,7 +484,7 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
             # we want to add up all missmatches to compare to sequence length
             miss_match_length += cig_len
             # we also want to make sure that we do not have too large internal sequence differences
-            if cig_len > 2 * delta_len:
+            if cig_len > delta_len:
                 if i == 1:
                     if merge_sub_isoforms_5:
                         if cig_len<delta_iso_len_5:
@@ -531,13 +549,14 @@ INPUT: isoform_paths: List object of all nodes visited for each isoform
     The method produces two files:  A similarity file giving the similarity values for each pair of consuensuses.
                                     A path file giving the paths of all final isoforms
 """
+#TODO: Fix bug that reduces the number of mappings!
 def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delta_len,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,reads,max_seqs_to_spoa,delta_iso_len_3=0,delta_iso_len_5=0):
     print("calculating similarity")
     merged_dict={}
     Merged_consensus = namedtuple("Merged_consensus", "id_seq otherIDs")
-    consensus_name = "inter_spoa" + str(batch_id) + ".fa"
+    #consensus_name = "inter_spoa" + str(batch_id) + ".fa"
     called_consensuses={}
-    consensus_file_inter = open(os.path.join(outfolder, consensus_name), 'w')
+    #consensus_file_inter = open(os.path.join(outfolder, consensus_name), 'w')
     eq_file_name="similarity_batch_"+str(batch_id)+".txt"
     path_file_name="path_"+str(batch_id)+".txt"
     similarity_file = open(os.path.join(outfolder, eq_file_name), 'w')
@@ -654,9 +673,11 @@ Wrapper method used for the isoform generation
 """
 def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa=200,iso_abundance=1,delta_iso_len_3=0,delta_iso_len_5=0):
     equal_reads,isoform_paths=compute_equal_reads(DG,reads)
-    with open('equal_reads.txt', 'wb') as file:
+    equal_reads_name='equal_reads_'+str(batch_id)+'.txt'
+    with open(os.path.join(outfolder, equal_reads_name), 'wb') as file:
         file.write(pickle.dumps(equal_reads))
-    with open('isoform_paths.txt', 'wb') as file:
+    isoform_paths_name='isoform_paths_'+str(batch_id)+'.txt'
+    with open(os.path.join(outfolder, isoform_paths_name), 'wb') as file:
         file.write(pickle.dumps(isoform_paths))
     with open('all_reads.txt', 'wb') as file:
         file.write(pickle.dumps(all_reads))
@@ -673,14 +694,18 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
 
 
 def main():
+    outfolder="100kSIRV1/0"
+    batch_id = 0
     print("Hello World")
-    file = open('equal_reads.txt', 'rb')
+    file = open(os.path.join(outfolder,'equal_reads_'+str(batch_id)+'.txt'), 'rb')
     equal_reads = pickle.load(file)
     file.close()
-    file = open('isoform_paths.txt', 'rb')
+    file = open(os.path.join(outfolder,'isoform_paths_'+str(batch_id)+'.txt'), 'rb')
     isoform_paths = pickle.load(file)
     file.close()
-    file2 = open('all_reads.txt', 'rb')
+
+    file2 = open(os.path.join(outfolder, 'all_reads_' + str(batch_id) ), 'rb')
+    #file2 = open(os.path.join(outfolder,'all_reads_'+str(batch_id)+'.txt'), 'rb')
     all_reads = pickle.load(file2)
     file2.close()
     work_dir = tempfile.mkdtemp()
@@ -688,7 +713,7 @@ def main():
     delta=0.10
     k_size=20
     delta_len=k_size
-    batch_id=0
+
     merge_sub_isoforms_3=True
     merge_sub_isoforms_5 = True
     delta_iso_len_3=30

@@ -292,7 +292,7 @@ def parse_cigar_diversity(cigar_tuples,delta_perc,delta_len):
             #we want to add up all missmatches to compare to sequence length
             miss_match_length += cig_len
             #we also want to make sure that we do not have too large internal sequence differences
-            if cig_len > 2*delta_len:
+            if cig_len > delta_len:
                 if i>1 and i<(len(cigar_tuples)-1):
                     #print("ELE",elem)
                     #print("No pop due to delta_len")
