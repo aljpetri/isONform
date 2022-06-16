@@ -15,7 +15,7 @@ import glob
 import tempfile
 import errno
 from time import time
-
+from batch_merging import *
 import itertools
 
 import signal
@@ -46,11 +46,13 @@ def wccount(filename):
     return int(out.split()[0])
 
 def isONform(data):
+    print("Running isONform")
     isoncorrect_location, read_fastq_file, outfolder, batch_id, isoncorrect_algorithm_params = data[0], data[1], data[
         2], data[3], data[4]
     mkdir_p(outfolder)
-    isoncorrect_exec = os.path.join(isoncorrect_location, "isONcorrect")
+    isONform_exec = os.path.join(isoncorrect_location, "main.py")
     isoncorrect_error_file = os.path.join(outfolder, "stderr.txt")
+    print("Running isONform")
     with open(isoncorrect_error_file, "w") as error_file:
         print('Running isoncorrect batch_id:{0}...'.format(batch_id), end=' ')
         stdout.flush()
@@ -76,7 +78,7 @@ def isONform(data):
         #                         str(isoncorrect_algorithm_params["T"])) ], stderr=error_file, stdout=isoncorrect_out_file)
 
         subprocess.check_call(
-                ["/usr/bin/time", isoncorrect_exec, "--fastq", read_fastq_file, "--outfolder", outfolder,
+                ["/usr/bin/time", isONform_exec, "--fastq", read_fastq_file, "--outfolder", outfolder,
                  "--exact_instance_limit", str(isoncorrect_algorithm_params["exact_instance_limit"]),
                  "--max_seqs", str(isoncorrect_algorithm_params["max_seqs"]),
                  "--k", str(isoncorrect_algorithm_params["k"]), "--w", str(isoncorrect_algorithm_params["w"]),
@@ -92,6 +94,7 @@ def isONform(data):
 
 
 def isoncorrect(data):
+    print("running isoncorrect")
     isoncorrect_location, read_fastq_file, outfolder, batch_id, isoncorrect_algorithm_params = data[0], data[1], data[
         2], data[3], data[4]
     mkdir_p(outfolder)
@@ -278,7 +281,8 @@ def join_back_corrected_batches_into_cluster(tmp_work_dir, outdir, split_mod, re
 
 
 def main(args):
-    directory = args.fastq_folder  # os.fsencode(args.fastq_folder)
+    print("main started")
+    directory = args.fastq_folder #os.fsencode(args.fastq_folder)
     isONform_location = os.path.dirname(os.path.realpath(__file__))
     if args.split_wrt_batches:
         tmp_work_dir = tempfile.mkdtemp()
@@ -297,9 +301,7 @@ def main(args):
             cl_id = batch_id.split("_")[0]
             outfolder = os.path.join(args.outfolder, batch_id)
             if int(cl_id) % args.split_mod != args.residual:
-                print('skipping {0} because args.split_mod:{1} and args.residual:{2} set.'.format(batch_id,
-                                                                                                  args.split_mod,
-                                                                                                  args.residual))
+                print('skipping {0} because args.split_mod:{1} and args.residual:{2} set.'.format(batch_id, args.split_mod, args.residual))
                 continue
             # print(batch_id, outfolder, read_fastq_file, split_directory)
             fastq_file_path = os.path.join(os.fsdecode(split_directory), read_fastq_file)
@@ -311,15 +313,12 @@ def main(args):
                     if wccount(candidate_corrected_file) == wccount(fastq_file_path):
                         print("already computed cluster and complete file", batch_id)
                         compute = False
+                        print("compute",compute)
 
             if compute:
-                isoncorrect_algorithm_params = {"set_w_dynamically": args.set_w_dynamically,
-                                                "exact_instance_limit": args.exact_instance_limit,
-                                                "randstrobes": args.randstrobes,
-                                                "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
-                                                "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon}
-                instances.append(
-                    (isONform_location, fastq_file_path, outfolder, batch_id, isoncorrect_algorithm_params))
+                isONform_algorithm_params = {  "set_w_dynamically" : args.set_w_dynamically, "exact_instance_limit" : args.exact_instance_limit, "randstrobes" : args.randstrobes,
+                                                    "k": args.k, "w" : args.w, "xmin" : args.xmin, "xmax" :  args.xmax, "T" : args.T, "max_seqs" : args.max_seqs,  "use_racon" : args.use_racon  }
+                instances.append((isONform_location, fastq_file_path, outfolder, batch_id, isONform_algorithm_params) )
             # else:
             #     isoncorrect_algorithm_params = {  "set_w_dynamically" : args.set_w_dynamically, "exact_instance_limit" : args.exact_instance_limit, "k": args.k, "w" : args.w, "xmin" : args.xmin, "xmax" :  args.xmax, "T" : args.T }
             #     instances.append((isoncorrect_location, fastq_file_path, outfolder, int(batch_id), isoncorrect_algorithm_params) )
@@ -334,7 +333,7 @@ def main(args):
     # else:
     #     instances.sort(key = lambda x: int(x[3])) # sorting in order of cluster size!
 
-    instances.sort(key=lambda x: x[3])  # sorting on batch ids as strings
+    instances.sort(key = lambda x: x[3]) # sorting on batch ids as strings
 
     for t in instances:
         print(t)
@@ -346,11 +345,12 @@ def main(args):
     print("Using {0} cores.".format(args.nr_cores))
     start_multi = time()
     pool = Pool(processes=int(args.nr_cores))
+    print("Pool",pool)
     try:
         # res = pool.map_async(isoncorrect, instances, chunksize=1)
         # score_results =res.get(999999999) # Without the timeout this blocking call ignores all signals.
         start = time()
-        for x in pool.imap_unordered(isoncorrect, instances):
+        for x in pool.imap_unordered(isONform, instances):
             print("{} (Time elapsed: {}s)".format(x, int(time() - start)))
     except KeyboardInterrupt:
         print("Caught KeyboardInterrupt, terminating workers")
@@ -360,7 +360,7 @@ def main(args):
         pool.close()
     pool.join()
 
-    print("Time elapesd multiprocessing:", time() - start_multi)
+    print("Time elapsed multiprocessing:", time() - start_multi)
 
     if args.split_wrt_batches:
         file_handling = time()
@@ -374,6 +374,8 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo error correction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--fastq_folder', type=str, default=False,
+                        help='Path to input fastq folder with reads in clusters')
     parser.add_argument('--version', action='version', version='%(prog)s 0.0.6')
 
     parser.add_argument('--fastq', type=str, default=False, help='Path to input fastq file with reads')
@@ -384,6 +386,7 @@ if __name__ == '__main__':
     parser.add_argument('--xmin', type=int, default=18, help='Upper interval length')
     parser.add_argument('--xmax', type=int, default=80, help='Lower interval length')
     parser.add_argument('--T', type=float, default=0.1, help='Minimum fraction keeping substitution')
+    parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
     # parser.add_argument('--C', type=float, default=0.05, help='Minimum fraction of keeping alternative refernece contexts')
     parser.add_argument('--exact', action="store_true", help='Get exact solution for WIS for evary read (recalculating weights for each read (much slower but slightly more accuracy,\
                                                                      not to be used for clusters with over ~500 reads)')
@@ -424,20 +427,33 @@ if __name__ == '__main__':
                                                                         this parameter needs to be combined with  --residual to take effect.')
     parser.add_argument('--residual', type=int, default=0,
                         help='Run isONcorrect on cluster ids with residual (default 0) of cluster_id divided by --split_mod. ')
-args = parser.parse_args()
+    parser.add_argument('--set_layers_manually', action="store_true", help='EXPERIMENTAL PARAMETER: By default isONcorrect sets layers = 1 if nr seqs in batch to be corrected is >= 1000, else layers = 2.\
+                                                                                This command will manually pick the number of layers specified with the --layers parameter.')
+    parser.add_argument('--split_wrt_batches', action="store_true",
+                        help='Process reads per batch (of max_seqs sequences) instead of per cluster. Significantly decrease runtime when few very large clusters are less than the number of cores used.')
+    parser.add_argument('--layers', type=int, default=argparse.SUPPRESS, help='EXPERIMENTAL PARAMETER: Active when --randstrobes specified.\
+                                                                    How many "layers" with randstrobes we want per sequence to sample.\
+                                                                   More layers gives more accureate results but is more memory consuming and slower.\
+                                                                   It is not reccomended to specify more than 5. ')
+    args = parser.parse_args()
 
-if args.xmin < 2 * args.k:
-    args.xmin = 2 * args.k
-    print("xmin set to {0}".format(args.xmin))
+    if args.xmin < 2 * args.k:
+        args.xmin = 2 * args.k
+        print("xmin set to {0}".format(args.xmin))
 
-if len(sys.argv) == 1:
-    parser.print_help()
-    sys.exit()
-if not args.fastq and not args.flnc and not args.ccs:
-    parser.print_help()
-    sys.exit()
+    if len(sys.argv) == 1:
+        parser.print_help()
+        print("Quitting")
+        sys.exit()
 
-if args.outfolder and not os.path.exists(args.outfolder):
-    os.makedirs(args.outfolder)
+    if args.set_layers_manually and 'layers' not in args:
+        args.layers = 2
+
+
+    if args.split_mod > 1:
+        assert args.residual < args.split_mod
+
+    if args.outfolder and not os.path.exists(args.outfolder):
+        os.makedirs(args.outfolder)
 
     main(args)

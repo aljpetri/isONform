@@ -47,12 +47,6 @@ INPUT:      DG                  Directed Graph
 OUPUT:      reads:              dictionary, which does not contain the read information anymore
 """
 def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
-    #print("cleaning the graph")
-    #print("Visited Edges",visited_edges)
-    #print("Visited nodes",visited_nodes)
-
-    #print("supported_reads",supported_reads)
-    #all_edges_dict={}
     update_dict={}
     #edge_update_dict={}
     for edge in visited_edges:
@@ -256,7 +250,7 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
         reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
         #if len(equalreads) == 1:
         #seq_counter+=len(value)
-    #TODO: add information of how many reads support this isoform by consensusx_support
+
         if len(value)>=iso_abundance:
             if len(value) == 1:
                 seq_counter+=1
@@ -308,14 +302,7 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
 
     consensus_file.close()
     print(seq_counter," sequences, ",mapping_cter," mappings")
-    # for i, (q_id, pos1, pos2) in  enumerate(grouper(curr_best_seqs, 3)):
-    #    seq = reads[q_id][1][pos1: pos2 + k_size]
-    #    if i > max_seqs_to_spoa:
-    #        break
-    #    reads_path.write(">{0}\n{1}\n".format(str(q_id), seq))
-    # reads_path.close()
-    #print("Isoforms generated")
-    #TODO:mappingfile does not work
+
 def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance,merged_dict,merged_consensuses,called_consensuses,consensus_map):
     print("Generating the Isoforms")
     mapping = {}
@@ -326,11 +313,11 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
     #we iterate over all items in curr_best_seqs
     for key, value in curr_best_seqs.items():
         #print(key,value)
-        print(len(value))
+        #print(len(value))
         seq_counter += len(value)
         name = 'consensus' + str(key)
-        print("Sequence count:",seq_counter)
-        print("Mapping count:",other_mapping_cter)
+        #print("Sequence count:",seq_counter)
+        #print("Mapping count:",other_mapping_cter)
         #print(key,value)
         #print(key,len(value))
         #print(merged_dict)
@@ -343,7 +330,7 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                     mapping[name] = []
                     #iterate over all reads in value and add them to mapping
                 for i, q_id in enumerate(value):
-                    print("Q_ID",q_id)
+                    #print("Q_ID",q_id)
                     singleread = reads[q_id]
                     mapping[name].append(singleread[0])
                 #we do not have to calculate consensus as already done
@@ -352,7 +339,7 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
             else:
                 name = 'consensus' + str(consensus_map[key])
                 for i, q_id in enumerate(value):
-                    print("Q_ID", q_id)
+                    #print("Q_ID", q_id)
                     singleread = reads[q_id]
                     if name not in mapping:
                         mapping[name] = []
@@ -370,7 +357,7 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                 if len(value) == 1:
                     # rid = equalreads[0]
                     rid = key
-                    print("R_ID", rid)
+                    #print("R_ID", rid)
                     singleread = reads[rid]
                     # print(singleread)
                     seq = singleread[1]
@@ -381,7 +368,7 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                     # print("Equalreads has different size")
                     # for i, q_id in enumerate(equalreads):
                     for i, q_id in enumerate(value):
-                        print("Q_IDs", q_id)
+                        #print("Q_IDs", q_id)
                         singleread = reads[q_id]
                         seq = singleread[1]
                         mapping[name].append(singleread[0])
@@ -395,7 +382,7 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                 #print("HW")
             # print(mapping)
 
-            print("Mapping has length "+str(len(mapping)))
+            #print("Mapping has length "+str(len(mapping)))
         other_mapping_cter=0
         for key, value in mapping.items():
             other_mapping_cter+=len(value)
@@ -549,7 +536,7 @@ INPUT: isoform_paths: List object of all nodes visited for each isoform
     The method produces two files:  A similarity file giving the similarity values for each pair of consuensuses.
                                     A path file giving the paths of all final isoforms
 """
-#TODO: Fix bug that reduces the number of mappings!
+
 def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delta_len,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,reads,max_seqs_to_spoa,delta_iso_len_3=0,delta_iso_len_5=0):
     print("calculating similarity")
     merged_dict={}
