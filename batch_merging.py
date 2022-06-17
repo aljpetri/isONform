@@ -5,7 +5,13 @@ from IsoformGeneration import align_to_merge,parse_cigar_diversity_isoform_level
 import tempfile
 import pickle
 
+""" This method is used to generate the consensus file needed for the consensus generation
 
+INPUT:  work_dir  : The working directory in which to store the file
+
+
+OUTPUT: spoa_ref:   The consensus
+"""
 def generate_consensus_path(work_dir,mappings1,mappings2, reads1,reads2,spoa_count):
     reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
     seq_count=0
