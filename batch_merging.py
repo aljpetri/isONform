@@ -1,4 +1,3 @@
-from collections import namedtuple
 import itertools
 from consensus import *
 from recordclass import recordclass
@@ -23,11 +22,8 @@ def generate_consensus_path(work_dir,mappings1,mappings2, reads1,reads2,spoa_cou
     return spoa_ref
 """The last step of our algorithm: We take all isoforms that were generated for each batch and align them to merge same isoforms
 """
-def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5):
+def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance):
     all_infos_dict={}
-    merged_id=0
-    merged_batches={}
-    batch_sequence_dict={}
     #Todo: add working directory
     Read = recordclass('Read',"sequence reads merged")
     for batchid in range(0,max_batchid+1):
@@ -67,18 +63,14 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
             reads=batch_mappings[key]
             read_mapping=Read(value,reads,False)
             all_infos_dict[batchid][key]=read_mapping
-    used_combis={}
     print("Len of batchid 0:",len(all_infos_dict[0]))
     print("Len of batchid 1:", len(all_infos_dict[1]))
     cter=0
     for batchid,id_dict in all_infos_dict.items():
-
-        for id,infos in id_dict.items():
-            #if batchid ==0 and id==2:
-            #print("BATCH",all_infos_dict[batchid])
-            if not infos.merged:
-                for batchid2,id_dict2 in all_infos_dict.items():
-                    if not batchid2<=batchid:
+        for batchid2, id_dict2 in all_infos_dict.items():
+            if not batchid2 <= batchid:# and not batchid2==batchid:
+                for id,infos in id_dict.items():
+                    if not infos.merged:
                         for id2, infos2 in id_dict2.items():
                             if not infos2.merged:
                                 cter+=1
@@ -89,20 +81,15 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
                                 good_to_pop=align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5)
                                 if good_to_pop:
                                     if len(infos.reads)>50:
-                                        #print(True)
-                                        supporting_reads=infos.reads+infos2.reads
-                                        entries=Read(consensus1,supporting_reads,False)
-                                        merged_batches[merged_id]=entries
-                                        merged_id+=1
                                         if len(all_infos_dict[batchid][id].sequence)>=len(all_infos_dict[batchid2][id2].sequence):
-                                            all_infos_dict[batchid][id].reads=reads+infos2.reads
-                                        #all_infos_dict[batchid][id]._replace(merged = True)
+                                            all_infos_dict[batchid][id].reads=infos.reads+infos2.reads
                                             all_infos_dict[batchid2][id2].merged=True
                                         else:
-                                            all_infos_dict[batchid2][id2].reads=reads + infos.reads
+                                            all_infos_dict[batchid2][id2].reads=infos2.reads +infos.reads
                                             all_infos_dict[batchid][id].merged=True
                                         print("Merging",batchid,"_",id," and ",batchid2,"_",id2)
                                     else:
+                                        print("Else")
                                         # TODO generate consensus and add all infos to longer read id
                                         if len(all_infos_dict[batchid][id].sequence) >= len(
                                                 all_infos_dict[batchid2][id2].sequence):
@@ -113,7 +100,7 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
                                             new_consensus=generate_consensus_path(work_dir,mappings1,mappings2, reads1,reads2,max_seqs_to_spoa)
                                             print("CONS1",all_infos_dict[batchid][id])
                                             all_infos_dict[batchid][id].sequence =new_consensus
-                                            all_infos_dict[batchid][id].reads = reads + infos2.reads
+                                            all_infos_dict[batchid][id].reads = infos.reads + infos2.reads
                                             all_infos_dict[batchid2][id2].merged = True
                                         else:
                                             reads1 = all_reads[batchid2]
@@ -123,11 +110,11 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
                                             new_consensus=generate_consensus_path(work_dir,mappings1,mappings2, reads1,reads2,max_seqs_to_spoa)
                                             print("CONS2",all_infos_dict[batchid2][id2])
                                             all_infos_dict[batchid2][id2].sequence = new_consensus
-                                            all_infos_dict[batchid2][id2].reads = reads + infos.reads
+                                            all_infos_dict[batchid2][id2].reads = infos2.reads + infos.reads
                                             all_infos_dict[batchid][id].merged = True
 
     #for m_batch in merged_batches
-    print("MB",merged_batches," ",len(merged_batches))
+    #print("MB",merged_batches," ",len(merged_batches))
     #print(all_infos_dict)
     print("Combi count ",cter)
     print("Writing file")
@@ -140,30 +127,30 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
         for id, infos in id_dict.items():
             print(id," ",all_infos_dict[batchid][id].merged)
             if not all_infos_dict[batchid][id].merged:
-                new_id=str(batchid)+"_"+str(id)
-                mapping_file.write(">{0}\n{1}\n".format(new_id,all_infos_dict[batchid][id].reads))
-                consensus_file.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
+                if len(all_infos_dict[batchid][id].reads)>=iso_abundance:
+                    new_id=str(batchid)+"_"+str(id)
+                    mapping_file.write(">{0}\n{1}\n".format(new_id,all_infos_dict[batchid][id].reads))
+                    consensus_file.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
     consensus_file.close()
     mapping_file.close()
 
 def main():
-    outfolder = "out_local"
+    outfolder = ""
     delta=0.10
-    k_size=20
-    delta_len=k_size
+    delta_len=20
     merge_sub_isoforms_3=True
     merge_sub_isoforms_5 = True
     delta_iso_len_3= 30
     delta_iso_len_5 = 50
     max_seqs_to_spoa=200
     iso_abundance=1
-    max_batchid=1
+    max_batchid=24
     work_dir = tempfile.mkdtemp()
     print("Temporary workdirektory:", work_dir)
-    with open(os.path.join(outfolder, "b.txt"), 'rb') as file:
+    with open(os.path.join(outfolder, "all_batches_reads.txt"), 'rb') as file:
         all_reads = pickle.load(file)
 
-    merge_batches(max_batchid, work_dir, outfolder, all_reads,merge_sub_isoforms_3,merge_sub_isoforms_5, delta, delta_len,max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5)
+    merge_batches(max_batchid, work_dir, outfolder, all_reads,merge_sub_isoforms_3,merge_sub_isoforms_5, delta, delta_len,max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
     print("removing temporary workdir")
     shutil.rmtree(work_dir)
 

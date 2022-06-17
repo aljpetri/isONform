@@ -12,7 +12,7 @@ import itertools
 """Helper function used to plot the graph. Taken from GraphGeneration.
     INPUT: DG   Directed Graph to plot
 """
-
+#TODO: Add delta len again!
 #Implemented according to https://www.geeksforgeeks.org/detect-cycle-in-a-graph/
 def isCyclicUtil(DG, nodes_dict, node):
     # Mark current node as visited and
@@ -962,7 +962,7 @@ def collect_consensus_reads(consensus_attributes):
 
 
 #TODO: Either we have to change the calculation of the positions or we have to think more about pop threshold
-def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,multi_consensuses,is_megabubble,combination):
+def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,multi_consensuses,is_megabubble,combination,delta_len):
 
     if DEBUG:
         print("aligning")
@@ -1045,7 +1045,7 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,m
         longer_len = s2_len
         shorter_len = s1_len
     delta = 0.20
-    delta_len = k_size
+    delta_len = 5
     if shorter_len > delta_len and longer_len > delta_len:
         if DEBUG:
             print("long:", longer_len, " , short ", shorter_len, "ratio ", (longer_len - shorter_len) / longer_len)
@@ -1399,7 +1399,7 @@ INPUT:      DG:         our directed graph
             k_size:     the length of our k_mers
 OUTPUT: The simplified graph.
 """
-def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
+def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len):
     #print("Initial state of the graph")
     ##print(DG.nodes(data=True))
     ##print(DG.edges(data=True))
@@ -1570,7 +1570,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                     #print("FlatList_StartEND",flat_list)
                     flat_list.extend(all_paths_filtered[0][0])
                     flat_list.extend(all_paths_filtered[1][0])
-                    is_poppable,cigar,seq_infos,consensus_info_log,spoa_count=align_bubble_nodes(all_reads,consensus_infos,work_dir,k_size,spoa_count,multi_consensuses,is_megabubble,this_combi)
+                    is_poppable,cigar,seq_infos,consensus_info_log,spoa_count=align_bubble_nodes(all_reads,consensus_infos,work_dir,k_size,spoa_count,multi_consensuses,is_megabubble,this_combi,delta_len)
 
                     if is_poppable:
                         if DEBUG:
@@ -1687,7 +1687,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size):
                            # print(DG.nodes(data=True))
                             #print(DG.edges(data=True))
                         is_poppable, cigar, seq_infos, consensus_info_log,spoa_count = align_bubble_nodes(all_reads, consensus_infos,
-                                                                                           work_dir, k_size,spoa_count,multi_consensuses,True,this_combi)
+                                                                                           work_dir, k_size,spoa_count,multi_consensuses,True,this_combi,delta_len)
                         if DEBUG:
                             print("Do we pop?",is_poppable)
                         if is_poppable:
@@ -1749,14 +1749,14 @@ INPUT:  DG: Directed Graph before simplifications,
         work_dir: The current working directory
         k_size: parameter k for our minimizers
 OUTPUT: DG: Graph after simplification took place    """
-def simplifyGraph(DG, all_reads, work_dir, k_size):
+def simplifyGraph(DG, all_reads, work_dir, k_size,delta_len):
     #print("Current State of Graph:")
     ##print(DG.nodes(data=True))
     ##print(DG.edges(data=True))
     #draw_Graph(DG)
    # profiler = Profiler()
     #profiler.start()
-    new_bubble_popping_routine(DG, all_reads, work_dir, k_size)
+    new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len)
     #profiler.stop()
     #profiler.print()
     #print("Cycles:",list_of_cycles)

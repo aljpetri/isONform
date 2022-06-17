@@ -633,13 +633,14 @@ def main(args):
             w = args.w
         print("Window used for batch:", w)
         is_cyclic = True
+        iso_abundance = args.iso_abundance
+        delta_len = args.delta_len
         while is_cyclic:
             graph_id = 1
             print("Working on {0} reads in a batch".format(len(reads)))
             batch_start_time = time()
 
-            iso_abundance=args.iso_abundance
-            delta_len = 2 * k_size
+
 
 
             hash_fcn = "lex"
@@ -851,7 +852,7 @@ def main(args):
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
         # edgelist = list(DG.edges.data())
         # print(edgelist)
-        simplifyGraph(DG, new_all_reads,work_dir,k_size)
+        simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len)
         #snapshot2 = tracemalloc.take_snapshot()
         #print(snapshot2)
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
@@ -897,7 +898,8 @@ def main(args):
         #    print(index)
     with open(os.path.join(outfolder, "all_batches_reads.txt"), 'wb') as file:
         file.write(pickle.dumps(all_batch_reads_dict))
-    merge_batches(max_batchid,work_dir, outfolder,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa,iso_abundance, delta_iso_len_3, delta_iso_len_5,all_batch_reads_dict)
+    merge_batches(max_batchid, work_dir, outfolder, new_all_reads, merge_sub_isoforms_3, merge_sub_isoforms_5, delta,
+                  delta_len, max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
     # eprint("tot_before:", tot_errors_before)
     # eprint("tot_after:", sum(tot_errors_after.values()), tot_errors_after)
     # eprint(len(corrected_reads))
@@ -917,7 +919,7 @@ if __name__ == '__main__':
     parser.add_argument('--version', action='version', version='%(prog)s 0.0.6')
 
     parser.add_argument('--fastq', type=str, default=False, help='Path to input fastq file with reads')
-    # parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
+    #parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
 
     parser.add_argument('--k', type=int, default=9, help='Kmer size')
     parser.add_argument('--w', type=int, default=10, help='Window size')
