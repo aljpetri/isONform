@@ -86,7 +86,7 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
                                 #print(consensus2, "\n")
                                 good_to_pop=align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5)
                                 if good_to_pop:
-                                    if len(infos.reads)>50:
+                                    #if len(infos.reads)>50:
                                         if len(all_infos_dict[batchid][id].sequence)>=len(all_infos_dict[batchid2][id2].sequence):
                                             all_infos_dict[batchid][id].reads=infos.reads+infos2.reads
                                             all_infos_dict[batchid2][id2].merged=True
@@ -94,8 +94,8 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
                                             all_infos_dict[batchid2][id2].reads=infos2.reads +infos.reads
                                             all_infos_dict[batchid][id].merged=True
                                         print("Merging",batchid,"_",id," and ",batchid2,"_",id2)
-                                    else:
-                                        print("Else")
+                                    #else:
+                                        """print("Else")
                                         # TODO generate consensus and add all infos to longer read id
                                         if len(all_infos_dict[batchid][id].sequence) >= len(
                                                 all_infos_dict[batchid2][id2].sequence):
@@ -117,7 +117,7 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
                                             print("CONS2",all_infos_dict[batchid2][id2])
                                             all_infos_dict[batchid2][id2].sequence = new_consensus
                                             all_infos_dict[batchid2][id2].reads = infos2.reads + infos.reads
-                                            all_infos_dict[batchid][id].merged = True
+                                            all_infos_dict[batchid][id].merged = True"""
 
     #for m_batch in merged_batches
     #print("MB",merged_batches," ",len(merged_batches))
@@ -125,25 +125,32 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
     print("Combi count ",cter)
     print("Writing file")
     consensus_name = "cluster_merged.fa"
+    other_consensus_name="cluster_merged_low_abundance.fa"
     mapping_name="cluster_mapping.txt"
-
+    other_mapping_name="cluster_mapping_low_abundance.txt"
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
+    other_consensus =open(os.path.join(outfolder, other_consensus_name), 'w')
     mapping_file = open(os.path.join(outfolder, mapping_name), 'w')
+    other_mapping=open(os.path.join(outfolder, other_mapping_name), 'w')
     for batchid, id_dict in all_infos_dict.items():
         for id, infos in id_dict.items():
             print(id," ",all_infos_dict[batchid][id].merged)
             if not all_infos_dict[batchid][id].merged:
+                new_id = str(batchid) + "_" + str(id)
                 if len(all_infos_dict[batchid][id].reads)>=iso_abundance:
-                    new_id=str(batchid)+"_"+str(id)
                     mapping_file.write(">{0}\n{1}\n".format(new_id,all_infos_dict[batchid][id].reads))
                     consensus_file.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
+                else:
+                    other_consensus.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
+                    other_mapping.write(">{0}\n{1}\n".format(new_id,all_infos_dict[batchid][id].reads))
     consensus_file.close()
     mapping_file.close()
-
+    other_consensus.close()
+    other_mapping.close()
 def main():
     outfolder = ""
     delta=0.10
-    delta_len=20
+    delta_len=40
     merge_sub_isoforms_3=True
     merge_sub_isoforms_5 = True
     delta_iso_len_3= 30

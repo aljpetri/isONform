@@ -898,6 +898,7 @@ def main(args):
         #    print(index)
     with open(os.path.join(outfolder, "all_batches_reads.txt"), 'wb') as file:
         file.write(pickle.dumps(all_batch_reads_dict))
+    print("Starting batch merging")
     merge_batches(max_batchid, work_dir, outfolder, new_all_reads, merge_sub_isoforms_3, merge_sub_isoforms_5, delta,
                   delta_len, max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
     # eprint("tot_before:", tot_errors_before)
