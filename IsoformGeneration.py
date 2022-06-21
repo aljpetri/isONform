@@ -304,7 +304,7 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
     print(seq_counter," sequences, ",mapping_cter," mappings")
 
 def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance,merged_dict,merged_consensuses,called_consensuses,consensus_map):
-    print("Generating the Isoforms")
+    print("Generating the Isoforms-merged")
     mapping = {}
     consensus_name = "spoa" + str(batch_id) + "merged.fa"
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')

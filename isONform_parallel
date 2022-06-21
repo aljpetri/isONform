@@ -206,7 +206,6 @@ def main(args):
     else:
         split_directory = os.fsencode(directory)
 
-    print(isoncorrect_location)
     instances = []
     for file_ in os.listdir(split_directory):
         print(file_)
@@ -287,7 +286,6 @@ def main(args):
         join_back_corrected_batches_into_cluster(split_directory, args.outfolder, args.split_mod, args.residual)
         shutil.rmtree(split_directory)
         print("Joined back batched files in:", time() - file_handling)
-
     return
 
 
