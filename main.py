@@ -865,12 +865,13 @@ def main(args):
         #if not (possible_cycles):
         delta = 0.10
         print("Starting to generate Isoforms")
-        #with open('DG.txt', 'wb') as file:
-        #    file.write(pickle.dumps(all_intervals_for_graph))
+        #graphname="DG_"+str(batch_id)+".txt"
+        #with open(graphname, 'wb') as graphfile:
+        #    graphfile.write(pickle.dumps(DG))
         all_reads_name="all_reads_"+str(batch_id)+".txt"
         with open(os.path.join(outfolder, all_reads_name), 'wb') as file:
             file.write(pickle.dumps(all_reads))
-        generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa,iso_abundance, delta_iso_len_3, delta_iso_len_5)
+        generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,iso_abundance, delta_iso_len_3, delta_iso_len_5,max_seqs_to_spoa)
         #snapshot3 = tracemalloc.take_snapshot()
         #print(snapshot3)
         print("Isoforms generated")
@@ -957,7 +958,7 @@ if __name__ == '__main__':
     parser.add_argument('--merge_sub_isoforms_5', type=bool, default=True,
                         help='Parameter to determine whether we want to merge sub isoforms (shorter at 5prime end) into bigger isoforms')
 
-    parser.add_argument('--delta_iso_len_3', type=int, default=50,
+    parser.add_argument('--delta_iso_len_3', type=int, default=30,
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')

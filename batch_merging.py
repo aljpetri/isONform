@@ -1,7 +1,7 @@
 import itertools
 from consensus import *
 from recordclass import recordclass
-from IsoformGeneration import align_to_merge,parse_cigar_diversity_isoform_level
+from IsoformGeneration import align_to_merge
 import tempfile
 import pickle
 
