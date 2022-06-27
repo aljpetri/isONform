@@ -316,8 +316,8 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
         #print(len(value))
         seq_counter += len(value)
         name = 'consensus' + str(key)
-        #print("Sequence count:",seq_counter)
-        #print("Mapping count:",other_mapping_cter)
+        print("Sequence count:",seq_counter)
+        print("Mapping count:",other_mapping_cter)
         #print(key,value)
         #print(key,len(value))
         #print(merged_dict)
@@ -468,7 +468,7 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
         this_start_pos=alignment_len
         max_pos=i
         cig_len = elem[0]
-        print("cigar_len", cig_len)
+        #print("cigar_len", cig_len)
         cig_type = elem[1]
         alignment_len += cig_len
         if (cig_type != '=') and (cig_type != 'M'):
@@ -686,8 +686,9 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
 
 
 
+
 def main():
-    outfolder="100kSIRV1/0"
+    outfolder="100kSIRV/test8"
     batch_id = 0
     print("Hello World")
     file = open(os.path.join(outfolder,'equal_reads_'+str(batch_id)+'.txt'), 'rb')
@@ -697,15 +698,14 @@ def main():
     isoform_paths = pickle.load(file)
     file.close()
 
-    file2 = open(os.path.join(outfolder, 'all_reads_' + str(batch_id) ), 'rb')
+    file2 = open(os.path.join(outfolder, 'all_reads_' + str(batch_id)+".txt" ), 'rb')
     #file2 = open(os.path.join(outfolder,'all_reads_'+str(batch_id)+'.txt'), 'rb')
     all_reads = pickle.load(file2)
     file2.close()
     work_dir = tempfile.mkdtemp()
     outfolder = "out_local"
     delta=0.10
-    k_size=20
-    delta_len=k_size
+    delta_len=5
 
     merge_sub_isoforms_3=True
     merge_sub_isoforms_5 = True

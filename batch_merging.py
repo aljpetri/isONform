@@ -172,7 +172,7 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
     other_consensus.close()
     other_mapping.close()
 def main():
-    outfolder = "100kSIRV/0_dl40_no_else"
+    outfolder = "100kSIRV/test8"
     delta=0.10
     delta_len=40
     merge_sub_isoforms_3=True

@@ -871,7 +871,8 @@ def main(args):
         all_reads_name="all_reads_"+str(batch_id)+".txt"
         with open(os.path.join(outfolder, all_reads_name), 'wb') as file:
             file.write(pickle.dumps(all_reads))
-        generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,iso_abundance, delta_iso_len_3, delta_iso_len_5,max_seqs_to_spoa)
+        generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len, delta_iso_len_3, delta_iso_len_5,iso_abundance,max_seqs_to_spoa)
+
         #snapshot3 = tracemalloc.take_snapshot()
         #print(snapshot3)
         print("Isoforms generated")
