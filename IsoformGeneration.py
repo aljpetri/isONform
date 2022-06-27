@@ -585,7 +585,9 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                 if equality_2>=equality_1:
                     if DEBUG:
                         print("combi ",id,", ",id2,", eq2: ",equality_2,"\n")
-                    if equality_2 > 0.8:
+                        # if equality_2 > 0.8:
+                    if True:
+
                         similarity_file.write("{0} subisoform of {1} indicated by {2}\n".format(id2, id, equality_2))
                         if id2 not in merged_consensuses:
                             consensuses=generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,called_consensuses)
@@ -597,7 +599,9 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                             if not merge_consensuses:
                                 called_consensuses[id]=consensus1
                                 called_consensuses[id2]=consensus2
+
                             else:
+                                # We have to figure out whether id is in merged_dict
                                 if not(id in merged_dict):
                                     if len(reads[id]) > 50:
                                         this_merged=Merged_consensus(consensus1,[id2])
@@ -606,11 +610,7 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                                         full_consensus=generate_new_full_consensus(id,id2,reads,curr_best_seqs,work_dir,max_seqs_to_spoa)
                                         this_merged = Merged_consensus(full_consensus, [id2])
                                     merged_dict[id]=this_merged
-                                    #this_ids=[]
-                                    #for key in curr_best_seqs:
-                                    #    this_ids.append(key)
-                                    #merged_dict[id].otherIDs=this_ids
-                                    #merged_dict[id].otherIDs.append(id2)
+
                                 else:
                                     #print(merged_dict[id].other_IDs)
                                     merged_dict[id].otherIDs.append(id2)
@@ -646,19 +646,10 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                                     merged_dict.pop(id2)
                                 for id2_entry in id_list_2:
                                     consensus_map[id2_entry] = id
-
-                #print("Hello World")
-
-                #    if equality_1==1.0:
-                #        similarity_file.write("{0} subisoform of {1}\n".format(id, id2))
-                #    min_equality=equality_2
-                #    max_equality=equality_1
                 if DEBUG:
                     print("Equality of ",id," vs ",id2,": ",equality_1)
                 similarity_file.write("{0},{1}: {2} \n".format(id, id2,equality_1))
     path_file.close()
-    #print("Merged_dict",merged_dict)
-    #print("Merged consensuses",merged_consensuses)
     return merged_dict, merged_consensuses, called_consensuses, consensus_map
 DEBUG=False
 """
