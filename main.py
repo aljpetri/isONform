@@ -569,8 +569,8 @@ def get_qvs(reads):
             tmp_tot_sum += qv
     return quality_values_database
 
-
-#TODO:it seems simplify_graph uses wrong read ids. Fixing this should improve result quality again
+#TODO: several errors in errors/reads_5_9.fq->empty intervals added to graph generation, cleaning does yield error!
+#TODO:simplify graph adds an error to the data that is not in the initial graph!!! see errors/merge/reads_5_4.fq: 3.
 def main(args):
     all_batch_reads_dict={}
     # start = time()
@@ -768,7 +768,9 @@ def main(args):
                     # print(opt_indicies)
                     intervals_to_correct = get_intervals_to_correct(opt_indicies[::-1], all_intervals)
                     all_intervals_for_graph[graph_id] = intervals_to_correct
-                    #print("GID",graph_id," ",acc)
+                    #This can be utilized to find out which read_name maps to which r_id ->very helpful for Debugging
+                    if DEBUG:
+                        print("GID",graph_id," ",acc)
                     new_all_reads[graph_id]=reads[r_id]
 
                     graph_id+=1
@@ -847,11 +849,6 @@ def main(args):
         #print("Known intervals")
         #print(known_intervals)
         print("Graph built up!")
-        #print("edges with attributes:")
-        #print(DG.edges(data=True))
-        #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
-        # edgelist = list(DG.edges.data())
-        # print(edgelist)
         simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len)
         #snapshot2 = tracemalloc.take_snapshot()
         #print(snapshot2)

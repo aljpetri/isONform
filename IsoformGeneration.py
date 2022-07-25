@@ -11,6 +11,15 @@ from consensus import *
 import matplotlib.pyplot as plt
 from collections import namedtuple
 from GraphGeneration import *
+def draw_Graph(DG):
+    # defines the graph layout to use spectral_layout. Pos gives the position for each node
+    pos = nx.spectral_layout(DG)
+    # draws the network in the given layout. Only nodes are labeled, the edges are directed but not labeled
+    nx.draw_networkx(DG, pos, font_weight='bold')
+    # add labels for the edges and draw them into the graph
+    # labels = nx.get_edge_attributes(DG, 'weight')
+    # nx.draw_networkx_edge_labels(DG,pos, edge_labels=labels)
+    plt.show()
 """Method to delete read information from nodes
 INPUT:      DG                  Directed Graph
             node                node for which read information is deleted
@@ -32,12 +41,19 @@ OUPUT:      reads:              dictionary, which does not contain the read info
 """
 def remove_reads_from_edge(DG,edge,supported_reads):
     #print("Edge",edge)
+    if DEBUG:
+        print("DEBUG")
+        #print(DG.edges())
+        #print(list(DG.nodes.data()))
+        #if 120 in supported_reads:
+        #    print("Removing 120")
     reads = DG[edge[0]][edge[1]]['edge_supp']
-    #print(reads)
-    #draw_Graph(DG)
     for read in supported_reads:
         if read in reads:
             reads.remove(read)
+        else:
+            if DEBUG:
+                print("Strange")
     return reads
 """Method to delete nodes and edges which do are not supported by any reads anymore
 INPUT:      DG                  Directed Graph
@@ -46,7 +62,19 @@ INPUT:      DG                  Directed Graph
             supported_reads     list of reads which we want to delete from the nodes 
 OUPUT:      reads:              dictionary, which does not contain the read information anymore
 """
+#TODO: removing reads from edges seems to yield error: s is too fast removed from the graph
 def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
+    #print("Tdeg:",DG.degree("t"))
+    #print("Sdeg:", DG.degree("s"))
+    if DEBUG:
+        if DG.degree("s")==0:
+            print(visited_nodes)
+            print(DG.nodes)
+            for node1, node2, data in DG.edges.data():
+                print(node1,",",node2,":",data)
+            #print(DG.nodes.data())
+            #print(DG)
+            #draw_Graph(DG)
     update_dict={}
     #edge_update_dict={}
     for edge in visited_edges:
@@ -60,9 +88,19 @@ def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
             #print("removing edge",edge)
             DG.remove_edge(edge[0],edge[1])
     nx.set_node_attributes(DG, update_dict, 'reads')
+    if DEBUG:
+        for o in DG.out_edges("s"):
+            #print("SDEG")
+            print(len(DG[o[0]][o[1]]['edge_supp']))
+        for i in DG.in_edges("t"):
+            #print("in edge: ",i)
+            #print("TDEG")
+            print(len(DG[i[0]][i[1]]['edge_supp']))
     for node in visited_nodes:
         if DG.degree(node)==0:
-            DG.remove_node(node)
+            #if node!="s":
+                #print("Removing s")
+                DG.remove_node(node)
             #print("removing node", node)
 """
 Method to make sure that an isoform only contains reads which do actually end with this node
@@ -144,7 +182,7 @@ OUPUT:      filename    file which contains all the final isoforms
 """
 def compute_equal_reads(DG,reads):
     startnode = 's'
-    startreads=DG._node['s']['reads']
+    #startreads=DG._node['s']['reads']
     #print("Startreads",startreads)
     #endnode='t'
     visited_nodes_for_isoforms= {}
@@ -152,10 +190,14 @@ def compute_equal_reads(DG,reads):
     reads_for_isoforms=reads
     isoforms= {}
     edge_attr=nx.get_edge_attributes(DG,"edge_supp")
+    isocount=0
     #print("EdgeAttri")
     #print(edge_attr)
     #while still reads have to be assigned to an isoform
     while(reads_for_isoforms):
+        #print("LEftover",reads_for_isoforms)
+        #print(isocount)
+        isocount+=1
         #print("RFI",reads_for_isoforms)
         current_node=startnode
 
@@ -288,7 +330,7 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
     #print("Mapping has length "+str(len(mapping)))
 
         #print("Mapping",mapping)
-        mapping_name="mapping"+str(batch_id)+".txt"
+        mapping_name="mapping_"+str(batch_id)+".txt"
         mappingfile = open(os.path.join(outfolder, mapping_name), "w")
         #print(mapping)
     for id, readlist in mapping.items():
@@ -301,7 +343,7 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
     # consensus_file.write(">{0}\n{1}\n".format('consensus', spoa_ref))
 
     consensus_file.close()
-    print(seq_counter," sequences, ",mapping_cter," mappings")
+    #print(seq_counter," sequences, ",mapping_cter," mappings")
 
 def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance,merged_dict,merged_consensuses,called_consensuses,consensus_map):
     print("Generating the Isoforms-merged")
@@ -316,8 +358,8 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
         #print(len(value))
         seq_counter += len(value)
         name = 'consensus' + str(key)
-        print("Sequence count:",seq_counter)
-        print("Mapping count:",other_mapping_cter)
+        #print("Sequence count:",seq_counter)
+        #print("Mapping count:",other_mapping_cter)
         #print(key,value)
         #print(key,len(value))
         #print(merged_dict)
@@ -406,7 +448,7 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                             #single_read=reads[cons_id]
                             #full_read_list.append(single_read[0])
                         mappingfile.write("{0}\n{1}\n".format(id, full_read_list))
-    print(seq_counter, " sequences, ", mapping_cter, " mappings")
+    #print(seq_counter, " sequences, ", mapping_cter, " mappings")
     mappingfile.close()
     # consensus_file.write(">{0}\n{1}\n".format('consensus', spoa_ref))
 
@@ -495,13 +537,13 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
                         three_prime = False
                 else:
                     return False
-    print("Tuples",len(cigar_tuples),"max_pos",max_pos)
+    #print("Tuples",len(cigar_tuples),"max_pos",max_pos)
     diversity = (miss_match_length / alignment_len)
     max_bp_diff = max(delta * alignment_len, delta_len)
     mod_div_rate = max_bp_diff / alignment_len
-    print("3'",three_prime," 5'",five_prime)
+    #print("3'",three_prime," 5'",five_prime)
 
-    print("diversity", diversity, "mod_div", mod_div_rate)
+    #print("diversity", diversity, "mod_div", mod_div_rate)
     if diversity <= mod_div_rate and three_prime and five_prime:  # delta_perc:
         return True
     else:
@@ -518,11 +560,11 @@ def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,me
                                                                                        mismatch_penalty=-8,
                                                                                        opening_penalty=12, gap_ext=1)
     overall_len=get_overall_alignment_len(cigar_tuples)
-    print(cigar_string)
-    print(cigar_tuples)
-    print(overall_len)
+    #print(cigar_string)
+    #print(cigar_tuples)
+    #print(overall_len)
     good_to_pop = parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len)
-    print(good_to_pop)
+    #print(good_to_pop)
     return good_to_pop
 
 
@@ -637,7 +679,7 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                                     break
                             if all_mergeable:
                                 if id in merged_dict:
-                                    print("IDLIST2",id_list_2)
+                                    #print("IDLIST2",id_list_2)
                                     merged_dict[id].otherIDs.extend(id_list_2)
                                 else:
                                     this_merged = Merged_consensus(consensus1, id_list_2)
@@ -658,6 +700,8 @@ Wrapper method used for the isoform generation
 def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,delta_iso_len_3,delta_iso_len_5,iso_abundance,max_seqs_to_spoa=200):
     equal_reads,isoform_paths=compute_equal_reads(DG,reads)
     equal_reads_name='equal_reads_'+str(batch_id)+'.txt'
+    #print("s",DG.nodes["s"]['reads'])
+    #print("t",DG.nodes["t"]['reads'])
     with open(os.path.join(outfolder, equal_reads_name), 'wb') as file:
         file.write(pickle.dumps(equal_reads))
     isoform_paths_name='isoform_paths_'+str(batch_id)+'.txt'

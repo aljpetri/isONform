@@ -358,14 +358,14 @@ def get_dist_to_prev(DG,prev_node,curr_node):
     #print("curr_supp",curr_supp)
     intersect_supp = list(set(prev_supp).intersection(curr_supp))
     sum=0
-    #print(intersect_supp)
+    avg_dist=0
     #we did not yet come up with anything better than calculating the average distance for all reads supporting both nodes
     for i,read in enumerate(intersect_supp):
         #print(i+1)
         prev_pos=prev_supp[read].end_mini_start
         curr_pos=curr_supp[read].end_mini_start
         sum+=(curr_pos-prev_pos)
-    avg_dist=sum/(i+1)
+        avg_dist=sum/(i+1)
     return avg_dist
 
 
@@ -1458,8 +1458,9 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len):
 
             #if (len(not_viable_global)%100)==0:
                 #print("not_viable ",len(not_viable_global), "of ", len(combinations))
-            if DEBUG:
-                print("Combi ",combination)
+            #if DEBUG:
+
+                #print("Combi ",combination)
             #assert len(possible_cycles) == 0, "cycle found"
             ##print("Current State of Graph:")
             ##print(DG.nodes(data=True))
@@ -1508,6 +1509,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len):
 
                 this_combi_reads = tuple(set(all_paths_filtered[0][1]) | set(all_paths_filtered[1][1]))
                 this_combi = (combination[0], combination[1], this_combi_reads)
+
 
                 #print("NVMB",not_viable_multibubble)
                 if DEBUG:
@@ -1573,8 +1575,9 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len):
                     is_poppable,cigar,seq_infos,consensus_info_log,spoa_count=align_bubble_nodes(all_reads,consensus_infos,work_dir,k_size,spoa_count,multi_consensuses,is_megabubble,this_combi,delta_len)
 
                     if is_poppable:
-                        if DEBUG:
-                            print("POPPED")
+                        print("POPPED")
+                        if 140 in this_combi[2] or 121 in this_combi[2] or 161 in this_combi[2]:
+                                print("Watchit",this_combi)
                         #subgraph_bubble(DG,itere,all_paths_filtered,combination[0],combination[1],error_bubble)
 
 
@@ -1670,6 +1673,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len):
                         # print("thiscombireadsType", type(this_combi_reads))
                         # print("this combi reads", this_combi_reads)
                         this_combi = (combination[0], combination[1], this_combi_reads)
+                        if this_combi[0]=='74, 137, 121' and this_combi[1]=='137, 159, 93':
+                            print("p1",set(p1[1]),", p2",set(p2[1]))
                         if intersect:
                             #print("this combi not viable",this_combi)
                             not_viable_multibubble.add(this_combi)
@@ -1688,9 +1693,14 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len):
                             #print(DG.edges(data=True))
                         is_poppable, cigar, seq_infos, consensus_info_log,spoa_count = align_bubble_nodes(all_reads, consensus_infos,
                                                                                            work_dir, k_size,spoa_count,multi_consensuses,True,this_combi,delta_len)
+                        if this_combi[0] == '74, 137, 121' and this_combi[1] == '137, 159, 93':
+                            print(cigar)
                         if DEBUG:
                             print("Do we pop?",is_poppable)
                         if is_poppable:
+                            print("POPPED_Multi")
+                            if 140 in this_combi[2] or 121 in this_combi[2] or 161 in this_combi[2]:
+                                print("Watchit_multi", this_combi)
                             all_paths_filtered=[]
                             all_paths_filtered.append(p1)
                             all_paths_filtered.append(p2)
