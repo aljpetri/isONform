@@ -898,7 +898,8 @@ def main(args):
     with open(os.path.join(outfolder, "all_batches_reads.txt"), 'wb') as file:
         file.write(pickle.dumps(all_batch_reads_dict))
     print("Starting batch merging")
-    merge_batches(max_batchid, work_dir, outfolder, new_all_reads, merge_sub_isoforms_3, merge_sub_isoforms_5, delta,
+    if not args.parallel:
+        merge_batches(max_batchid, work_dir, outfolder, new_all_reads, merge_sub_isoforms_3, merge_sub_isoforms_5, delta,
                   delta_len, max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
     # eprint("tot_before:", tot_errors_before)
     # eprint("tot_after:", sum(tot_errors_after.values()), tot_errors_after)
@@ -960,7 +961,7 @@ if __name__ == '__main__':
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
-
+    parser.add_argument('--parallel',type=bool,default=False,help='indicates whether we run the parallelization wrapper script')
     # parser.set_defaults(which='main')
     args = parser.parse_args()
 

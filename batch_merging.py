@@ -178,7 +178,7 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
 def main():
     outfolder = "100kSIRV/test8"
     delta=0.10
-    delta_len=40
+    delta_len=5
     merge_sub_isoforms_3=True
     merge_sub_isoforms_5 = True
     delta_iso_len_3= 30
