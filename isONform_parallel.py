@@ -200,8 +200,22 @@ def join_back_corrected_batches_into_cluster(tmp_work_dir, outdir, split_mod, re
                     shutil.copyfileobj(readfile, outfile)
                 # print('Removing', batch_id)
                 shutil.rmtree(batch_id)
+#TODO: Finish implementation of this method and replace call of other merge_function by call to this
+def join_back_via_batch_merging(tmp_work_dir, outdir, split_mod, residual):
+    print("Batch Merging")
+    print(outdir, tmp_work_dir)
+    unique_cl_ids = set()
+    for file in os.listdir(tmp_work_dir):
+        file = os.fsdecode(file)
+        # print(file)
+        fname = file.split('_')
+        if len(fname) == 2:
+            cl_id, batch_id = fname[0], fname[1]  # file.split('_')
 
-
+            if int(cl_id) % split_mod != residual:
+                # print('skipping {0} because args.split_mod:{1} and args.residual:{2} set.'.format(cl_id, args.split_mod, args.residual))
+                continue
+            unique_cl_ids.add(cl_id)
 def main(args):
     directory = args.fastq_folder  # os.fsencode(args.fastq_folder)
     print(directory)

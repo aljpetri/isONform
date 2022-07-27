@@ -39,17 +39,19 @@ errorcounter=0
 #echo -e "Number of Isoforms \t Found isoforms by IsONform \n">>results.tsv
 #ls
 #define the file we want to use as indicator for our algos performance
-file=$filedirectory/isonform/mapping.txt
+file=$filedirectory/isonform/mapping0.txt
 
 #iterate over different numbers of isoforms
-for ((i=2; i<=15; i++))
+#for ((i=2; i<=15; i++))
+for ((i=14; i<=15; i++))
 #for ((i=2; i<=15; i++))
 do
 	#we want to have some double reads 
-	n_reads=$(($i*10))
+	n_reads=$(($i*500))
 	#echo "Generating $i TestIsoforms" >>results.tsv
 	#for each amount of isoforms we would like to run 15 tests to make sure our algo works stable
-	for((j=1;j<=20;j++))
+	#for((j=1;j<=20;j++))
+	for((j=1;j<=10;j++))
 	do
 		#echo $i_$j
 		outputs=0
@@ -83,6 +85,8 @@ do
 		#we count the lines in mapping.txt, which is an output of IsONform. As we have a fasta file we have to divide this number by 2 to retreive the actual number of isoforms we generated
 		res=$(< "$file" wc -l)
 		result=$(($res/2))
+		echo $result
+    echo $true_read_amount
 		if [[ "$had_issue" != "$zero" ]]
 		then
 		errorcounter=$((errorcounter+1))
@@ -94,10 +98,12 @@ do
 		then
 		cp $filedirectory/reads/reads.fq $filedirectory/errors/strange_error_${errorcounter}_$number.fq
 
-		elif [[ "$result" -gt "$otherres" ]]
+		elif [[ "$result" -gt "$i" ]]
 		then 
-		cp $filedirectory/reads/reads.fq $filedirectory/errors/other_error_${errorcounter}_$number.fq
-
+		  cp $filedirectory/reads/reads.fq $filedirectory/errors/other_error_${errorcounter}_$number.fq
+      cp $filedirectory/isonform/mapping0.txt $filedirectory/errors/other_error_mapping_${errorcounter}_$number.txt
+      cp $filedirectory/isonform/spoa0merged.fa $filedirectory/errors/other_error_spoa_${errorcounter}_$number.fa
+      cp $filedirectory/isonform/path_0.txt $filedirectory/errors/other_error_path_${errorcounter}_$number.txt
 		elif [[ "$result" -lt "$i" ]]
 		then 
 		cp $filedirectory/reads/reads.fq $filedirectory/errors/isoform_error_${errorcounter}_$number.fq
