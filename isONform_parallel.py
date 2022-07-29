@@ -84,29 +84,29 @@ def isONform(data):
 def splitfile(indir, tmp_outdir, fname, chunksize):
     # from https://stackoverflow.com/a/27641636/2060202
     # fpath, fname = os.path.split(infilepath)
-    cl_id, ext = fname.rsplit('.', 1)
+    cl_id, ext = fname.rsplit('.',1)
     infilepath = os.path.join(indir, fname)
     # print(fpath, cl_id, ext)
-    # print(indir, tmp_outdir, cl_id, ext)
+    print("now at splitfile")
+    print(indir, tmp_outdir, cl_id, ext)
 
     i = 0
     written = False
     with open(infilepath) as infile:
         while True:
-            outfilepath = os.path.join(tmp_outdir, '{0}_{1}.{2}'.format(cl_id, i,
-                                                                        ext))  # "{}_{}.{}".format(foutpath, fname, i, ext)
+            outfilepath = os.path.join(tmp_outdir, '{0}_{1}.{2}'.format(cl_id, i, ext) ) #"{}_{}.{}".format(foutpath, fname, i, ext)
             print(outfilepath)
             with open(outfilepath, 'w') as outfile:
                 for line in (infile.readline() for _ in range(chunksize)):
                     outfile.write(line)
                 written = bool(line)
             # print(os.stat(outfilepath).st_size == 0)
-            if os.stat(
-                    outfilepath).st_size == 0:  # Corner case: Original file is even multiple of max_seqs, hence the last file becomes empty. Remove this
+            if os.stat(outfilepath).st_size == 0: # Corner case: Original file is even multiple of max_seqs, hence the last file becomes empty. Remove this
                 os.remove(outfilepath)
             if not written:
                 break
             i += 1
+
 
 
 import os, errno
@@ -139,16 +139,21 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
     pat=Path(indir)
     file_list=list(pat.rglob('*.fastq'))
     for filepath in file_list:
-                    fastq_file=str(filepath.resolve())
-                    path_split=fastq_file.split("/")
+                    old_fastq_file=str(filepath.resolve())
+                    path_split=old_fastq_file.split("/")
+                    folder=path_split[-2]
+                    fastq_file=path_split[-1]
                     print("PS",path_split)
                     cl_id=path_split[-2]
                     print("CLID",cl_id)
                     #print("FQ",fastq_file)
                     #print(type(fastq_file))
+                    #if we have more lines than max_seqs
+                    indir=os.path.join(indir,folder)
                     if not smaller_than_max_seqs:
                         num_lines = sum(1 for line in open(os.path.join(indir, fastq_file)))
                         print(fastq_file, num_lines)
+                        #we reset smaller_than_max_seqs as we now want to see if we really have more than max_seqs reads
                         smaller_than_max_seqs = False if num_lines > 4 * max_seqs else True
                     else:
                         smaller_than_max_seqs = True
@@ -159,7 +164,7 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
                         ext = fastq_file.rsplit('.', 1)[1]
                         print(fastq_file, "symlinking instead")
                         symlink_force(fastq_file,
-                                      os.path.join(tmp_work_dir, '{0}.{1}'.format(cl_id, ext)))
+                                      os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id,0, ext)))
     return tmp_work_dir
 
 
@@ -332,7 +337,7 @@ if __name__ == '__main__':
                         help='Do not recompute previous results if corrected_reads.fq is found and has the smae number of reads as input file (i.e., is complete).')
     parser.add_argument('--set_w_dynamically', action="store_true",
                         help='Set w = k + max(2*k, floor(cluster_size/1000)).')
-    parser.add_argument('--max_seqs', type=int, default=2000,
+    parser.add_argument('--max_seqs', type=int, default=1000,
                         help='Maximum number of seqs to correct at a time (in case of large clusters).')
     parser.add_argument('--use_racon', action="store_true",
                         help='Use racon to polish consensus after spoa (more time consuming but higher accuracy).')

@@ -66,6 +66,7 @@ OUPUT:      reads:              dictionary, which does not contain the read info
 def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
     #print("Tdeg:",DG.degree("t"))
     #print("Sdeg:", DG.degree("s"))
+    print(visited_nodes)
     if DEBUG:
         if DG.degree("s")==0:
             print(visited_nodes)
@@ -698,6 +699,8 @@ DEBUG=False
 Wrapper method used for the isoform generation
 """
 def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,delta_iso_len_3,delta_iso_len_5,iso_abundance,max_seqs_to_spoa=200):
+    #print("s", DG.nodes["s"]['reads'])
+    #print("t", DG.nodes["t"]['reads'])
     equal_reads,isoform_paths=compute_equal_reads(DG,reads)
     equal_reads_name='equal_reads_'+str(batch_id)+'.txt'
     #print("s",DG.nodes["s"]['reads'])
@@ -723,7 +726,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
 
 
 def main():
-    outfolder="100kSIRV/test8"
+    outfolder="100kSIRV/20722_abundance2_par/22"
     batch_id = 0
     print("Hello World")
     file = open(os.path.join(outfolder,'equal_reads_'+str(batch_id)+'.txt'), 'rb')
