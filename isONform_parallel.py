@@ -81,10 +81,10 @@ def isONform(data):
     return batch_id
 
 
-def splitfile(indir, tmp_outdir, fname, chunksize):
+def splitfile(indir, tmp_outdir, fname, chunksize,cl_id,ext):
     # from https://stackoverflow.com/a/27641636/2060202
     # fpath, fname = os.path.split(infilepath)
-    cl_id, ext = fname.rsplit('.',1)
+    #cl_id, ext = fname.rsplit('.',1)
     infilepath = os.path.join(indir, fname)
     # print(fpath, cl_id, ext)
     print("now at splitfile")
@@ -159,7 +159,8 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
                         smaller_than_max_seqs = True
 
                     if not smaller_than_max_seqs:
-                        splitfile(indir, tmp_work_dir, fastq_file, 4 * max_seqs)  # is fastq file
+                        ext = fastq_file.rsplit('.', 1)[1]
+                        splitfile(indir, tmp_work_dir, fastq_file, 4 * max_seqs,cl_id,ext)  # is fastq file
                     else:
                         ext = fastq_file.rsplit('.', 1)[1]
                         print(fastq_file, "symlinking instead")
@@ -217,10 +218,18 @@ def join_back_via_batch_merging(tmp_work_dir, outdir, split_mod, residual):
         if len(fname) == 2:
             cl_id, batch_id = fname[0], fname[1]  # file.split('_')
 
-            if int(cl_id) % split_mod != residual:
-                # print('skipping {0} because args.split_mod:{1} and args.residual:{2} set.'.format(cl_id, args.split_mod, args.residual))
-                continue
             unique_cl_ids.add(cl_id)
+            print(unique_cl_ids)
+            for cl_id in unique_cl_ids:
+                out_pattern = os.path.join(outdir, cl_id)
+                # print(type(tmp_work_dir), type(cl_id))
+                batches_pattern = os.path.join(os.fsdecode(outdir), cl_id + '_*')
+                # print("joining all", out_pattern, "from", batches_pattern)
+                mkdir_p(out_pattern)
+
+                error_file = open(os.path.join(out_pattern, 'cat.stderr'), 'w')
+                outfilename = os.path.join(out_pattern, 'isoforms.fastq')
+                # print("into outfile", outfilename)
 def main(args):
     directory = args.fastq_folder  # os.fsencode(args.fastq_folder)
     print(directory)
@@ -243,6 +252,8 @@ def main(args):
             batch_id = read_fastq_file.split(".")[0]
             cl_id = batch_id.split("_")[0]
             outfolder = os.path.join(args.outfolder, batch_id)
+            print(batch_id,cl_id)
+            print(outfolder)
             #if int(cl_id) % args.split_mod != args.residual:
             #    print('skipping {0} because args.split_mod:{1} and args.residual:{2} set.'.format(batch_id,
             #                                                                                      args.split_mod,
@@ -312,7 +323,8 @@ def main(args):
 
     if args.split_wrt_batches:
         file_handling = time()
-        join_back_corrected_batches_into_cluster(split_directory, args.outfolder, args.split_mod, args.residual)
+        #join_back_corrected_batches_into_cluster(split_directory, args.outfolder, args.split_mod, args.residual)
+        join_back_via_batch_merging(split_directory, args.outfolder, args.split_mod, args.residual)
         shutil.rmtree(split_directory)
         print("Joined back batched files in:", time() - file_handling)
     return
