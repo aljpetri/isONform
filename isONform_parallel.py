@@ -19,25 +19,14 @@ import errno
 from time import time
 from pathlib import Path
 import itertools
-
+from Parallelization_side_functions import *
 import signal
 from multiprocessing import Pool
 import multiprocessing as mp
+from batch_merging_parallel import *
 
 # import math
 import re
-
-
-def mkdir_p(path):
-    try:
-        os.makedirs(path)
-        print("creating", path)
-    except OSError as exc:  # Python >2.5
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
-
 
 def wccount(filename):
     out = subprocess.Popen(['wc', '-l', filename],
@@ -52,15 +41,16 @@ def isONform(data):
     isONform_location, read_fastq_file, outfolder, batch_id, isONform_algorithm_params = data[0], data[1], data[
         2], data[3], data[4]
     mkdir_p(outfolder)
+    print("OUT",outfolder)
     isONform_exec = os.path.join(isONform_location, "main.py")
     isONform_error_file = os.path.join(outfolder, "stderr.txt")
     with open(isONform_error_file, "w") as error_file:
         print('Running isONform batch_id:{0}...'.format(batch_id), end=' ')
         stdout.flush()
 
-        racon_flag = "--use_racon" if isONform_algorithm_params["use_racon"] else ''
+        #racon_flag = "--use_racon" if isONform_algorithm_params["use_racon"] else ''
         # randstrobes_flag = "--randstrobes" if isONform_algorithm_params["randstrobes"] else ''
-        dyn_flag = "--set_w_dynamically" if isONform_algorithm_params["set_w_dynamically"] else ''
+        #dyn_flag = "--set_w_dynamically" if isONform_algorithm_params["set_w_dynamically"] else ''
         # null = open("/dev/null", "w")
         isONform_out_file = open(os.path.join(outfolder, "stdout.txt"), "w")
         subprocess.check_call(
@@ -70,7 +60,7 @@ def isONform(data):
                  "--k", str(isONform_algorithm_params["k"]), "--w", str(isONform_algorithm_params["w"]),
                  "--xmin", str(isONform_algorithm_params["xmin"]), "--xmax",
                  str(isONform_algorithm_params["xmax"]),
-                 "--exact"
+                 "--exact", "--parallel", "True"
                  #"--T", str(isONform_algorithm_params["T"])
                  ], stderr=error_file, stdout=isONform_out_file)
 
@@ -109,7 +99,7 @@ def splitfile(indir, tmp_outdir, fname, chunksize,cl_id,ext):
 
 
 
-import os, errno
+
 
 
 def symlink_force(target, link_name):
@@ -117,8 +107,10 @@ def symlink_force(target, link_name):
         os.symlink(target, link_name)
     except OSError as e:
         if e.errno == errno.EEXIST:
-            os.remove(link_name)
-            os.symlink(target, link_name)
+            if not os.path.exists(os.readlink(link_name)):
+                print('path %s is a broken symlink' % link_name)
+                os.remove(link_name)
+                symlink_force(target,link_name)
         else:
             raise e
 
@@ -138,14 +130,17 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
     #        print('\t%s' % fastq_file)
     pat=Path(indir)
     file_list=list(pat.rglob('*.fastq'))
+    print("FLIST",file_list)
     for filepath in file_list:
+                    print("FPATH",filepath)
                     old_fastq_file=str(filepath.resolve())
                     path_split=old_fastq_file.split("/")
                     folder=path_split[-2]
                     fastq_file=path_split[-1]
-                    print("PS",path_split)
+                    #print("FQFile",fastq_file)
+                    #print("PS",path_split)
                     cl_id=path_split[-2]
-                    print("CLID",cl_id)
+                    #print("CLID",cl_id)
                     #print("FQ",fastq_file)
                     #print(type(fastq_file))
                     #if we have more lines than max_seqs
@@ -163,9 +158,8 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
                         splitfile(indir, tmp_work_dir, fastq_file, 4 * max_seqs,cl_id,ext)  # is fastq file
                     else:
                         ext = fastq_file.rsplit('.', 1)[1]
-                        print(fastq_file, "symlinking instead")
-                        symlink_force(fastq_file,
-                                      os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id,0, ext)))
+                        #print(fastq_file, "symlinking instead")
+                        symlink_force(filepath, os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext)))
     return tmp_work_dir
 
 
@@ -207,7 +201,7 @@ def join_back_corrected_batches_into_cluster(tmp_work_dir, outdir, split_mod, re
                 # print('Removing', batch_id)
                 shutil.rmtree(batch_id)
 #TODO: Finish implementation of this method and replace call of other merge_function by call to this
-def join_back_via_batch_merging(tmp_work_dir, outdir, split_mod, residual):
+"""def join_back_via_batch_merging(tmp_work_dir, outdir, split_mod, residual):
     print("Batch Merging")
     print(outdir, tmp_work_dir)
     unique_cl_ids = set()
@@ -229,7 +223,7 @@ def join_back_via_batch_merging(tmp_work_dir, outdir, split_mod, residual):
 
                 error_file = open(os.path.join(out_pattern, 'cat.stderr'), 'w')
                 outfilename = os.path.join(out_pattern, 'isoforms.fastq')
-                # print("into outfile", outfilename)
+                # print("into outfile", outfilename)"""
 def main(args):
     directory = args.fastq_folder  # os.fsencode(args.fastq_folder)
     print(directory)
@@ -249,9 +243,11 @@ def main(args):
         read_fastq_file = os.fsdecode(file_)
         if read_fastq_file.endswith(".fastq"):
             print("True")
-            batch_id = read_fastq_file.split(".")[0]
-            cl_id = batch_id.split("_")[0]
-            outfolder = os.path.join(args.outfolder, batch_id)
+            tmp_id= read_fastq_file.split(".")[0]
+            snd_tmp_id=tmp_id.split("_")
+            cl_id = snd_tmp_id[0]
+            batch_id=snd_tmp_id[1]
+            outfolder = os.path.join(args.outfolder, cl_id)
             print(batch_id,cl_id)
             print(outfolder)
             #if int(cl_id) % args.split_mod != args.residual:
@@ -276,7 +272,7 @@ def main(args):
                                                 "exact_instance_limit": args.exact_instance_limit,
                                                 "delta_len": args.delta_len,
                                                 "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
-                                                "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon}
+                                                "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon,"parallel": True}
                 instances.append(
                     (isONform_location, fastq_file_path, outfolder, batch_id, isONform_algorithm_params))
             # else:
@@ -324,7 +320,9 @@ def main(args):
     if args.split_wrt_batches:
         file_handling = time()
         #join_back_corrected_batches_into_cluster(split_directory, args.outfolder, args.split_mod, args.residual)
-        join_back_via_batch_merging(split_directory, args.outfolder, args.split_mod, args.residual)
+        #join_back_via_batch_merging(split_directory, args.outfolder, args.split_mod, args.residual)
+        join_back_via_batch_merging(tmp_work_dir, args.outfolder, args.split_mod, args.residual, args.delta, args.delta_len, args.merge_sub_isoforms_3,
+                                    args.merge_sub_isoforms_5, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance)
         shutil.rmtree(split_directory)
         print("Joined back batched files in:", time() - file_handling)
     return
@@ -378,6 +376,7 @@ if __name__ == '__main__':
                                                                             This command will manually pick the number of layers specified with the --layers parameter.')
     parser.add_argument('--delta_len', type=int, default=3,
                         help='Maximum length difference between two reads intervals for which they would still be merged')
+    parser.add_argument('--delta',type=float,default=0.1, help='diversity rate used to compare sequences')
     parser.add_argument('--max_seqs_to_spoa', type=int, default=200, help='Maximum number of seqs to spoa')
 
     parser.add_argument('--verbose', action="store_true", help='Print various developer stats.')

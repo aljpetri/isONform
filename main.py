@@ -572,7 +572,9 @@ def get_qvs(reads):
 #TODO: several errors in errors/reads_5_9.fq->empty intervals added to graph generation, cleaning does yield error!
 #TODO:simplify graph adds an error to the data that is not in the initial graph!!! see errors/merge/reads_5_4.fq: 3.
 def main(args):
+
     all_batch_reads_dict={}
+    print(args.parallel)
     # start = time()
     if os.path.exists("mapping.txt"):
         os.remove("mapping.txt")
@@ -612,11 +614,21 @@ def main(args):
     new_all_reads= {}
     #print("AR",all_reads)
     max_batchid=0
+    if args.parallel:
+        tmp_filename=args.fastq.split("_")
+        tmp_lastpart=tmp_filename[-1].split(".")
+        p_batch_id=tmp_lastpart[0]
+        skipfilename="skip"+p_batch_id+".fa"
+
     for batch_id, reads in enumerate(batch(all_reads, args.max_seqs)):
         max_batchid=batch_id
-        batchname=str(batch_id)+"_batchfile.fa"
+        if args.parallel:
+            batchname=str(p_batch_id)+"_batchfile.fa"
+        else:
+            skipfilename="skip"+str(batch_id)+".fa"
+            batchname = str(batch_id) + "_batchfile.fa"
         batchfile = open(os.path.join(outfolder, batchname), "w")
-        #print(type(reads))
+        skipfile=open(os.path.join(outfolder,skipfilename),'w')
         for id,vals in reads.items():
             #print(id,vals)
             (acc, seq, qual) = vals
@@ -627,6 +639,13 @@ def main(args):
             if len(reads) >= 100:
                 w = min(args.w, args.k + (
                             len(reads) // 100 + 4))  # min(args.w,)  #args.w = args.k + min(7, int( len(all_reads)/500))
+            elif len(reads)==1:
+                for id, vals in reads.items():
+                    # print(id,vals)
+                    (acc, seq, qual) = vals
+                    skipfile.write(">{0}\n{1}\n".format(acc, seq))
+                print("Not enough reads to work on!")
+                continue
             else:
                 w = args.k + 1 + len(reads) // 30  # min(args.w,)  #args.w = args.k + min(7, int( len(all_reads)/500))
         else:
@@ -659,6 +678,7 @@ def main(args):
             tmp_cnt = 0
             all_intervals_for_graph = {}
             for r_id in sorted(reads):  # , reverse=True):
+
                 # for r_id in reads:
                 read_min_comb = [((m1, p1), m1_curr_spans) for (m1, p1), m1_curr_spans in
                                  minimizers_comb_iterator(minimizer_database[r_id], k_size, x_low, x_high)]
@@ -757,7 +777,11 @@ def main(args):
                 if not all_intervals:
                     not_used+=1
                     eprint("Found no reads to work on")
-                    corrected_seq = seq
+                    vals=reads[r_id]
+                        # print(id,vals)
+                    (acc, seq, qual) = vals
+                    skipfile.write(">{0}\n{1}\n".format(acc, seq))
+                    continue
                 else:
                     all_intervals.sort(key=lambda x: x[1])
                     # print([www for (_, _,  www, _)  in all_intervals])
@@ -772,7 +796,6 @@ def main(args):
                     if DEBUG:
                         print("GID",graph_id," ",acc)
                     new_all_reads[graph_id]=reads[r_id]
-
                     graph_id+=1
 
                     #if r_id == 2:
@@ -849,6 +872,7 @@ def main(args):
         #print("Known intervals")
         #print(known_intervals)
         print("Graph built up!")
+        print(DG.out_edges("s"))
         simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len)
         #snapshot2 = tracemalloc.take_snapshot()
         #print(snapshot2)
@@ -868,6 +892,9 @@ def main(args):
         all_reads_name="all_reads_"+str(batch_id)+".txt"
         with open(os.path.join(outfolder, all_reads_name), 'wb') as file:
             file.write(pickle.dumps(all_reads))
+        #draw_Graph(DG)
+        if args.parallel:
+            batch_id=p_batch_id
         generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len, delta_iso_len_3, delta_iso_len_5,iso_abundance,max_seqs_to_spoa)
 
         #snapshot3 = tracemalloc.take_snapshot()
@@ -899,6 +926,7 @@ def main(args):
         file.write(pickle.dumps(all_batch_reads_dict))
     print("Starting batch merging")
     if not args.parallel:
+        print("Merging the batches with linear strategy")
         merge_batches(max_batchid, work_dir, outfolder, new_all_reads, merge_sub_isoforms_3, merge_sub_isoforms_5, delta,
                   delta_len, max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
     # eprint("tot_before:", tot_errors_before)
