@@ -606,8 +606,8 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
     eq_file_name="similarity_batch_"+str(batch_id)+".txt"
     path_file_name="path_"+str(batch_id)+".txt"
     similarity_file = open(os.path.join(outfolder, eq_file_name), 'w')
-    path_file=open(os.path.join(outfolder,path_file_name),"w")
-    consensus_map={}
+    path_file = open(os.path.join(outfolder, path_file_name), "w")
+    consensus_map = {}
     #merged consensuses holds all ids for which a merge was done
     merged_consensuses=set()
     for id, path in isoform_paths.items():

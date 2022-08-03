@@ -5,6 +5,7 @@ from IsoformGeneration import align_to_merge
 import tempfile
 import pickle
 from Parallelization_side_functions import *
+from modules import  help_functions
 """ This method is used to generate the consensus file needed for the consensus generation
 
 INPUT:  work_dir  : The working directory in which to store the file
@@ -202,7 +203,7 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
     mapping_name="cluster_mapping.txt"
     other_mapping_name="cluster_mapping_low_abundance.txt"
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
-    other_consensus =open(os.path.join(outfolder, other_consensus_name), 'w')
+    other_consensus = open(os.path.join(outfolder, other_consensus_name), 'w')
     mapping_file = open(os.path.join(outfolder, mapping_name), 'w')
     other_mapping=open(os.path.join(outfolder, other_mapping_name), 'w')
     for batchid, id_dict in all_infos_dict.items():
@@ -221,17 +222,37 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
     other_consensus.close()
     other_mapping.close()
 #TODO:write skipped files into overall output
-def write_final_output(all_infos_dict,outfolder,iso_abundance):
+def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
     print("Writing file")
-    consensus_name = "cluster_merged.fa"
-    other_consensus_name = "cluster_merged_low_abundance.fa"
-    mapping_name = "cluster_mapping.txt"
-    other_mapping_name = "cluster_mapping_low_abundance.txt"
-    consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
+    print(folder)
+    consensus_name = "cluster"+str(folder)+"_merged.fa"
+    other_consensus_name = "cluster"+str(folder)+"_merged_low_abundance.fa"
+    mapping_name = "cluster"+str(folder)+"_mapping.txt"
+    other_mapping_name = "cluster"+str(folder)+"_mapping_low_abundance.txt"
+    print(consensus_name)
+    consensus_file = open(os.path.join(outfolder, consensus_name), "w")
     other_consensus = open(os.path.join(outfolder, other_consensus_name), 'w')
     mapping_file = open(os.path.join(outfolder, mapping_name), 'w')
     other_mapping = open(os.path.join(outfolder, other_mapping_name), 'w')
+    skipped_reads = {}
     for batchid, id_dict in all_infos_dict.items():
+        skip_name="skip"+str(batchid)+".fa"
+        exist_path=os.path.join(outfolder,skip_name)
+        file_exists = os.path.exists(exist_path)
+        if file_exists:
+            with open(os.path.join(cl_dir, skip_name)) as h:
+                for id, seq in itertools.zip_longest(*[h] * 2):
+                    # print(id, seq)
+                    id = id.replace('\n', '')
+                    id = id.replace('>', '')
+                    # id=int(inter_id.replace('',''))
+                    seq = seq.replace('\n', '')
+                    # print(seq)
+                    skipped_reads[id] = seq
+            #print("All reads",all_reads)
+            for acc,seq in skipped_reads.items():
+                other_consensus.write(">{0}\n{1}\n".format(acc, seq))
+                other_mapping.write(">{0}\n{1}\n".format(acc, acc))
         for id, infos in id_dict.items():
             #print(id, " ", all_infos_dict[batchid][id].merged)
             if not all_infos_dict[batchid][id].merged:
@@ -300,13 +321,15 @@ def actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,m
                                             infos.merged = True
     print("Combi count ", cter)
 #TODO: Finish implementation of this method and replace call of other merge_function by call to this
-def join_back_via_batch_merging(tmp_work_dir, outdir, split_mod, residual,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa,iso_abundance):
+def join_back_via_batch_merging(tmp_work_dir, outdir,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa,iso_abundance):
     print("Batch Merging")
+    print(outdir)
     Read = recordclass('Read', "sequence reads merged")
-    print(outdir, tmp_work_dir)
+    #print(outdir, tmp_work_dir)
     unique_cl_ids = set()
     all_infos_dict={}
     subfolders = [f.path for f in os.scandir(outdir) if f.is_dir()]
+    print(subfolders)
     for folder in subfolders:
         print("Folder",folder)
         file = os.fsdecode(folder)
@@ -372,10 +395,10 @@ def join_back_via_batch_merging(tmp_work_dir, outdir, split_mod, residual,delta,
         #with open(filename, 'rb') as readfile:
         #                print("Hello World")
         actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa,all_reads_dict,outdir)
-        write_final_output(all_infos_dict,outdir,iso_abundance)
+        write_final_output(all_infos_dict,outdir,iso_abundance,cl_dir,cl_id)
                         #shutil.rmtree(batch_id)
 def main():
-    outfolder = "100kSIRV/test8"
+    outfolder = "/home/alexanderpetri/isONform_analysis/Para_out"
     delta=0.10
     delta_len=5
     merge_sub_isoforms_3=True
@@ -385,14 +408,15 @@ def main():
     max_seqs_to_spoa=200
     iso_abundance=1
     max_batchid=24
-    work_dir = tempfile.mkdtemp()
-    print("Temporary workdirektory:", work_dir)
-    with open(os.path.join(outfolder, "all_batches_reads.txt"), 'rb') as file:
-        all_reads = pickle.load(file)
-
-    merge_batches(max_batchid, work_dir, outfolder, all_reads,merge_sub_isoforms_3,merge_sub_isoforms_5, delta, delta_len,max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
+    tmp_work_dir="/tmp/tmp7_3zueyb/split_in_batches"
+    #work_dir = tempfile.mkdtemp()
+    #print("Temporary workdirektory:", work_dir)
+    #with open(os.path.join(outfolder, "all_batches_reads.txt"), 'rb') as file:
+    #    all_reads = pickle.load(file)
+    join_back_via_batch_merging(tmp_work_dir,outfolder,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa,iso_abundance)
+    #merge_batches(max_batchid, tmp_work_dir, outfolder, all_reads,merge_sub_isoforms_3,merge_sub_isoforms_5, delta, delta_len,max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
     print("removing temporary workdir")
-    shutil.rmtree(work_dir)
+    #shutil.rmtree(work_dir)
 
 if __name__ == "__main__":
     main()

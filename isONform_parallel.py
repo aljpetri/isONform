@@ -76,6 +76,7 @@ def splitfile(indir, tmp_outdir, fname, chunksize,cl_id,ext):
     # fpath, fname = os.path.split(infilepath)
     #cl_id, ext = fname.rsplit('.',1)
     infilepath = os.path.join(indir, fname)
+    #infilepath=indir
     # print(fpath, cl_id, ext)
     print("now at splitfile")
     print(indir, tmp_outdir, cl_id, ext)
@@ -132,30 +133,35 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
     file_list=list(pat.rglob('*.fastq'))
     print("FLIST",file_list)
     for filepath in file_list:
-                    print("FPATH",filepath)
-                    old_fastq_file=str(filepath.resolve())
-                    path_split=old_fastq_file.split("/")
-                    folder=path_split[-2]
-                    fastq_file=path_split[-1]
-                    #print("FQFile",fastq_file)
+                print("FPATH",filepath)
+                old_fastq_file=str(filepath.resolve())
+                path_split=old_fastq_file.split("/")
+                folder=path_split[-2]
+                print(folder)
+                fastq_file=path_split[-1]
+                if not folder=="Analysis":
+                    print("FQFile",fastq_file)
+                    print(indir)
                     #print("PS",path_split)
                     cl_id=path_split[-2]
-                    #print("CLID",cl_id)
+                    print("CLID",cl_id)
                     #print("FQ",fastq_file)
                     #print(type(fastq_file))
                     #if we have more lines than max_seqs
-                    indir=os.path.join(indir,folder)
+                    new_indir=os.path.join(indir,folder)
+                    print(new_indir)
                     if not smaller_than_max_seqs:
-                        num_lines = sum(1 for line in open(os.path.join(indir, fastq_file)))
-                        print(fastq_file, num_lines)
+                        num_lines = sum(1 for line in open(os.path.join(new_indir, fastq_file)))
+                        print("Number Lines",fastq_file, num_lines)
                         #we reset smaller_than_max_seqs as we now want to see if we really have more than max_seqs reads
                         smaller_than_max_seqs = False if num_lines > 4 * max_seqs else True
                     else:
                         smaller_than_max_seqs = True
 
                     if not smaller_than_max_seqs:
+                        print("Splitting",filepath)
                         ext = fastq_file.rsplit('.', 1)[1]
-                        splitfile(indir, tmp_work_dir, fastq_file, 4 * max_seqs,cl_id,ext)  # is fastq file
+                        splitfile(new_indir, tmp_work_dir, fastq_file, 4 * max_seqs,cl_id,ext)  # is fastq file
                     else:
                         ext = fastq_file.rsplit('.', 1)[1]
                         #print(fastq_file, "symlinking instead")
