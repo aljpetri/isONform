@@ -40,9 +40,10 @@ INPUT:      DG                  Directed Graph
 OUPUT:      reads:              dictionary, which does not contain the read information anymore
 """
 def remove_reads_from_edge(DG,edge,supported_reads):
-    #print("Edge",edge)
+
     if DEBUG:
         print("DEBUG")
+        print("Edge", edge)
         #print(DG.edges())
         #print(list(DG.nodes.data()))
         #if 120 in supported_reads:
@@ -65,21 +66,24 @@ OUPUT:      reads:              dictionary, which does not contain the read info
 #TODO: removing reads from edges seems to yield error: s is too fast removed from the graph
 def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
     #print("Tdeg:",DG.degree("t"))
-    #print("Sdeg:", DG.degree("s"))
+    #print("ALLnodes", DG.nodes.data())
+    #print("allEdges",DG.edges.data())
+    print("Sdeg:", DG.degree("s"))
     print(visited_nodes)
+    print("Supp_reads",supported_reads)
     if DEBUG:
         if DG.degree("s")==0:
-            print(visited_nodes)
-            print(DG.nodes)
+            #print(visited_nodes)
+            #print(DG.nodes)
             for node1, node2, data in DG.edges.data():
                 print(node1,",",node2,":",data)
-            #print(DG.nodes.data())
+            #print("ALLnodes",DG.nodes.data())
             #print(DG)
             #draw_Graph(DG)
     update_dict={}
     #edge_update_dict={}
     for edge in visited_edges:
-        #print("visited_edge:",edge)
+        print("visited_edge:",edge)
         new_reads = remove_reads_from_edge(DG, edge, supported_reads)
         #print("New_reads",new_reads)
         if new_reads:
@@ -694,7 +698,7 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                 similarity_file.write("{0},{1}: {2} \n".format(id, id2,equality_1))
     path_file.close()
     return merged_dict, merged_consensuses, called_consensuses, consensus_map
-DEBUG=False
+
 """
 Wrapper method used for the isoform generation
 """
@@ -723,7 +727,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
         generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance)
 
 
-
+DEBUG=False
 
 def main():
     outfolder="100kSIRV/20722_abundance2_par/22"

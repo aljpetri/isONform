@@ -795,7 +795,10 @@ def main(args):
                     #This can be utilized to find out which read_name maps to which r_id ->very helpful for Debugging
                     if DEBUG:
                         print("GID",graph_id," ",acc)
+                    #print(len(new_all_reads))
                     new_all_reads[graph_id]=reads[r_id]
+                    #if graph_id==192:
+                    #    print("ITC",intervals_to_correct)
                     graph_id+=1
 
                     #if r_id == 2:
@@ -821,58 +824,22 @@ def main(args):
                 print("Skipped ",not_used," reads due to not having high enough interval abundance")
             else:
                 print("Working on all reads")
-            #for r_id,intervals_to_correct in all_intervals_for_graph.items():
-                #if(r_id==2):
-                    #print("intervals to correct")
-                    #print(intervals_to_correct)
-                    #print("intervals to correct done")
-            #DG, known_intervals = generateGraphfromIntervals(all_intervals_for_graph, k_size)
-            #DG_old, known_intervals_old = generateGraphfromIntervals_old(all_intervals_for_graph, k_size)
-            #check_graph_correctness(known_intervals,all_intervals_for_graph)
-            #DG.nodes(data=True)
-            #print("Number of Nodes for DG:" + str(len(DG)))
-            #nodelist = list(DG.nodes)
-            #print(nodelist)
-            #print("number of edges in DG:" + str(DG.number_of_edges()))
-            #for node in nodelist:
-            #    print(node)
-
-            #print("Number of Nodes for DG_old:" + str(len(DG_old)))
-            #nodelist_old = list(DG_old.nodes)
-
-            #print("number of edges in DG:" + str(DG_old.number_of_edges()))
-            #for node in nodelist_old:
-            #    print(node)
-            #DG2 = generateSimpleGraphfromIntervals(all_intervals_for_graph)
-            #add_Nodes(DG,args.delta_len)
-            #simplifyGraph(DG,args.max_bubblesize,args.delta_len)
-            # att = nx.get_node_attributes(DG, reads)
-            # print("749,762 attributes: " + str(att))
-            #draw_Graph(DG)
-            # draw_Graph(DG2)
-            # writes the graph in GraphML format into a file. Makes it easier to work with the graph later on
-            #nx.write_graphml_lxml(DG, "outputgraph.graphml")
-            # nx.write_graphml_lxml(DG2, "outputgraph2.graphml")
-            #print("Type of Allreads")
-            #print(type(all_reads))
-            #print(all_intervals_for_graph.keys())
             print("Generating the graph")
             all_batch_reads_dict[batch_id] = new_all_reads
             read_len_dict = get_read_lengths(all_reads)
             DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
                 all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
-            #snapshot = tracemalloc.take_snapshot()
-            #print(snapshot)
             print(DG.number_of_nodes()," Nodes in our Graph")
             is_cyclic=isCyclic(DG)
             if is_cyclic:
                 k_size+=1
                 w+=1
-                print("Regenerating Graph, increasing k to be",k_size,"and w to be ",w)
+                eprint("Regenerating Graph, increasing k to be",k_size,"and w to be ",w)
+            is_cyclic=False
         #print("Known intervals")
         #print(known_intervals)
         print("Graph built up!")
-        print(DG.out_edges("s"))
+        #print(DG.out_edges("s"))
         simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len)
         #snapshot2 = tracemalloc.take_snapshot()
         #print(snapshot2)

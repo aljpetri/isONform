@@ -172,11 +172,12 @@ def find_paths(DG,combination):
     #already_visited_nodes=set()
     #we iterate as long as still not all support was allocated to a path
     while node_support_left:
-        if DEBUG:
-            print("NSL",node_support_left)
+        #if DEBUG:
+        print("NSL",node_support_left)
         # print("end", end)
         ##print("already visited nodes",already_visited_nodes)
         node = combination[0]
+        #print("startnode",node)
         curr_supp=set()
         read=node_support_left.pop()
         curr_supp.add(read)
@@ -197,7 +198,7 @@ def find_paths(DG,combination):
                 if DEBUG:
                     print("edge",edge)
                 edge_supp = DG[edge[0]][edge[1]]['edge_supp']
-                # print("edge_supp",edge_supp)
+                #print("edge_supp",edge_supp)
                 if read in edge_supp:
                     node=edge[1]
                     node_supp=DG.nodes[node]['reads']
@@ -1475,12 +1476,22 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len):
 
             is_alignable=True
             #we find all paths from s' to t' via find_paths
-            all_paths = find_paths(DG,combination)
+            old_all_paths = find_paths(DG,combination)
             #if DEBUG:
+            #TODO: this seems to be a qick n dirty fix for some error concerning multibubbles(at least during bubble popping) find better solution, real error
+            all_paths=[]
+            for path in old_all_paths:
+                if len(path[0])<2:
+                    if not DG.has_edge(combination[0],combination[1]):
+                        print("not in all paths")
+                    else:
+                        all_paths.append(path)
+                else:
+                    all_paths.append(path)
 
             #print("FINDPATHS ended")
             if DEBUG:
-               # print("all_paths:", all_paths,"len",len(all_paths))
+                print("all_paths:", all_paths,"len",len(all_paths))
                 for path in all_paths:
                     print(path[0], path[1])
             initial_all_paths=len(all_paths)

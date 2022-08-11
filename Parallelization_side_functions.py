@@ -11,3 +11,11 @@ def mkdir_p(path):
             pass
         else:
             raise
+
+
+
+def generate_single_output(outfolder):
+    subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
+    f = open("transcriptome.fq", "w")
+    for subfolder in subfolders:
+        actual_folder=

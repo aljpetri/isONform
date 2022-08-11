@@ -53,19 +53,19 @@ echo
 echo "Finished isONcorrect"
 echo
 
-echo
-echo "Running isONform"
-echo
-isONform_parallel --fastq $outfolder/correction/ --k 9 --w 20 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 5 --outfolder $outfolder/isonform/
-echo
-echo "Finished isONform"
-echo
-
 
 echo
 echo "Merging reads back to single file. Corrected reads per cluster are still stored in: " $outfolder/correction/
 echo
 
+echo
+echo "Running isONform"
+echo
+python isONform_parallel.py --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder $outfolder/isoforms --iso_abundance 2 --split_wrt_batches
+
+echo
+echo "Finished isONform"
+echo
 # OPTIONAL BELOW TO MERGE ALL CORRECTED READS INTO ONE FILE
 touch $outfolder/all_corrected_reads.fq
 OUTFILES=$outfolder"/correction/"*"/corrected_reads.fastq"

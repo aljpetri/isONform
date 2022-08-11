@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 """
 This file is a wrapper file to run isONform in parallel (parallelization over batches).
-The script was taken from isoncorrect(https://github.com/ksahlin/isoncorrect/blob/master/run_isoncorrect)
+The script was taken from isoncorrect (https://github.com/ksahlin/isoncorrect/blob/master/run_isoncorrect)
 by Kristoffer Sahlin and changed by Alexander Petri to be usable with the isONform code base.
 
 """
@@ -38,8 +38,8 @@ def wccount(filename):
 
 
 def isONform(data):
-    isONform_location, read_fastq_file, outfolder, batch_id, isONform_algorithm_params = data[0], data[1], data[
-        2], data[3], data[4]
+    isONform_location, read_fastq_file, outfolder, batch_id, isONform_algorithm_params,cl_id = data[0], data[1], data[
+        2], data[3], data[4], data[5]
     mkdir_p(outfolder)
     print("OUT",outfolder)
     isONform_exec = os.path.join(isONform_location, "main.py")
@@ -47,11 +47,6 @@ def isONform(data):
     with open(isONform_error_file, "w") as error_file:
         print('Running isONform batch_id:{0}...'.format(batch_id), end=' ')
         stdout.flush()
-
-        #racon_flag = "--use_racon" if isONform_algorithm_params["use_racon"] else ''
-        # randstrobes_flag = "--randstrobes" if isONform_algorithm_params["randstrobes"] else ''
-        #dyn_flag = "--set_w_dynamically" if isONform_algorithm_params["set_w_dynamically"] else ''
-        # null = open("/dev/null", "w")
         isONform_out_file = open(os.path.join(outfolder, "stdout.txt"), "w")
         subprocess.check_call(
                 ["python", isONform_exec, "--fastq", read_fastq_file, "--outfolder", outfolder,
@@ -64,13 +59,13 @@ def isONform(data):
                  #"--T", str(isONform_algorithm_params["T"])
                  ], stderr=error_file, stdout=isONform_out_file)
 
-        print('Done with batch_id:{0}.'.format(batch_id))
+        print('Done with batch_id:{0}.{1}'.format(cl_id,batch_id))
         stdout.flush()
     error_file.close()
     isONform_out_file.close()
     return batch_id
 
-
+#splits files containing more than max_seqs reads into smaller files, that can be parallelized upon
 def splitfile(indir, tmp_outdir, fname, chunksize,cl_id,ext):
     # from https://stackoverflow.com/a/27641636/2060202
     # fpath, fname = os.path.split(infilepath)
@@ -115,121 +110,51 @@ def symlink_force(target, link_name):
         else:
             raise e
 
-
+#splits clusters up so that we get smaller batches
 def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
     # create a modified indir
     tmp_work_dir = os.path.join(tmp_work_dir, 'split_in_batches')
     # print(indir)
     mkdir_p(tmp_work_dir)
     smaller_than_max_seqs = False
-    # print(sorted(os.listdir(indir), key=lambda x: int(x.split('.')[0])) )
-    # sys.exit()
-    # add split fiels to this indir
-    #for dirName, subdirList, fileList in os.walk(indir):
-        #print('Found directory: %s' % dirName)
-    #    for fastq_file in fileList:
-    #        print('\t%s' % fastq_file)
     pat=Path(indir)
+    #collect all fastq files located in this directory or any subdirectories
     file_list=list(pat.rglob('*.fastq'))
     print("FLIST",file_list)
+    #iterate over the fastq_files
     for filepath in file_list:
-                print("FPATH",filepath)
-                old_fastq_file=str(filepath.resolve())
-                path_split=old_fastq_file.split("/")
-                folder=path_split[-2]
-                print(folder)
-                fastq_file=path_split[-1]
-                if not folder=="Analysis":
-                    print("FQFile",fastq_file)
-                    print(indir)
-                    #print("PS",path_split)
-                    cl_id=path_split[-2]
-                    print("CLID",cl_id)
-                    #print("FQ",fastq_file)
-                    #print(type(fastq_file))
-                    #if we have more lines than max_seqs
-                    new_indir=os.path.join(indir,folder)
-                    print(new_indir)
-                    if not smaller_than_max_seqs:
-                        num_lines = sum(1 for line in open(os.path.join(new_indir, fastq_file)))
-                        print("Number Lines",fastq_file, num_lines)
-                        #we reset smaller_than_max_seqs as we now want to see if we really have more than max_seqs reads
-                        smaller_than_max_seqs = False if num_lines > 4 * max_seqs else True
-                    else:
-                        smaller_than_max_seqs = True
+        print("FPATH",filepath)
+        old_fastq_file=str(filepath.resolve())
+        path_split=old_fastq_file.split("/")
+        folder=path_split[-2]
+        print(folder)
+        fastq_file=path_split[-1]
+        #we do not want to look at the analysis fastq file
+        if not folder=="Analysis":
+            cl_id=path_split[-2]
+            print("CLID",cl_id)
 
-                    if not smaller_than_max_seqs:
-                        print("Splitting",filepath)
-                        ext = fastq_file.rsplit('.', 1)[1]
-                        splitfile(new_indir, tmp_work_dir, fastq_file, 4 * max_seqs,cl_id,ext)  # is fastq file
-                    else:
-                        ext = fastq_file.rsplit('.', 1)[1]
-                        #print(fastq_file, "symlinking instead")
-                        symlink_force(filepath, os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext)))
+            #if we have more lines than max_seqs
+            new_indir=os.path.join(indir,folder)
+            print(new_indir)
+            if not smaller_than_max_seqs:
+                num_lines = sum(1 for line in open(os.path.join(new_indir, fastq_file)))
+                print("Number Lines",fastq_file, num_lines)
+                #we reset smaller_than_max_seqs as we now want to see if we really have more than max_seqs reads
+                smaller_than_max_seqs = False if num_lines > 4 * max_seqs else True
+            else:
+                smaller_than_max_seqs = True
+
+            if not smaller_than_max_seqs:
+                print("Splitting",filepath)
+                ext = fastq_file.rsplit('.', 1)[1]
+                splitfile(new_indir, tmp_work_dir, fastq_file, 4 * max_seqs,cl_id,ext)  # is fastq file
+            else:
+                ext = fastq_file.rsplit('.', 1)[1]
+                #print(fastq_file, "symlinking instead")
+                symlink_force(filepath, os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext)))
     return tmp_work_dir
 
-
-def join_back_corrected_batches_into_cluster(tmp_work_dir, outdir, split_mod, residual):
-    print(outdir, tmp_work_dir)
-    unique_cl_ids = set()
-    for file in os.listdir(tmp_work_dir):
-        file = os.fsdecode(file)
-        # print(file)
-        fname = file.split('_')
-        if len(fname) == 2:
-            cl_id, batch_id = fname[0], fname[1]  # file.split('_')
-
-            if int(cl_id) % split_mod != residual:
-                # print('skipping {0} because args.split_mod:{1} and args.residual:{2} set.'.format(cl_id, args.split_mod, args.residual))
-                continue
-            unique_cl_ids.add(cl_id)
-
-    for cl_id in unique_cl_ids:
-        out_pattern = os.path.join(outdir, cl_id)
-        # print(type(tmp_work_dir), type(cl_id))
-        batches_pattern = os.path.join(os.fsdecode(outdir), cl_id + '_*')
-        # print("joining all", out_pattern, "from", batches_pattern)
-        mkdir_p(out_pattern)
-
-        error_file = open(os.path.join(out_pattern, 'cat.stderr'), 'w')
-        outfilename = os.path.join(out_pattern, 'isoforms.fastq')
-        # print("into outfile", outfilename)
-
-        with open(outfilename, 'wb') as outfile:
-            for batch_id in sorted(glob.glob(batches_pattern)):
-                # print(batch_id)
-                filename = os.path.join(batch_id, 'corrected_reads.fastq')
-                if filename == outfilename:
-                    # don't want to copy the output into the output
-                    continue
-                with open(filename, 'rb') as readfile:
-                    shutil.copyfileobj(readfile, outfile)
-                # print('Removing', batch_id)
-                shutil.rmtree(batch_id)
-#TODO: Finish implementation of this method and replace call of other merge_function by call to this
-"""def join_back_via_batch_merging(tmp_work_dir, outdir, split_mod, residual):
-    print("Batch Merging")
-    print(outdir, tmp_work_dir)
-    unique_cl_ids = set()
-    for file in os.listdir(tmp_work_dir):
-        file = os.fsdecode(file)
-        # print(file)
-        fname = file.split('_')
-        if len(fname) == 2:
-            cl_id, batch_id = fname[0], fname[1]  # file.split('_')
-
-            unique_cl_ids.add(cl_id)
-            print(unique_cl_ids)
-            for cl_id in unique_cl_ids:
-                out_pattern = os.path.join(outdir, cl_id)
-                # print(type(tmp_work_dir), type(cl_id))
-                batches_pattern = os.path.join(os.fsdecode(outdir), cl_id + '_*')
-                # print("joining all", out_pattern, "from", batches_pattern)
-                mkdir_p(out_pattern)
-
-                error_file = open(os.path.join(out_pattern, 'cat.stderr'), 'w')
-                outfilename = os.path.join(out_pattern, 'isoforms.fastq')
-                # print("into outfile", outfilename)"""
 def main(args):
     directory = args.fastq_folder  # os.fsencode(args.fastq_folder)
     print(directory)
@@ -256,12 +181,6 @@ def main(args):
             outfolder = os.path.join(args.outfolder, cl_id)
             print(batch_id,cl_id)
             print(outfolder)
-            #if int(cl_id) % args.split_mod != args.residual:
-            #    print('skipping {0} because args.split_mod:{1} and args.residual:{2} set.'.format(batch_id,
-            #                                                                                      args.split_mod,
-            #                                                                                      args.residual))
-            #    continue
-            # print(batch_id, outfolder, read_fastq_file, split_directory)
             fastq_file_path = os.path.join(os.fsdecode(split_directory), read_fastq_file)
             print(fastq_file_path)
             compute = True
@@ -280,20 +199,9 @@ def main(args):
                                                 "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
                                                 "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon,"parallel": True}
                 instances.append(
-                    (isONform_location, fastq_file_path, outfolder, batch_id, isONform_algorithm_params))
-            # else:
-            #     isONform_algorithm_params = {  "set_w_dynamically" : args.set_w_dynamically, "exact_instance_limit" : args.exact_instance_limit, "k": args.k, "w" : args.w, "xmin" : args.xmin, "xmax" :  args.xmax, "T" : args.T }
-            #     instances.append((isONform_location, fastq_file_path, outfolder, int(batch_id), isONform_algorithm_params) )
-            # print(os.path.join(split_directory, read_fastq_file))
-            # continue
+                    (isONform_location, fastq_file_path, outfolder, batch_id, isONform_algorithm_params,cl_id))
         else:
             continue
-
-    # # sys.exit()
-    # if args.split_wrt_batches:
-    #     instances.sort(key = lambda x: int(x[3].split('_')[0])) # sorting in order of cluster labels
-    # else:
-    #     instances.sort(key = lambda x: int(x[3])) # sorting in order of cluster size!
 
     instances.sort(key=lambda x: x[3])  # sorting on batch ids as strings
     print("Printing instances")
@@ -308,8 +216,6 @@ def main(args):
     start_multi = time()
     pool = Pool(processes=int(args.nr_cores))
     try:
-        # res = pool.map_async(isONform, instances, chunksize=1)
-        # score_results =res.get(999999999) # Without the timeout this blocking call ignores all signals.
         start = time()
         for x in pool.imap_unordered(isONform, instances):
             print("{} (Time elapsed: {}s)".format(x, int(time() - start)))
@@ -321,14 +227,13 @@ def main(args):
         pool.close()
     pool.join()
 
-    print("Time elapesd multiprocessing:", time() - start_multi)
+    print("Time elapsed multiprocessing:", time() - start_multi)
 
     if args.split_wrt_batches:
         file_handling = time()
-        #join_back_corrected_batches_into_cluster(split_directory, args.outfolder, args.split_mod, args.residual)
-        #join_back_via_batch_merging(split_directory, args.outfolder, args.split_mod, args.residual)
-        join_back_via_batch_merging(tmp_work_dir, args.outfolder, args.split_mod, args.residual, args.delta, args.delta_len, args.merge_sub_isoforms_3,
+        join_back_via_batch_merging(tmp_work_dir, args.outfolder, args.delta, args.delta_len, args.merge_sub_isoforms_3,
                                     args.merge_sub_isoforms_5, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance)
+        generate_single_output(args.outfolder)
         shutil.rmtree(split_directory)
         print("Joined back batched files in:", time() - file_handling)
     return
