@@ -157,19 +157,20 @@ def filter_combinations(combinations,not_viable):
 """detect the paths in our bubble
 """
 def find_paths(DG,combination):
-    #if combination[0]=='601, 652, 20':
-        #print(DG.nodes[combination[0]]['reads'])
-        #print(DG.out_edges(combination[0]))
+    if combination[0]=='281, 324, 1':
+        print(DG.nodes[combination[0]]['reads'])
+        print(DG.out_edges(combination[0]))
+        print(DG.nodes[combination[1]]['reads'])
+        print()
         #print(DG.nodes(data=True))
         #print(DG.edges(data=True))
+    #path_and_support will hold the infos concerning the found paths
     path_and_support=[]
     end=combination[1]
     #print("END", end)
     node_support_left=set(combination[2])
     #print(type(node_support_left))
     all_supp_for_this_path=set()
-    #print("currentnodesupp",node_support_left)
-    #already_visited_nodes=set()
     #we iterate as long as still not all support was allocated to a path
     while node_support_left:
         #if DEBUG:
@@ -191,16 +192,17 @@ def find_paths(DG,combination):
         while node!=end:
             visited_nodes.append(node)
             out_edges=DG.out_edges(node)
-            #print("out_edges:", out_edges)
+            print("out_edges:", out_edges)
             # print("visited_nodes:", visited_nodes)
             next_found=False
             for edge in out_edges:
                 if DEBUG:
                     print("edge",edge)
                 edge_supp = DG[edge[0]][edge[1]]['edge_supp']
-                #print("edge_supp",edge_supp)
+                print("edge_supp",edge_supp)
                 if read in edge_supp:
                     node=edge[1]
+                    print(node)
                     node_supp=DG.nodes[node]['reads']
                     all_supp_for_this_path.update(node_supp)
                     # print("all_supp",all_supp_for_this_path)
@@ -215,13 +217,14 @@ def find_paths(DG,combination):
                 print("No next node found")
                 break
 
-        #print("visited",visited_nodes)
+
         if current_node_support:
                 #already_visited_nodes.update(visited_nodes)
                 curr_supp.update(current_node_support)
                 node_support_left-=current_node_support
                 #print("All_sup",all_supp_for_this_path)
-                # print("Curr Supp",curr_supp)
+                print("Curr Supp",curr_supp)
+                print("visited",visited_nodes)
                 final_add_support=all_supp_for_this_path-curr_supp
                 #final_add_support=[]
                 #print("Final_add_supp",final_add_support)
@@ -739,23 +742,6 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
     edge_params={}
     linearization_order=[]
     conn_edges=find_connecting_edges(path_nodes,DG)
-    #actual_node_distances=[(k, v) for k, v in node_dist.items()]
-    ##print("actual_node_distances", actual_node_distances)
-    #actual_node_distances.sort(key=lambda tup: tup[1])
-    #print("Bubble_end_node", bubble_end)
-    #print("EdgestoDelete", edges_to_delete)
-    ##print("Allnodeslen", len(actual_node_distances))
-    ##print("allnodes", actual_node_distances)
-    # print("pathnodes", path_nodes)
-    #print("nodedist",node_dist)
-    #sort_by_dist_to_s(actual_node_distances,DG)
-
-    #actual_node_distances=sort_by_node_label(actual_node_distances)
-
-    ##print("actual_node_distance s1", actual_node_distances)
-    #sorted(actual_node_distances, key=cmp_to_key(compare))
-    ##print("actual_node_distance s2", actual_node_distances)
-
     # we assign both paths to variables to make them easier accessible.
     for path_info in path_nodes:
         # print("PI",path_info)
@@ -1463,6 +1449,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len):
         #iterate over all combinations
         for combination in sorted_combinations:
             print("COMBINATION STARTS HERE")
+            print(combination)
             #if (len(not_viable_global)%100)==0:
                 #print("not_viable ",len(not_viable_global), "of ", len(combinations))
             #if DEBUG:
@@ -1497,7 +1484,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len):
             initial_all_paths=len(all_paths)
             if DEBUG:
                 print("initial_all_paths", initial_all_paths)
-
+            #print("All paths",all_paths)
+            #print("Initial_all_paths",initial_all_paths)
             #if we only did find one viable path from s' to t' we figure the combination was not viable
             if len(all_paths)==1:
                 not_viable_global.add(combination)
@@ -1595,8 +1583,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len):
 
                     if is_poppable:
                         print("POPPED")
-                        if 140 in this_combi[2] or 121 in this_combi[2] or 161 in this_combi[2]:
-                                print("Watchit",this_combi)
+                        #if 140 in this_combi[2] or 121 in this_combi[2] or 161 in this_combi[2]:
+                        #        print("Watchit",this_combi)
                         #subgraph_bubble(DG,itere,all_paths_filtered,combination[0],combination[1],error_bubble)
 
 
@@ -1606,8 +1594,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len):
                            # print(DG.edges(data=True))
                         #itere += 1
                         nr_popped += 1
-                        if (nr_popped % 10) == 0:
-                            print("NR_popped", nr_popped)
+                        #if (nr_popped % 10) == 0:
+                            #print("NR_popped", nr_popped)
                         for node in all_paths_filtered[0][0]:
                             marked.add(node)
                     #marked.append()

@@ -834,11 +834,12 @@ def main(args):
             if is_cyclic:
                 k_size+=1
                 w+=1
-                eprint("Regenerating Graph, increasing k to be",k_size,"and w to be ",w)
-            is_cyclic=False
+                eprint("The graph has a cycle - critical error")
+                return -1
         #print("Known intervals")
         #print(known_intervals)
         print("Graph built up!")
+        #print(list(DG.nodes(data=True)))
         #print(DG.out_edges("s"))
         simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len)
         #snapshot2 = tracemalloc.take_snapshot()

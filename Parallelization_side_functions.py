@@ -18,4 +18,9 @@ def generate_single_output(outfolder):
     subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
     f = open("transcriptome.fq", "w")
     for subfolder in subfolders:
-        actual_folder=
+        actual_folder=subfolder.split("/")[-1]
+        print(actual_folder)
+        if actual_folder.isdigit():
+            openfile=os.path.join(subfolder,"cluster"+str(actual_folder)+"_merged.fa")
+            g=open(subfolder,"r")
+            f.write(g.read())
