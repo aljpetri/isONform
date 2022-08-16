@@ -202,12 +202,12 @@ def find_paths(DG,combination):
                 print("edge_supp",edge_supp)
                 if read in edge_supp:
                     node=edge[1]
-                    print(node)
+                    print("NODE",node)
                     node_supp=DG.nodes[node]['reads']
                     all_supp_for_this_path.update(node_supp)
                     # print("all_supp",all_supp_for_this_path)
                     current_node_support=current_node_support.intersection(edge_supp)
-                    #print("intersect",current_node_support)
+                    print("intersect",current_node_support)
                     if DEBUG:
                         print("node",node)
                     #print("allSuppForThisPath",all_supp_for_this_path)
