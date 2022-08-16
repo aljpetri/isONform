@@ -67,12 +67,14 @@ OUPUT:      reads:              dictionary, which does not contain the read info
 def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
     #print("Tdeg:",DG.degree("t"))
     #print("ALLnodes", DG.nodes.data())
-    #print("allEdges",DG.edges.data())
-    print("Sdeg:", DG.degree("s"))
-    print(visited_nodes)
-    print("Supp_reads",supported_reads)
+
     if DEBUG:
-        if DG.degree("s")==0:
+        print("allEdges", DG.edges.data())
+        print("Sdeg:", DG.degree("s"))
+        # print(visited_nodes)
+        print("Supp_reads", supported_reads)
+        if len(DG.degree("s"))==0:
+
             #print(visited_nodes)
             #print(DG.nodes)
             for node1, node2, data in DG.edges.data():
@@ -83,7 +85,8 @@ def clean_graph(DG,visited_nodes,visited_edges,supported_reads):
     update_dict={}
     #edge_update_dict={}
     for edge in visited_edges:
-        print("visited_edge:",edge)
+        if DEBUG:
+            print("visited_edge:",edge)
         new_reads = remove_reads_from_edge(DG, edge, supported_reads)
         #print("New_reads",new_reads)
         if new_reads:
@@ -249,9 +252,10 @@ def compute_equal_reads(DG,reads):
         for sup_read in supported_reads:
             #print(sup_read)
             reads_for_isoforms.remove(sup_read)
-        #print("Isoforms")
-        #print(isoforms)
+
         if DEBUG==True:
+            print("Isoforms")
+            print(isoforms)
             print("VisitedNodes" , id,"has ", len(visited_nodes)," elements: ",visited_nodes)
         #print(visited_nodes)
     return isoforms,visited_nodes_for_isoforms

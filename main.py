@@ -776,7 +776,8 @@ def main(args):
 
                 if not all_intervals:
                     not_used+=1
-                    eprint("Found no reads to work on")
+                    if DEBUG:
+                        eprint("Found no reads to work on")
                     vals=reads[r_id]
                         # print(id,vals)
                     (acc, seq, qual) = vals
@@ -791,15 +792,28 @@ def main(args):
                     # assert opt_indicies == opt_indicies2
                     # print(opt_indicies)
                     intervals_to_correct = get_intervals_to_correct(opt_indicies[::-1], all_intervals)
-                    all_intervals_for_graph[graph_id] = intervals_to_correct
+                    if intervals_to_correct:
+                        all_intervals_for_graph[graph_id] = intervals_to_correct
+                        new_all_reads[graph_id] = reads[r_id]
+                        # if graph_id==192:
+                        #    print("ITC",intervals_to_correct)
+                        graph_id += 1
+                    else:
+                        not_used += 1
+                        if DEBUG:
+                            eprint("Found no reads to work on")
+                        vals = reads[r_id]
+                        # print(id,vals)
+                        (acc, seq, qual) = vals
+                        skipfile.write(">{0}\n{1}\n".format(acc, seq))
                     #This can be utilized to find out which read_name maps to which r_id ->very helpful for Debugging
                     if DEBUG:
-                        print("GID",graph_id," ",acc)
+                        if graph_id==291:
+                            print("GID",graph_id," ",acc)
+                            print(intervals_to_correct)
+
                     #print(len(new_all_reads))
-                    new_all_reads[graph_id]=reads[r_id]
-                    #if graph_id==192:
-                    #    print("ITC",intervals_to_correct)
-                    graph_id+=1
+
 
                     #if r_id == 2:
                     #    print("Intervals to correct read 60:")
@@ -840,7 +854,7 @@ def main(args):
         #print(known_intervals)
         print("Graph built up!")
         #print(list(DG.nodes(data=True)))
-        #print(DG.out_edges("s"))
+        #print(DG.out_edges("s",data=True))
         #node='166, 197, 9'
         #print(DG.nodes[node]["reads"])
         #out_edges_data = DG.out_edges(node, data=True)
