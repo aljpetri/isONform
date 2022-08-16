@@ -192,7 +192,12 @@ def find_paths(DG,combination):
         while node!=end:
             visited_nodes.append(node)
             out_edges=DG.out_edges(node)
-            print("out_edges:", out_edges)
+            if node=='166, 197, 9':#TODO: This node gets too much support (idk why)
+                out_edges_data=DG.out_edges(node,data=True)
+                print("Node", node)
+                print("out_edges:", out_edges_data)
+                in_edges=DG.in_edges(node,data=True)
+                print("in_edges:", in_edges)
             # print("visited_nodes:", visited_nodes)
             next_found=False
             for edge in out_edges:
@@ -214,6 +219,7 @@ def find_paths(DG,combination):
                     next_found=True
                     break
             if not next_found:
+                print("At ", node, " for read ", read)
                 print("No next node found")
                 break
 
@@ -519,7 +525,7 @@ def additional_node_support(DG, new_support, node_dist_dict, node,other_prevnode
     #print("new_support ",new_support)
     #print("prevnode_this_path", prevnode_this_path)
     #print("prevnode_other_path",other_prevnode)
-    start_pos= DG.nodes[bubble_start]['reads']
+    #start_pos= DG.nodes[bubble_start]['reads']
     for r_id in new_support:
         #print("r_id",r_id)
         #figure out whether the r_id is part of this bubble_path
@@ -538,7 +544,6 @@ def additional_node_support(DG, new_support, node_dist_dict, node,other_prevnode
                 previous_other_path_reads=DG.nodes[other_prevnode]['reads']
                 #print("previous_other_path_reads",previous_other_path_reads)
                 if r_id in previous_other_path_reads:
-
                     pos_info_tup=previous_other_path_reads[r_id]
                     prev_end=pos_info_tup.end_mini_start
                     relative_dist= int(this_dist-other_dist)
@@ -1295,6 +1300,7 @@ def linearize_bubble(DG, pre_consensus_infos, bubble_start, bubble_end, path_nod
     #print("bubbles",bubble_start, ", ",bubble_end)
     ##print("Allnodes after sorting", all_nodes)
     #add_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nodes,node_dist,seq_infos)  # , node_dist)
+    print("PATH nodes", path_nodes)
     prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nodes, node_dist, seq_infos, topo_nodes_dict)
     #print("Popped bubble ", path_nodes)
 

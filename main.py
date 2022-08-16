@@ -841,6 +841,13 @@ def main(args):
         print("Graph built up!")
         #print(list(DG.nodes(data=True)))
         #print(DG.out_edges("s"))
+        #node='166, 197, 9'
+        #print(DG.nodes[node]["reads"])
+        #out_edges_data = DG.out_edges(node, data=True)
+        #print("Node", node)
+        #print("out_edges:", out_edges_data)
+        #in_edges = DG.in_edges(node, data=True)
+        #print("in_edges:", in_edges)
         simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len)
         #snapshot2 = tracemalloc.take_snapshot()
         #print(snapshot2)
