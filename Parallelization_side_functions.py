@@ -22,5 +22,5 @@ def generate_single_output(outfolder):
         print(actual_folder)
         if actual_folder.isdigit():
             openfile=os.path.join(subfolder,"cluster"+str(actual_folder)+"_merged.fa")
-            g=open(subfolder,"r")
+            g=open(openfile,"r")
             f.write(g.read())
