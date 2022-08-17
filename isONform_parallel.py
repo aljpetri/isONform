@@ -116,13 +116,14 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
     tmp_work_dir = os.path.join(tmp_work_dir, 'split_in_batches')
     # print(indir)
     mkdir_p(tmp_work_dir)
-    smaller_than_max_seqs = False
+
     pat=Path(indir)
     #collect all fastq files located in this directory or any subdirectories
     file_list=list(pat.rglob('*.fastq'))
     print("FLIST",file_list)
     #iterate over the fastq_files
     for filepath in file_list:
+        smaller_than_max_seqs = False
         print("FPATH",filepath)
         old_fastq_file=str(filepath.resolve())
         path_split=old_fastq_file.split("/")
@@ -138,8 +139,9 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
             new_indir=os.path.join(indir,folder)
             print(new_indir)
             if not smaller_than_max_seqs:
+
                 num_lines = sum(1 for line in open(os.path.join(new_indir, fastq_file)))
-                print("Number Lines",fastq_file, num_lines)
+                print("Number Lines", fastq_file, num_lines)
                 #we reset smaller_than_max_seqs as we now want to see if we really have more than max_seqs reads
                 smaller_than_max_seqs = False if num_lines > 4 * max_seqs else True
             else:
