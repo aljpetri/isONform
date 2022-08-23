@@ -45,7 +45,7 @@ def isONform(data):
     isONform_exec = os.path.join(isONform_location, "main.py")
     isONform_error_file = os.path.join(outfolder, "stderr.txt")
     with open(isONform_error_file, "w") as error_file:
-        print('Running isONform batch_id:{0}...'.format(batch_id), end=' ')
+        print('Running isONform batch_id:{0}.{1}...'.format(cl_id,batch_id), end=' ')
         stdout.flush()
         isONform_out_file = open(os.path.join(outfolder, "stdout.txt"), "w")
         subprocess.check_call(
@@ -156,8 +156,9 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
                 #print(fastq_file, "symlinking instead")
                 symlink_force(filepath, os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext)))
     return tmp_work_dir
-
+PYTHONHASHSEED = 0
 def main(args):
+
     directory = args.fastq_folder  # os.fsencode(args.fastq_folder)
     print(directory)
     isONform_location = os.path.dirname(os.path.realpath(__file__))
@@ -233,9 +234,8 @@ def main(args):
 
     if args.split_wrt_batches:
         file_handling = time()
-        join_back_via_batch_merging(tmp_work_dir, args.outfolder, args.delta, args.delta_len, args.merge_sub_isoforms_3,
-                                    args.merge_sub_isoforms_5, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance)
-        generate_single_output(args.outfolder)
+        #join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.merge_sub_isoforms_3,args.merge_sub_isoforms_5, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance)
+        #generate_full_output(args.outfolder)
         shutil.rmtree(split_directory)
         print("Joined back batched files in:", time() - file_handling)
     return

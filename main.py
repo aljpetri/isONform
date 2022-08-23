@@ -568,7 +568,7 @@ def get_qvs(reads):
             quality_values_database[r_id].append( tmp_tot_sum + qv )  #= [D[char_] for char_ in qual]
             tmp_tot_sum += qv
     return quality_values_database
-
+PYTHONHASHSEED=0
 #TODO: several errors in errors/reads_5_9.fq->empty intervals added to graph generation, cleaning does yield error!
 #TODO:simplify graph adds an error to the data that is not in the initial graph!!! see errors/merge/reads_5_4.fq: 3.
 def main(args):
@@ -658,10 +658,6 @@ def main(args):
             graph_id = 1
             print("Working on {0} reads in a batch".format(len(reads)))
             batch_start_time = time()
-
-
-
-
             hash_fcn = "lex"
             not_used=0
             # for hash_fcn in ["lex"]: # ["lex"]: #  add "rev_lex" # add four others

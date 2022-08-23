@@ -156,10 +156,10 @@ def find_next_node(thisstartpos, info_array, known_cycles, current_read_state, k
 
 def find_topo_alternative(topo_graph,previous_node,name,topo_alternatives):
     if name in topo_alternatives:
-        print(topo_alternatives)
-        print(topo_alternatives[name])
+        #print(topo_alternatives)
+        #print(topo_alternatives[name])
         for alternative in topo_alternatives[name]:
-            print(alternative)
+            #print(alternative)
             if topo_graph.index(previous_node) < topo_graph.index(alternative):
                 return alternative
     return ""

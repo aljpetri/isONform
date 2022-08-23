@@ -1,6 +1,7 @@
 from __future__ import print_function
 import os
 import errno
+import os.path
 
 def mkdir_p(path):
     try:
@@ -13,14 +14,40 @@ def mkdir_p(path):
             raise
 
 
+def generate_single_mapping(outfolder):
+    subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
+    f = open(os.path.join(outfolder, "transcriptome_mapping.txt"), "w")
+    for subfolder in subfolders:
+        actual_folder = subfolder.split("/")[-1]
+        # print(actual_folder)
+        if actual_folder.isdigit():
+            fname = os.path.join(outfolder, "cluster" + str(actual_folder) + "_mapping.txt")
+            #print(fname)
 
+            if os.path.isfile(fname):
+                g = open(fname, "r")
+                # read content from first file
+                for line in g:
+                    # append content to second file
+                    f.write(line)
 def generate_single_output(outfolder):
     subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
-    f = open("transcriptome.fq", "w")
+    f = open(os.path.join(outfolder,"transcriptome.fa"), "w")
     for subfolder in subfolders:
         actual_folder=subfolder.split("/")[-1]
-        print(actual_folder)
+        #print(actual_folder)
         if actual_folder.isdigit():
-            openfile=os.path.join(subfolder,"cluster"+str(actual_folder)+"_merged.fa")
-            g=open(openfile,"r")
-            f.write(g.read())
+            fname=os.path.join(outfolder,"cluster"+str(actual_folder)+"_merged.txt")
+            #print(fname)
+
+            if os.path.isfile(fname):
+                g = open(fname, "r")
+                # read content from first file
+                for line in g:
+                    # append content to second file
+                    f.write(line)
+
+                #f.write(g.read())
+def generate_full_output(outfolder):
+    generate_single_output(outfolder)
+    generate_single_mapping(outfolder)
