@@ -858,7 +858,7 @@ def main(args):
         #print("out_edges:", out_edges_data)
         #in_edges = DG.in_edges(node, data=True)
         #print("in_edges:", in_edges)
-        simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len)
+        simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len,known_intervals)
         #snapshot2 = tracemalloc.take_snapshot()
         #print(snapshot2)
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
@@ -925,7 +925,7 @@ def main(args):
 
     print("removing temporary workdir")
     shutil.rmtree(work_dir)
-RUNAFTER=False
+RUNAFTER=True
 DEBUG=False
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo error correction of long-read transcriptome reads",

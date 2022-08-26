@@ -971,9 +971,9 @@ USED FOR DEBUGGING ONLY-deprecated in IsONform
 
 
 def main():
-    import sys
-    sys.stdout = open('log.txt', 'w')
-    # print('test')
+    #import sys
+    #sys.stdout = open('log.txt', 'w')
+    print('test')
     w = 10
     reads = 62
     max_seqs_to_spoa = 200
@@ -991,22 +991,18 @@ def main():
     file2 = open('all_reads.txt', 'rb')
 
     all_reads = pickle.load(file2)
-    # print("Allreads type")
+    print("Allreads type")
     # print(type(all_reads))
     # print(all_reads)
     file2.close()
     delta_len = 2 * k_size
-    is_cyclic = True
-    while is_cyclic:
-        read_len_dict = get_read_lengths(all_reads)
-        DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
+    #is_cyclic = True
+    #while is_cyclic:
+    read_len_dict = get_read_lengths(all_reads)
+    print("Generating graph")
+    DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
             all_intervals_for_graph, k_size, delta_len, read_len_dict, all_reads)
-        is_cyclic = isCyclic(DG)
-        if is_cyclic:
-            k_size += 1
-            if k_size > w:
-                w += 1
-            print("Regenerating Graph, increasing k to be", k_size)
+
     print("edges with attributes:")
     # print(DG.edges(data=True))
     # print(DG.nodes(data=True))
@@ -1020,7 +1016,7 @@ def main():
     # simplifyGraph(DG, delta_len,all_reads,work_dir,k_size)
     print("Calling the method")
 
-    simplifyGraph(DG, all_reads, work_dir, k_size)
+    simplifyGraph(DG, all_reads,work_dir,k_size,delta_len,known_intervals)
     print("Graph simplified")
     # simplifyGraphOriginal(DG,delta_len, all_reads, work_dir, k_size,known_intervals)
     # print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
@@ -1042,7 +1038,6 @@ def main():
     # DG.nodes(data=True)
 
     # print("removing temporary workdir")
-    sys.stdout.close()
     shutil.rmtree(work_dir)
 
 

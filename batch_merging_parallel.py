@@ -45,6 +45,7 @@ def read_spoa_file(batch_id,cl_dir):
 def read_mapping_file(batch_id,cl_dir):
     batch_mappings_id={}
     mappingname =  "mapping"+str(batch_id)+".txt"
+    incoming_ctr=0
     #print("MAPPING",batch_id,mappingname)
     with open(os.path.join(cl_dir,mappingname)) as g:
         for id, reads in itertools.zip_longest(*[g] * 2):
@@ -61,6 +62,9 @@ def read_mapping_file(batch_id,cl_dir):
             # print(readslist)
             # print(len(readslist))
             batch_mappings_id[id] = readslist
+            incoming_ctr+=len(readslist)
+            #print(batch_mappings_id)
+    #print("INCOMING",incoming_ctr)
     return batch_mappings_id
 def read_batch_file(batch_id,all_infos_dict,all_reads_dict,cl_dir):
     batchfilename = str(batch_id)+"_batchfile.fa"
@@ -74,159 +78,13 @@ def read_batch_file(batch_id,all_infos_dict,all_reads_dict,cl_dir):
             #print(seq)
             all_reads_dict[id] = seq
             all_infos_dict[batch_id] = {}
-"""The last step of our algorithm: We take all isoforms that were generated for each batch and align them to merge same isoforms
-"""
-def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance):
-    all_infos_dict={}
-    #if max_batchid==0:
-    #    print("returning from batch-merging")
-    #    return
-    #Todo: add working directory
-    Read = recordclass('Read',"sequence reads merged")
-    seq_count=0
-    all_batch_sequences={}
-    #print(list(all_reads.keys()))
-    for batchid in range(0,max_batchid+1):
-        batch_reads={}
-        batch_mappings={}
 
-        filename="spoa" + str(batchid) + "merged.fa"
-        batchfilename="0_batchfile.fa"
-        mappingname= "mapping0.txt"
-        print("File: ",filename)
-        all_infos_dict[batchid]={}
-        with open(os.path.join(outfolder,filename)) as f:
-            for id, sequence in itertools.zip_longest(*[f] * 2):
-                #print(id, sequence)
-                inter_id=id.replace('\n','')
-                id=int(inter_id.replace('>consensus',''))
-                sequence = sequence.replace('\n', '')
-                #print("Seq_len",len(sequence))
-                batch_reads[id]=sequence
-                seq_count+=1
-        #print(batch_reads)
-        with open(os.path.join(outfolder,mappingname)) as g:
-            for id, reads in itertools.zip_longest(*[g] * 2):
-                #print(id, reads)
-                inter_id=id.replace('\n','')
-                id=int(inter_id.replace('consensus',''))
-                #print("ID",id)
-                reads = reads.replace('\n', '')
-                reads=reads.replace('[','')
-                reads = reads.replace(']', '')
-                #reads=reads.replace('\'','')
-                reads = reads.replace("'", "")
-                readslist=reads.split(", ")
-                #print(readslist)
-                #print(len(readslist))
-                batch_mappings[id]=readslist
-        #print("BATCHLEn",len(batch_mappings))
-        #print("NR sequences",seq_count)
-                #print("reads_len",len(reads))
-        with open(os.path.join(outfolder,batchfilename))as h:
-            for id, seq in itertools.zip_longest(*[h] * 2):
-                #print(id, reads)
-                id=id.replace('\n','')
-                id=id.replace('>','')
-                #id=int(inter_id.replace('',''))
-                seq = seq.replace('\n', '')
-                all_batch_sequences[id]=seq
-
-        #print(batch_mappings)
-        for key, value in batch_reads.items():
-            reads=batch_mappings[key]
-            #print("READS",reads)
-            read_mapping=Read(value,reads,False)
-            all_infos_dict[batchid][key]=read_mapping
-    #print("Len of batchid 0:",len(all_infos_dict[0]))
-    #print("Len of batchid 1:", len(all_infos_dict[1]))
-    cter=0
-    print("count of input sequences:",str(seq_count))
-    #print(read_mapping)
-    for batchid,id_dict in all_infos_dict.items():
-        for batchid2, id_dict2 in all_infos_dict.items():
-            if not batchid2 <= batchid:# and not batchid2==batchid:
-                print("bid",batchid,"bid2",batchid2)
-                for id,infos in id_dict.items():
-                    if not infos.merged:
-                        for id2, infos2 in id_dict2.items():
-                            if not infos2.merged:
-                                cter+=1
-                                consensus1=infos.sequence
-                                consensus2=infos2.sequence
-                                #print(consensus1, "\n")
-                                #print(consensus2, "\n")
-                                good_to_pop=align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5)
-                                if good_to_pop:
-                                    if len(infos.reads) > 50:
-                                        if len(infos.sequence)>=len(infos2.sequence):
-                                            infos.reads=infos.reads+infos2.reads
-                                            infos2.merged=True
-                                        else:
-                                            infos2.reads=infos2.reads +infos.reads
-                                            infos.merged=True
-                                        print("Merging",batchid,"_",id," and ",batchid2,"_",id2)
-                                    else:
-                                        #print("Else")
-                                        # TODO generate consensus and add all infos to longer read id
-                                        if len(infos.sequence) >= len(
-                                                infos2.sequence):
-
-                                            mappings1 = infos.reads
-                                            mappings2 = infos2.reads
-
-                                            new_consensus=generate_consensus_path(work_dir,mappings1,mappings2, all_batch_sequences,max_seqs_to_spoa)
-                                            #print("CONS1",all_infos_dict[batchid][id])
-                                            infos.sequence = new_consensus
-                                            infos.reads = infos.reads + infos2.reads
-                                            infos2.merged = True
-                                        else:
-                                            #print("BM",batch_mappings)
-                                            mappings1 = infos2.reads
-                                            mappings2 = infos.reads
-                                            #print("R1",reads1)
-                                            #print("M1",mappings1)
-                                            #print("R2", reads2)
-                                            new_consensus=generate_consensus_path(work_dir,mappings1,mappings2, all_batch_sequences,max_seqs_to_spoa)
-                                            #print("CONS2",all_infos_dict[batchid2][id2])
-                                            infos2.sequence = new_consensus
-                                            infos2.reads = infos2.reads + infos.reads
-                                            infos.merged = True
-
-    #for m_batch in merged_batches
-    #print("MB",merged_batches," ",len(merged_batches))
-    #print(all_infos_dict)
-    print("Combi count ",cter)
-    print("Writing file")
-    consensus_name = "cluster_merged.fa"
-    other_consensus_name="cluster_merged_low_abundance.fa"
-    mapping_name="cluster_mapping.txt"
-    other_mapping_name="cluster_mapping_low_abundance.txt"
-    consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
-    other_consensus = open(os.path.join(outfolder, other_consensus_name), 'w')
-    mapping_file = open(os.path.join(outfolder, mapping_name), 'w')
-    other_mapping=open(os.path.join(outfolder, other_mapping_name), 'w')
-    for batchid, id_dict in all_infos_dict.items():
-        for id, infos in id_dict.items():
-            print(id," ",all_infos_dict[batchid][id].merged)
-            if not all_infos_dict[batchid][id].merged:
-                new_id = str(batchid) + "_" + str(id)
-                if len(all_infos_dict[batchid][id].reads) >= iso_abundance:
-                    mapping_file.write(">{0}\n{1}\n".format(new_id,all_infos_dict[batchid][id].reads))
-                    consensus_file.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
-                else:
-                    other_consensus.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
-                    other_mapping.write(">{0}\n{1}\n".format(new_id,all_infos_dict[batchid][id].reads))
-    consensus_file.close()
-    mapping_file.close()
-    other_consensus.close()
-    other_mapping.close()
 #TODO:write skipped files into overall output
 def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
     print("Writing file")
     #print(folder)
-    consensus_name = "cluster"+str(folder)+"_merged.fa"
-    other_consensus_name = "cluster"+str(folder)+"_merged_low_abundance.fa"
+    consensus_name = "cluster"+str(folder)+"_merged.fq"
+    other_consensus_name = "cluster"+str(folder)+"_merged_low_abundance.fq"
     mapping_name = "cluster"+str(folder)+"_mapping.txt"
     other_mapping_name = "cluster"+str(folder)+"_mapping_low_abundance.txt"
     #print(consensus_name)
@@ -235,14 +93,9 @@ def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
     mapping_file = open(os.path.join(outfolder, mapping_name), 'w')
     other_mapping = open(os.path.join(outfolder, other_mapping_name), 'w')
     skipped_reads = {}
+    read_cter_mapping=0
     for skipfile in os.listdir(cl_dir):
         if skipfile.startswith("skip"):
-                #print(skipfile)
-    #
-    #    skip_name="skip"+str(batchid)+".fa"
-    #    exist_path=os.path.join(outfolder,skip_name)
-    #    file_exists = os.path.exists(exist_path)
-    #    if file_exists:
                 with open(os.path.join(cl_dir,skipfile)) as h:
                     for id, seq in itertools.zip_longest(*[h] * 2):
                         # print(id, seq)
@@ -254,7 +107,7 @@ def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
                         skipped_reads[id] = seq
                 #print("All reads",all_reads)
                 for acc,seq in skipped_reads.items():
-                    other_consensus.write(">{0}\n{1}\n".format(acc, seq))
+                    other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(acc, seq,"+"*len(seq)))
                     other_mapping.write(">{0}\n{1}\n".format(acc, acc))
     for batchid, id_dict in all_infos_dict.items():
         for id, infos in id_dict.items():
@@ -262,15 +115,17 @@ def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
             if not all_infos_dict[batchid][id].merged:
                 new_id = str(batchid) + "_" + str(id)
                 if len(all_infos_dict[batchid][id].reads) >= iso_abundance:
+                    read_cter_mapping+=len(all_infos_dict[batchid][id].reads)
                     mapping_file.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].reads))
-                    consensus_file.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
+                    consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,"+"*len(all_infos_dict[batchid][id].sequence)))
                 else:
                     if iso_abundance==1:
                         mapping_file.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].reads))
-                        consensus_file.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
+                        consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,"+"*len(all_infos_dict[batchid][id].sequence)))
                     else:
-                        other_consensus.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
+                        other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,"+"*len(all_infos_dict[batchid][id].sequence)))
                         other_mapping.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].reads))
+    print("RCM",read_cter_mapping)
     consensus_file.close()
     mapping_file.close()
     other_consensus.close()
@@ -288,7 +143,6 @@ def actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,m
                     if not infos.merged:
                         #print("IM", infos.merged)
                         for id2, infos2 in id_dict2.items():
-
                             #print("bid", batchid,": ",id, "bid2", batchid2,": ",id2)
                             if not infos2.merged:
                                 cter+=1
@@ -301,10 +155,11 @@ def actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,m
                                     #print("Merging", batchid, "_", id, " and ", batchid2, "_", id2)
                                     if len(infos.reads) > 50:
                                         if len(infos.sequence)>=len(infos2.sequence):
-                                            infos.reads=infos.reads+infos2.reads
+
+                                            all_infos_dict[batchid][id].reads=infos.reads+infos2.reads
                                             infos2.merged=True
                                         else:
-                                            infos2.reads=infos2.reads +infos.reads
+                                            all_infos_dict[batchid2][id2].reads=infos2.reads+infos.reads
                                             infos.merged=True
 
                                     else:
@@ -318,9 +173,9 @@ def actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,m
 
                                             new_consensus=generate_consensus_path(work_dir,mappings1,mappings2, all_batch_sequences,max_seqs_to_spoa)
                                             #print("CONS1",all_infos_dict[batchid][id])
-                                            infos.sequence = new_consensus
-                                            infos.reads = infos.reads + infos2.reads
-                                            infos2.merged = True
+                                            all_infos_dict[batchid][id].sequence = new_consensus
+                                            all_infos_dict[batchid][id].reads = infos.reads + infos2.reads
+                                            all_infos_dict[batchid2][id2].merged = True
                                         else:
                                             #print("BM",batch_mappings)
                                             mappings1 = infos2.reads
@@ -330,12 +185,13 @@ def actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,m
                                             #print("R2", reads2)
                                             new_consensus=generate_consensus_path(work_dir,mappings1,mappings2, all_batch_sequences,max_seqs_to_spoa)
                                             #print("CONS2",all_infos_dict[batchid2][id2])
-                                            infos2.sequence = new_consensus
-                                            infos2.reads = infos2.reads + infos.reads
-                                            infos.merged = True
+                                            all_infos_dict[batchid2][id2].sequence = new_consensus
+                                            all_infos_dict[batchid2][id2].reads = infos2.reads + infos.reads
+                                            all_infos_dict[batchid][id].merged = True
     print("Combi count ", cter)
 def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa,iso_abundance):
     print("Batch Merging")
+    ingoing_mapping_read_cter=0
     #print(outdir)
     Read = recordclass('Read', "sequence reads merged")
     #print(outdir, tmp_work_dir)
@@ -382,6 +238,7 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
                     batch_reads[batch_id]=read_spoa_file(batch_id,cl_dir)
                     #print("BatchReads",batch_reads)
                     batch_mappings[batch_id]=read_mapping_file(batch_id,cl_dir)
+                    ingoing_mapping_read_cter+=len(batch_mappings[batch_id])
                     #print("ALL INFOS",all_infos_dict)
             #collect the information so that we have one data structure containing all infos
 
@@ -398,15 +255,17 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
                         #print("Infos",b_id,cons_id)
                         all_infos_batch[cons_id] = read_mapping
                 all_infos_dict[b_id]=all_infos_batch
-                #print("AID",all_infos_dict)
+            #print("AID",all_infos_dict)
             #perform the merging step during which all consensuses are compared and if possible merged
             actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa,all_reads_dict,outdir)
             #write the final output into files
+            #print("AID2",all_infos_dict)
             write_final_output(all_infos_dict,outdir,iso_abundance,cl_dir,cl_id)
-
+    print("#mappings incoming",ingoing_mapping_read_cter)
         #shutil.rmtree(batch_id)
 def main():
     outfolder = "/home/alexanderpetri/isONform_analysis/Para_out_500batch"
+    #outfolder="/home/alexanderpetri/isONform_analysis/Batch_parallel_testing"
     delta=0.10
     delta_len=5
     merge_sub_isoforms_3=True
@@ -414,8 +273,8 @@ def main():
     delta_iso_len_3= 30
     delta_iso_len_5 = 50
     max_seqs_to_spoa=200
-    iso_abundance=1
-    join_back_via_batch_merging(outfolder,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa,iso_abundance)
+    iso_abundance=2
+    #join_back_via_batch_merging(outfolder,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa,iso_abundance)
     generate_full_output(outfolder)
     #merge_batches(max_batchid, tmp_work_dir, outfolder, all_reads,merge_sub_isoforms_3,merge_sub_isoforms_5, delta, delta_len,max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
     print("removing temporary workdir")
