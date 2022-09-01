@@ -159,8 +159,7 @@ def filter_combinations(combinations,not_viable):
 """detect the paths in our bubble
 """
 def find_paths(DG,combination):
-    profiler = Profiler()
-    profiler.start()
+
     #if combination[0]=='281, 324, 1':
         #print(DG.nodes[combination[0]]['reads'])
         #print(DG.out_edges(combination[0]))
@@ -173,6 +172,7 @@ def find_paths(DG,combination):
     end=combination[1]
     #print("END", end)
     node_support_left=set(combination[2])
+    all_supp=set(combination[2])
     #print(type(node_support_left))
     all_supp_for_this_path=set()
     #we iterate as long as still not all support was allocated to a path
@@ -196,13 +196,6 @@ def find_paths(DG,combination):
         while node!=end:
             visited_nodes.append(node)
             out_edges=DG.out_edges(node)
-            if node=='166, 197, 9':#TODO: This node gets too much support (idk why)
-                out_edges_data=DG.out_edges(node,data=True)
-                #print("Node", node)
-                #print("out_edges:", out_edges_data)
-                in_edges=DG.in_edges(node,data=True)
-                #print("in_edges:", in_edges)
-            # print("visited_nodes:", visited_nodes)
             next_found=False
             for edge in out_edges:
                 if DEBUG:
@@ -235,17 +228,13 @@ def find_paths(DG,combination):
                 #print("All_sup",all_supp_for_this_path)
                 #print("Curr Supp",curr_supp)
                 #print("visited",visited_nodes)
-                final_add_support=all_supp_for_this_path-curr_supp
+                final_add_support=all_supp-curr_supp
                 #final_add_support=[]
                 #print("Final_add_supp",final_add_support)
                 #print("nodeSupport_Left",node_support_left)
                 path_supp_tup=(visited_nodes,tuple(curr_supp),final_add_support)
                 #print("PST", path_supp_tup)
                 path_and_support.append(path_supp_tup)
-
-    profiler.stop()
-
-    profiler.print()
     return path_and_support
 
 
@@ -1337,22 +1326,37 @@ def filter_marked_paths(all_paths,marked):
     for tup in is_marked:
         if tup[1]==True:
             all_paths.remove(tup)
-def filter_out_if_marked(all_paths,marked):
+def filter_out_if_marked(all_paths,marked,direct_combis,bubblestartnode,endnode):
     filter_list=[]
     #print("all_paths",all_paths)
     for path in all_paths:
+        #print("Path",path)
         #print("filter_out_if_marked")
         path_nodes=path[0]
         for node in path_nodes:
             if node in marked:
                 if not path in filter_list:
                     filter_list.append(path)
+                    break
+        for direct_combi in direct_combis:
+            #print("DC",direct_combi)
+            startnode = direct_combi[0]
+            for id,node in enumerate(path_nodes):
+                if len(path_nodes)>id+1:
+                    if node==startnode and path_nodes[id+1]==direct_combi[1]:
+                        filter_list.append(path)
+                        break
+                else:
+                    if node==startnode and endnode==direct_combi[1]:
+                        filter_list.append(path)
+                        break
     #print("filter_list",filter_list)
     #print("all_paths",all_paths)
     if filter_list:
         for entry in filter_list:
             #print("entry",entry)
-            all_paths.remove(entry)
+            if entry in all_paths:
+                all_paths.remove(entry)
     return all_paths
 def get_path_length(path_infos,DG,poss_start,poss_end):
     #print("get_path_length",path_infos)
@@ -1438,12 +1442,12 @@ def find_combi_paths(combination,all_paths):
                             already_merged.append(rtup2)
 
                             new_supp=rtup.supp.union(rtup2.supp)
-                            if DEBUG:
+                            """if DEBUG:
                                 print("P1", rtup.path)
                                 print("P2", rtup2.path)
                                 print("Type", str(type(rtup.path)))
                                 print("Type", str(type(rtup2.path)))
-                                print(new_supp)
+                                print(new_supp)"""
                             other_supp=set(inter).difference(new_supp)
                             rtup.supp=new_supp
                             rtup.non_supp=other_supp
@@ -1456,7 +1460,7 @@ def find_combi_paths(combination,all_paths):
         path_list.remove(merged_elem)
     new_path_list=[]
     for thispath in path_list:
-        new_path=(thispath.path,thispath.supp,thispath.non_supp)
+        new_path=(thispath.path,tuple(thispath.supp),thispath.non_supp)
         new_path_list.append(new_path)
     return path_list
 def find_path(r_id,DG):
@@ -1501,7 +1505,8 @@ def find_all_read_paths(DG,all_reads,merged_dict):
         all_path_sets[r_id]=set(path)
     return all_read_paths, all_path_sets
 
-
+def update_merged_reads_dict(merged_dict,all_read_paths):
+    print("Hello World")
 def generate_equal_reads_dict(all_read_paths):
     equal_reads_dict={}
     for id, path in all_read_paths.items():
@@ -1549,6 +1554,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
     not_viable_global=set()
     not_viable_multibubble = set()
     has_combinations=True
+    old=True
     it = 0
     nr_popped=0
     iter=10
@@ -1556,22 +1562,34 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
     spoa_count=0
     multi_consensuses={}
     merged_dict={}
+    iteration_number=0
+    direct_combis=[]
     #all_r_ids=set(all_reads.keys())
-    all_paths_s_to_t,all_path_sets=find_all_read_paths(DG,all_reads,merged_dict)
-    equal_reads_dict=generate_equal_reads_dict(all_paths_s_to_t)
+    if not old:
+        all_paths_s_to_t,all_path_sets=find_all_read_paths(DG,all_reads,merged_dict)
+        merged_dict=generate_equal_reads_dict(all_paths_s_to_t)
     prev_marked=set()
     #print("ERD",equal_reads_dict)
     #changed_reads=[]
     #we want to continue the simplification process as long as we find combinations that have not been deemed to be "not viable" to pop
     while has_combinations:
-        all_paths_s_to_t, all_path_sets=update_paths(DG,all_reads,prev_marked,merged_dict,all_paths_s_to_t,all_path_sets)
+        iteration_number += 1
+
+        if not old:
+            all_paths_s_to_t, all_path_sets=update_paths(DG,all_reads,prev_marked,merged_dict,all_paths_s_to_t,all_path_sets)
         marked = set()
+        direct_combis = []
+
         it += 1
+
+        print("ITERATION NUMBER "+str(iteration_number))
         print()
         print("GRAPH NR NODES: {0} EDGES: {1} ".format(len(DG.nodes()), len(DG.edges())))
         print()
         if DEBUG:
             draw_Graph(DG,str(it))
+        #if iteration_number>1:
+        #    return
         #if(isCyclic(DG)):
         #    print("Cyclic Graph")
         #    return-1
@@ -1607,31 +1625,21 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
         #iterate over all combinations
         for combination in sorted_combinations:
             print("COMBINATION STARTS HERE")
-            #print(combination)
-            #if (len(not_viable_global)%100)==0:
-                #print("not_viable ",len(not_viable_global), "of ", len(combinations))
-            #if DEBUG:
-
-                #print("Combi ",combination)
-            #assert len(possible_cycles) == 0, "cycle found"
-            ##print("Current State of Graph:")
-            ##print(DG.nodes(data=True))
-            ##print(DG.edges(data=True))
-            #print("marked",marked)
-
+            print(combination)
             is_alignable=True
             #if it==1:
-            all_paths=find_combi_paths(combination,all_paths_s_to_t)
-            #else:
+            if not old:
+                all_paths=find_combi_paths(combination,all_paths_s_to_t)
+            else:
             #we find all paths from s' to t' via find_paths
-                #all_paths = find_paths(DG,combination)
+                all_paths = find_paths(DG,combination)
             #print("OAP",old_all_paths)
 
             #print("FINDPATHS ended")
             if DEBUG:
                 #print("all_paths:", all_paths,"len",len(all_paths))
                 for path in all_paths:
-                    print(path[0], path[1])
+                    print(path[0], path[1], path[2])
             initial_all_paths=len(all_paths)
             if DEBUG:
                 print("initial_all_paths", initial_all_paths)
@@ -1644,7 +1652,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
                 #print("No pop- not enough paths")
 
             #we cannot touch the same node over and over during one iteration as the bubbles do not display how the graph changed
-            all_paths_filtered=filter_out_if_marked(all_paths,marked)
+            all_paths_filtered=filter_out_if_marked(all_paths,marked,direct_combis,combination[0],combination[1])
             if DEBUG:
                 print("all_paths_filtered",all_paths_filtered)
             #print("all_paths after:", all_paths, "len", len(all_paths))
@@ -1749,8 +1757,6 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
                         nr_popped += 1
                         #if (nr_popped % 10) == 0:
                             #print("NR_popped", nr_popped)
-                        print(all_paths_filtered[0][0])
-                        print(all_paths_filtered[1][0])
                         for node in all_paths_filtered[0][0]:
                             print(node)
                             marked.add(node)
@@ -1758,9 +1764,18 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
                         for node in all_paths_filtered[1][0]:
                             print(node)
                             marked.add(node)
+
                         marked.add(combination[0])
-                        marked.add(combination[1])
                         print("marked",marked)
+                        if not all_paths_filtered[0][0] or not all_paths_filtered[1][0]:
+                            directpath_marked = True
+                            combi_list=[]
+                            combi_list.append(combination[0])
+                            combi_list.append(combination[1])
+                            if not combi_list in direct_combis:
+                                direct_combis.append(combi_list)
+                            print("DIRECTPATH")
+                        print("DIRECT_COMBIS", direct_combis)
                     else:
                         #print("not poppable")
                         if initial_all_paths==2:
@@ -1886,15 +1901,23 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
                             itere += 1
 
                             for node in all_paths_filtered[0][0]:
+                                print(node)
                                 marked.add(node)
                             # marked.append()
                             for node in all_paths_filtered[1][0]:
+                                print(node)
                                 marked.add(node)
                             marked.add(combination[0])
-                            marked.add(combination[1])
                             if not all_paths_filtered[0][0] or not all_paths_filtered[1][0]:
                                 directpath_marked = True
-                            #print("marked", marked)
+                                combi_list = []
+                                combi_list.append(combination[0])
+                                combi_list.append(combination[1])
+                                if not combi_list in direct_combis:
+                                    direct_combis.append(combi_list)
+                                print("DIRECTPATH")
+                            print("marked", marked)
+                            print("DIRECT_COMBIS", direct_combis)
                         else:
 
                             #print("not poppable")
@@ -1908,6 +1931,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
                             not_viable_multibubble.add(this_combi)
                             #print(not_viable_multibubble)
         prev_marked=marked
+
         """else:
                         #print("This combi is not viable")
                         this_combi_reads=tuple(sorted(set(p1[1]) | set(p2[1])))

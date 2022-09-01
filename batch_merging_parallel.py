@@ -64,7 +64,7 @@ def read_mapping_file(batch_id,cl_dir):
             batch_mappings_id[id] = readslist
             incoming_ctr+=len(readslist)
             #print(batch_mappings_id)
-    #print("INCOMING",incoming_ctr)
+    print("INCOMING",incoming_ctr)
     return batch_mappings_id
 def read_batch_file(batch_id,all_infos_dict,all_reads_dict,cl_dir):
     batchfilename = str(batch_id)+"_batchfile.fa"
@@ -196,7 +196,7 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
     Read = recordclass('Read', "sequence reads merged")
     #print(outdir, tmp_work_dir)
     unique_cl_ids = set()
-
+    full_mapping_sum=0
     subfolders = [f.path for f in os.scandir(outdir) if f.is_dir()]
     #print(subfolders)
     #iterate over all folders in the out directory
@@ -244,12 +244,14 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
 
                 #print("B_reads",batch_reads)
                 #print("B_Map",batch_mappings)
+
             for b_id, value in batch_reads.items():
                 all_infos_batch={}
                 for cons_id, seq in value.items():
                         #print("K",b_id,"V",value)
                         bm_this_batch=batch_mappings[b_id]
                         reads = bm_this_batch[cons_id]
+                        full_mapping_sum+=len(reads)
                         # print("READS",reads)
                         read_mapping = Read(seq, reads, False)
                         #print("Infos",b_id,cons_id)
@@ -261,6 +263,7 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
             #write the final output into files
             #print("AID2",all_infos_dict)
             write_final_output(all_infos_dict,outdir,iso_abundance,cl_dir,cl_id)
+    print("FUll mapping sum",full_mapping_sum)
     print("#mappings incoming",ingoing_mapping_read_cter)
         #shutil.rmtree(batch_id)
 def main():
@@ -274,7 +277,7 @@ def main():
     delta_iso_len_5 = 50
     max_seqs_to_spoa=200
     iso_abundance=2
-    #join_back_via_batch_merging(outfolder,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa,iso_abundance)
+    join_back_via_batch_merging(outfolder,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa,iso_abundance)
     generate_full_output(outfolder)
     #merge_batches(max_batchid, tmp_work_dir, outfolder, all_reads,merge_sub_isoforms_3,merge_sub_isoforms_5, delta, delta_len,max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
     print("removing temporary workdir")
