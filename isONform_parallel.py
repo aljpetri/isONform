@@ -158,7 +158,7 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
     return tmp_work_dir
 PYTHONHASHSEED = 0
 def main(args):
-
+    globstart = time()
     directory = args.fastq_folder  # os.fsencode(args.fastq_folder)
     print(directory)
     isONform_location = os.path.dirname(os.path.realpath(__file__))
@@ -238,6 +238,7 @@ def main(args):
         generate_full_output(args.outfolder)
         shutil.rmtree(split_directory)
         print("Joined back batched files in:", time() - file_handling)
+        print("Finished full algo after :", time() - globstart)
     return
 
 
