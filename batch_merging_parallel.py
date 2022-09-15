@@ -30,6 +30,10 @@ def generate_consensus_path(work_dir,mappings1,mappings2, all_sequences,spoa_cou
     reads_path.close()
     spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
     return spoa_ref
+""" This function reads the consensus file and saves the infos in batch_reads_id
+INPUT:  work_dir  : The working directory in which to store the file
+OUTPUT: spoa_ref:   The consensus
+"""
 def read_spoa_file(batch_id,cl_dir):
     filename ="spoa"+str(batch_id)+"merged.fa"
     batch_reads_id={}
@@ -296,11 +300,6 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
                     ingoing_mapping_read_cter += len(batch_mappings[batch_id])
                     #print("ALL INFOS",all_infos_dict)
             #collect the information so that we have one data structure containing all infos
-
-                #print("B_reads",batch_reads)
-                    #if batch_id==5:
-                        #print("B_Map",batch_mappings)
-
             for b_id, value in batch_reads.items():
                 all_infos_batch={}
                 for cons_id, seq in value.items():
@@ -340,16 +339,16 @@ def main():
     #outfolder= "/home/alexanderpetri/isONform_analysis/Paraout_500_cl0"
     #outfolder = "/home/alexanderpetri/isONform_analysis/Para_out_500batchadd"
     #outfolder="/home/alexanderpetri/isONform_analysis/Batch_parallel_testing"
-    outfolder = "/home/alexanderpetri/isONform_analysis/Para_out_500batch"
+    #outfolder = "/home/alexanderpetri/isONform_analysis/Para_out_500batch"
     outfolder="/home/alexanderpetri/isONform_analysis/Para_out_500_September"
-    delta=0.10
+    delta=0.15
     delta_len=5
     merge_sub_isoforms_3=True
     merge_sub_isoforms_5 = True
     delta_iso_len_3= 30
     delta_iso_len_5 = 50
     max_seqs_to_spoa=200
-    iso_abundance=1
+    iso_abundance=4
     join_back_via_batch_merging(outfolder,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa,iso_abundance)
     generate_full_output(outfolder)
     #merge_batches(max_batchid, tmp_work_dir, outfolder, all_reads,merge_sub_isoforms_3,merge_sub_isoforms_5, delta, delta_len,max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)

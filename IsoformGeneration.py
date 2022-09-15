@@ -55,7 +55,7 @@ def remove_reads_from_edge(DG,edge,supported_reads):
         else:
             if DEBUG:
                 print("Strange")
-    return reads
+        return reads
 """Method to delete nodes and edges which do are not supported by any reads anymore
 INPUT:      DG                  Directed Graph
             visitee_nodes       Nodes which make up an isoform and from which we delete the reads
@@ -183,30 +183,73 @@ def get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr):
                 final_support=shared_reads
                 next_node=edge[1]
     return (next_node,final_support)
+def compute_new_equal_reads(DG,reads):
+    startnode = 's'
+    visited_nodes_for_isoforms = {}
+    supported_reads = []
+    reads_for_isoforms = reads
+    isoforms = {}
+    edge_attr = nx.get_edge_attributes(DG, "edge_supp")
+    isocount = 0
+
+
+def compute_equal_reads2(DG,support):
+    #path_and_support will hold the infos concerning the found paths
+    node_support_left=set(support)
+    visited_nodes_isoforms={}
+    isoforms={}
+    all_supp=set(support)
+    #we iterate as long as still not all support was allocated to a path
+    while node_support_left:
+        node = "s"
+        #current_node_support = node_support_left
+        read=node_support_left.pop()
+        current_node_support = node_support_left
+        current_node_support.add(read)
+        visited_nodes = []
+        #As long as we have not visited the bubble end node we continue walking through our graph
+        while node!="t":
+            visited_nodes.append(node)
+            out_edges=DG.out_edges(node)
+            next_found=False
+            for edge in out_edges:
+                if DEBUG:
+                    print("edge",edge)
+                edge_supp = DG[edge[0]][edge[1]]['edge_supp']
+                if read in edge_supp:
+                    node=edge[1]
+                    current_node_support=current_node_support.intersection(edge_supp)
+                    next_found=True
+                    break
+            if not next_found:
+                break
+
+        if current_node_support:
+                id = list(current_node_support)[0]
+                isoforms[id]=list(current_node_support)
+                node_support_left-=current_node_support
+                visited_nodes_isoforms[id]=visited_nodes
+        else:
+            print("no current_node_support")
+    print("Found ",len(isoforms)," isoforms")
+    return isoforms,visited_nodes_isoforms
 """Method to generate the final isoforms by iterating through the graph structure
 INPUT:      DG          Directed Graph
             reads       list of reads 
 OUPUT:      filename    file which contains all the final isoforms
+Currently deprecated due to complexity and stability reasons. The replacement compute_equal_reads2 can be seen above
 """
 def compute_equal_reads(DG,reads):
     startnode = 's'
-    #startreads=DG._node['s']['reads']
-    #print("Startreads",startreads)
-    #endnode='t'
     visited_nodes_for_isoforms= {}
     supported_reads=[]
     reads_for_isoforms=reads
     isoforms= {}
     edge_attr=nx.get_edge_attributes(DG,"edge_supp")
     isocount=0
-    #print("EdgeAttri")
-    #print(edge_attr)
     #while still reads have to be assigned to an isoform
     while(reads_for_isoforms):
-        #print("LEftover",reads_for_isoforms)
-        #print(isocount)
         isocount+=1
-        #print("RFI",reads_for_isoforms)
         current_node=startnode
 
         supported_reads=reads_for_isoforms
@@ -218,30 +261,13 @@ def compute_equal_reads(DG,reads):
             #add current node to the list of visited_nodes
             visited_nodes.append(current_node)
             prev_node=current_node
-            #print("CurrnodebefMethod",current_node)
-            #print()
             current_node,supported_reads=get_best_supported_edge_node(DG,current_node,supported_reads,edge_attr)
-            #print("current node returned by get best supported edge node", current_node)
             edge_tup=(prev_node,current_node)
-            #print("edge_tup",edge_tup)
             visited_edges.append(edge_tup)
             if not supported_reads:
                 break
-            #print("Supported:")
-
             if current_node=="t":
                 reached_t=True
-            #print("Still supported")
-            #print(*supported_reads)
-            #print("after")
-            #print(current_node)
-            #if(support_list):
-            #supported_reads=list(support_list)
-            #print("Current Node: "+current_node)
-        #print("Cleaning graph")
-        #print("visited_edges:",visited_edges)
-        #print(DG.edges(data=True))
-        #print("Supported", supported_reads)
         clean_graph(DG,visited_nodes,visited_edges,supported_reads)
         #print(DG.edges(data=True))
         id=supported_reads[0]
@@ -709,7 +735,7 @@ Wrapper method used for the isoform generation
 def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,delta_iso_len_3,delta_iso_len_5,iso_abundance,max_seqs_to_spoa=200):
     #print("s", DG.nodes["s"]['reads'])
     #print("t", DG.nodes["t"]['reads'])
-    equal_reads,isoform_paths=compute_equal_reads(DG,reads)
+    equal_reads,isoform_paths=compute_equal_reads2(DG,reads)
     equal_reads_name='equal_reads_'+str(batch_id)+'.txt'
     #print("s",DG.nodes["s"]['reads'])
     #print("t",DG.nodes["t"]['reads'])
@@ -720,9 +746,12 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
         file.write(pickle.dumps(isoform_paths))
     with open('all_reads.txt', 'wb') as file:
         file.write(pickle.dumps(all_reads))
+        #old_outfolder=os.path.join(outfolder,"out")
     #calculate_isoform_similarity(equal_reads,work_dir,isoform_paths,outfolder,delta,delta_len,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,all_reads,max_seqs_to_spoa,delta_iso_len_3=0,delta_iso_len_5=0)
     #generate_isoform_using_spoa(equal_reads,all_reads, work_dir,outfolder,batch_id, max_seqs_to_spoa,iso_abundance)
     if merge_sub_isoforms_5 or merge_sub_isoforms_3:
+        #generate_isoform_using_spoa(equal_reads, all_reads, work_dir, old_outfolder, batch_id, max_seqs_to_spoa,
+        #                            iso_abundance)
         merged_dict,merged_consensuses,called_consensuses,consensus_map = calculate_isoform_similarity(equal_reads, work_dir, isoform_paths, outfolder, delta, delta_len, batch_id,
                                  merge_sub_isoforms_3, merge_sub_isoforms_5, all_reads, max_seqs_to_spoa,
                                  delta_iso_len_3, delta_iso_len_5)

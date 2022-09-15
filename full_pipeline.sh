@@ -2,7 +2,7 @@
 set -e
 if [ $# -ne 3 ]; then
         echo "Usage: `basename $0`  <raw_reads.fq>  <outfolder>  <num_cores> "
-        exit -1
+        exit 0
 fi
 
 raw_reads=$1

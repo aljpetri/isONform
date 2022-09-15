@@ -108,9 +108,12 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
                                 cter+=1
                                 consensus1=infos.sequence
                                 consensus2=infos2.sequence
-                                #print(consensus1, "\n")
-                                #print(consensus2, "\n")
+                                print("ID",id)
+                                print(consensus1, "\n")
+                                print("ID2",id2)
+                                print(consensus2, "\n")
                                 good_to_pop=align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5)
+                                print(good_to_pop)
                                 if good_to_pop:
                                     if len(infos.reads) > 50:
                                         if len(infos.sequence)>=len(infos2.sequence):

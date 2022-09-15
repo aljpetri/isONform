@@ -404,11 +404,13 @@ def generate_isoforms(args, ref_path):
             double_seed=random.randrange(1,10)
             #TODO change this part. We always want isoforms to be supported by 1-10 reads
             if double_seed>1:
+                if double_seed < 9:
+                    double_seed=700
                 for i in range(1,double_seed):
-                    #name the second instance of an isoform so that we can identify it in the final output
-                    name=str(actual_isoforms)+"."+str(i)
-                    isoforms[name]=isoform
-                    isoforms_out.write(">sim|sim|{0}\n{1}\n".format(name, isoform))
+                        #name the second instance of an isoform so that we can identify it in the final output
+                        name=str(actual_isoforms)+"."+str(i)
+                        isoforms[name]=isoform
+                        isoforms_out.write(">sim|sim|{0}\n{1}\n".format(name, isoform))
     #print(str(actual_isoforms)+" isoforms generated")
     isoforms_out.close()
     return isoforms

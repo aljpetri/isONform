@@ -16,7 +16,7 @@ if [ $# -lt 2 ]; then
     echo "./generateTestResults.sh  </path/to/input/reference.fa> <output_root>"
     exit 1
 fi
-
+rattle_dir=/home/alexanderpetri/RATTLE/
 input_ref=$1
 filedirectory=$2
 mkdir -p $filedirectory
@@ -73,8 +73,13 @@ do
 		#As fastq entries have 4 lines divide by 4 to get the actual number of reads
 		var=4
 		true_read_amount=$((read_amount / var))
-		#run IsONform
+
 		#if e=True
+		#Run rattle on the simulated dataset
+		snakemake -s rattle_snakefile -p toyset/rna/sims/transcriptome.fq --cores 1
+		#rename the resulting file to enable it not to be overwritten
+		mv $rattle_dir/toyset/rna/sims/transcriptome.fq $rattle_dir/toyset/rna/sims/transc_$number.fq
+		#run IsONform
 		python -m pyinstrument main.py --fastq $filedirectory/reads_$number.fq --k 9 --w 20 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 5 --outfolder $filedirectory/isonform/
 		#if e=False
 		#python main.py --fastq $filedirectory/reads/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --delta_len 3 --outfolder out

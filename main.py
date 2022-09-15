@@ -198,12 +198,12 @@ def get_minimizer_combinations_database(reads, M, k, x_low, x_high):
                 del M2[m1][m2]
                 singleton_minimzer += 1
 
-            if len(M2[m1][m2])// 3 > len(reads):
+            """if len(M2[m1][m2])// 3 > len(reads):
                 abundants.append((m1,m2, len(M2[m1][m2])//3 ))
                 if m2 == forbidden: # poly A tail
                     del M2[m1][m2]
     for m1,m2,ab in sorted(abundants, key=lambda x: x[2], reverse=True):
-        print("Too abundant:", m1, m2, ab, len(reads))
+        print("Too abundant:", m1, m2, ab, len(reads))"""
 
     print("Average abundance for non-unique minimizer-combs:", avg_bundance/float(cnt))
     print("Number of singleton minimizer combinations filtered out:", singleton_minimzer)
@@ -880,6 +880,10 @@ def main(args):
         #draw_Graph(DG)
         if args.parallel:
             batch_id=p_batch_id
+        """merge_sub_isoforms_3=True
+        merge_sub_isoforms_5=True
+        delta_iso_len_3=5
+        delta_iso_len_5=5"""
         generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len, delta_iso_len_3, delta_iso_len_5,iso_abundance,max_seqs_to_spoa)
 
         #snapshot3 = tracemalloc.take_snapshot()
@@ -925,7 +929,7 @@ def main(args):
 
     print("removing temporary workdir")
     shutil.rmtree(work_dir)
-RUNAFTER=True
+RUNAFTER=False
 DEBUG=False
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo error correction of long-read transcriptome reads",
