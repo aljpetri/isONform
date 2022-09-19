@@ -346,6 +346,23 @@ def add_items(seqs, r_id, p1, p2):
     seqs.append(p1)
     seqs.append(p2)
 
+def find_most_supported_span3(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database, reads, all_intervals, k_size, tmp_cnt, read_complexity_cnt, quality_values_database, already_computed):
+    acc, seq, qual = reads[r_id]
+    for (m2,p2) in m1_curr_spans:
+        relevant_reads = minimizer_combinations_database[m1][m2]
+        to_add = {}
+        if len(relevant_reads)//3 >= 3:
+            to_add[r_id] = (r_id, p1, p2, 0)
+            for relevant_read_id, pos1, pos2 in grouper(relevant_reads, 3): #relevant_reads:
+                if r_id  == relevant_read_id:
+                    continue
+                else:
+                    to_add[relevant_read_id] = (relevant_read_id, pos1, pos2, 0)
+            seqs = array("I")
+            for relev_r_id in to_add:
+                add_items(seqs, to_add[relev_r_id][0], to_add[relev_r_id][1], to_add[relev_r_id][2])
+            all_intervals.append( (p1 + k_size, p2,  len(seqs)//3, seqs) )
+    return tmp_cnt, read_complexity_cnt
 
 def find_most_supported_span2(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database, reads, all_intervals, k_size,
                              tmp_cnt, read_complexity_cnt, quality_values_database, already_computed):
@@ -751,7 +768,7 @@ def main(args):
                                                                                 minimizer_combinations_database, reads,
                                                                                 all_intervals, k_size, tmp_cnt,
                                                                                 read_complexity_cnt, already_computed)"""
-                        tmp_cnt, read_complexity_cnt = find_most_supported_span2(r_id, m1, p1, not_prev_corrected_spans,
+                        tmp_cnt, read_complexity_cnt = find_most_supported_span3(r_id, m1, p1, not_prev_corrected_spans,
                                                                                 minimizer_combinations_database, reads,
                                                                                 all_intervals, k_size, tmp_cnt,
                                                                                 read_complexity_cnt,quality_values_database, already_computed)
