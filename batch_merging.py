@@ -155,8 +155,8 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
     #print(all_infos_dict)
     print("Combi count ",cter)
     print("Writing file")
-    consensus_name = "cluster_merged.fa"
-    other_consensus_name="cluster_merged_low_abundance.fa"
+    consensus_name = "cluster_merged.fastq"
+    other_consensus_name="cluster_merged_low_abundance.fastq"
     mapping_name="cluster_mapping.txt"
     other_mapping_name="cluster_mapping_low_abundance.txt"
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
@@ -170,9 +170,9 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
                 new_id = str(batchid) + "_" + str(id)
                 if len(all_infos_dict[batchid][id].reads) >= iso_abundance:
                     mapping_file.write(">{0}\n{1}\n".format(new_id,all_infos_dict[batchid][id].reads))
-                    consensus_file.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
+                    consensus_file.write(">{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,"+" * len(all_infos_dict[batchid][id].sequence)))
                 else:
-                    other_consensus.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
+                    other_consensus.write(">{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,"+" * len(all_infos_dict[batchid][id].sequence)))
                     other_mapping.write(">{0}\n{1}\n".format(new_id,all_infos_dict[batchid][id].reads))
     consensus_file.close()
     mapping_file.close()

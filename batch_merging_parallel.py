@@ -120,7 +120,7 @@ def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
                     #print(all_infos_dict[batchid][id].reads)
                     read_cter_mapping += len(all_infos_dict[batchid][id].reads)
                     mapping_file.write(">{0}\n{1}\n".format(new_id,  all_infos_dict[batchid][id].reads))
-                    consensus_file.write("@{0}, support: {1}\n{2}\n+\n{2}\n".format(new_id, len(all_infos_dict[batchid][id].reads), all_infos_dict[batchid][id].sequence,
+                    consensus_file.write("@{0}, support: {1}\n{2}\n+\n{3}\n".format(new_id, len(all_infos_dict[batchid][id].reads), all_infos_dict[batchid][id].sequence,
                                                                       "+" * len(all_infos_dict[batchid][id].sequence)))
                 else:
                         other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,

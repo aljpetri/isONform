@@ -61,6 +61,23 @@ def generate_single_output(outfolder):
                 for line in g:
                     # append content to second file
                     f.write(line)
+
+def generate_low_abundance_output(outfolder):
+    subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
+    f = open(os.path.join(outfolder, "transcriptome.fq"), "w")
+    for subfolder in subfolders:
+        actual_folder = subfolder.split("/")[-1]
+                    # print(actual_folder)
+        if actual_folder.isdigit():
+            fname = os.path.join(outfolder, "cluster" + str(actual_folder) + "_merged_low_abundance.fq")
+                        # print(fname)
+
+            if os.path.isfile(fname):
+                g = open(fname, "r")
+                # read content from first file
+                for line in g:
+                    # append content to second file
+                    f.write(line)
             """otherfname= os.path.join(outfolder,"cluster"+str(actual_folder)+"_merged_low_abundance.fq")
             if os.path.isfile(otherfname):
                 other_g = open(otherfname, "r")
@@ -71,5 +88,6 @@ def generate_single_output(outfolder):
                 #f.write(g.read())"""
 def generate_full_output(outfolder):
     generate_single_output(outfolder)
+    generate_low_abundance_output(outfolder)
     generate_single_mapping(outfolder)
     generate_low_abundance_mapping(outfolder)
