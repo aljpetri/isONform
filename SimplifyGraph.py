@@ -1504,7 +1504,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
 
         merged_dict=generate_equal_reads_dict(all_paths_s_to_t)
     prev_marked=set()
-    print(all_paths_s_to_t[6])
+    #print(all_paths_s_to_t[6])
     #print("ERD",equal_reads_dict)
     #changed_reads=[]
     pop_threshold = int(initial_edge_nr / 200)
