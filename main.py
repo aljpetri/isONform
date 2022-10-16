@@ -585,11 +585,11 @@ def get_qvs(reads):
             quality_values_database[r_id].append( tmp_tot_sum + qv )  #= [D[char_] for char_ in qual]
             tmp_tot_sum += qv
     return quality_values_database
-PYTHONHASHSEED=0
+#PYTHONHASHSEED=0
 #TODO: several errors in errors/reads_5_9.fq->empty intervals added to graph generation, cleaning does yield error!
 #TODO:simplify graph adds an error to the data that is not in the initial graph!!! see errors/merge/reads_5_4.fq: 3.
 def main(args):
-
+    print("Input: ",args.fastq)
     all_batch_reads_dict={}
     print(args.parallel)
     # start = time()
@@ -931,10 +931,11 @@ def main(args):
     with open(os.path.join(outfolder, "all_batches_reads.txt"), 'wb') as file:
         file.write(pickle.dumps(all_batch_reads_dict))
     print("Starting batch merging")
-    if not args.parallel:
-        print("Merging the batches with linear strategy")
-        merge_batches(max_batchid, work_dir, outfolder, new_all_reads, merge_sub_isoforms_3, merge_sub_isoforms_5, delta,
-                  delta_len, max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
+    if max_batchid>0:
+        if not args.parallel:
+            print("Merging the batches with linear strategy")
+            merge_batches(max_batchid, work_dir, outfolder, new_all_reads, merge_sub_isoforms_3, merge_sub_isoforms_5, delta,
+                      delta_len, max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
     # eprint("tot_before:", tot_errors_before)
     # eprint("tot_after:", sum(tot_errors_after.values()), tot_errors_after)
     # eprint(len(corrected_reads))
