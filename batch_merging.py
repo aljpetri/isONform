@@ -156,6 +156,11 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
     other_consensus_name="cluster_merged_low_abundance.fastq"
     mapping_name="cluster_mapping.txt"
     other_mapping_name="cluster_mapping_low_abundance.txt"
+    support_name = "support.txt"
+    other_support_name = "support_low_abundance.txt"
+
+    support_file = open(os.path.join(outfolder, support_name), "w")
+    other_support_file = open(os.path.join(outfolder, other_support_name), "w")
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
     other_consensus =open(os.path.join(outfolder, other_consensus_name), 'w')
     mapping_file = open(os.path.join(outfolder, mapping_name), 'w')
@@ -167,10 +172,12 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
                 new_id = str(batchid) + "_" + str(id)
                 if len(all_infos_dict[batchid][id].reads) >= iso_abundance:
                     mapping_file.write(">{0}\n{1}\n".format(new_id,all_infos_dict[batchid][id].reads))
-                    consensus_file.write(">{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,"+" * len(all_infos_dict[batchid][id].sequence)))
+                    consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,"+" * len(all_infos_dict[batchid][id].sequence)))
+                    support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[batchid][id].reads)))
                 else:
-                    other_consensus.write(">{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,"+" * len(all_infos_dict[batchid][id].sequence)))
+                    other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,"+" * len(all_infos_dict[batchid][id].sequence)))
                     other_mapping.write(">{0}\n{1}\n".format(new_id,all_infos_dict[batchid][id].reads))
+                    other_support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[batchid][id].reads)))
     consensus_file.close()
     mapping_file.close()
     other_consensus.close()

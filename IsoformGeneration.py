@@ -384,7 +384,9 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
     print("Generating the Isoforms-merged")
     mapping = {}
     consensus_name = "spoa" + str(batch_id) + "merged.fastq"
+    support_name="support"+str(batch_id)+".txt"
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
+    support_file=open(os.path.join(outfolder,support_name),'w')
     seq_counter=0
     other_mapping_cter=0
     #we iterate over all items in curr_best_seqs
@@ -412,7 +414,8 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                     mapping[name].append(singleread[0])
                 #we do not have to calculate consensus as already done
                 sequence=merged_dict[key].id_seq
-                consensus_file.write(">{0}\n{1}\n".format(name, sequence))
+                #consensus_file.write(">{0}\n{1}\n".format(name, sequence))
+                consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(name, sequence, "+" * len(sequence)))
             else:
                 name = 'consensus' + str(consensus_map[key])
                 for i, q_id in enumerate(value):
@@ -439,7 +442,7 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                     # print(singleread)
                     seq = singleread[1]
                     mapping[name].append(singleread[0])
-                    consensus_file.write(">{0}\n{1}\n".format(name, seq))
+                    consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(name, seq,"+"*len(seq)))
                     reads_path.close()
                 else:
                     # print("Equalreads has different size")
@@ -472,6 +475,7 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                 if len(mapped_read_list) >= iso_abundance:
                     mapping_cter+=len(mapped_read_list)
                     mappingfile.write("{0}\n{1}\n".format(id, mapped_read_list))
+                    support_file.write("{0}: {1}\n".format(id, len(mapped_read_list)))
             else:
                     if id in merged_dict:
                         full_read_list=[]
@@ -483,6 +487,7 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                             #single_read=reads[cons_id]
                             #full_read_list.append(single_read[0])
                         mappingfile.write("{0}\n{1}\n".format(id, full_read_list))
+                        support_file.write("{0}: {1}\n".format(id, len(full_read_list)))
     #print(seq_counter, " sequences, ", mapping_cter, " mappings")
     mappingfile.close()
     # consensus_file.write(">{0}\n{1}\n".format('consensus', spoa_ref))
