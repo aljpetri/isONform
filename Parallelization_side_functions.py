@@ -47,12 +47,12 @@ def generate_single_mapping(outfolder):
                     f.write(line)
 def generate_single_output(outfolder):
     subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
-    f = open(os.path.join(outfolder,"transcriptome.fq"), "w")
+    f = open(os.path.join(outfolder,"transcriptome.fastq"), "w")
     for subfolder in subfolders:
         actual_folder=subfolder.split("/")[-1]
         #print(actual_folder)
         if actual_folder.isdigit():
-            fname=os.path.join(outfolder,"cluster"+str(actual_folder)+"_merged.fq")
+            fname=os.path.join(outfolder,"cluster"+str(actual_folder)+"_merged.fastq")
             #print(fname)
 
             if os.path.isfile(fname):
@@ -64,12 +64,12 @@ def generate_single_output(outfolder):
 
 def generate_low_abundance_output(outfolder):
     subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
-    f = open(os.path.join(outfolder, "transcriptome.fq"), "w")
+    f = open(os.path.join(outfolder, "transcriptome.fastq"), "w")
     for subfolder in subfolders:
         actual_folder = subfolder.split("/")[-1]
                     # print(actual_folder)
         if actual_folder.isdigit():
-            fname = os.path.join(outfolder, "cluster" + str(actual_folder) + "_merged_low_abundance.fq")
+            fname = os.path.join(outfolder, "cluster" + str(actual_folder) + "_merged_low_abundance.fastq")
                         # print(fname)
 
             if os.path.isfile(fname):

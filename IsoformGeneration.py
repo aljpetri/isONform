@@ -314,7 +314,7 @@ def run_spoa(reads, spoa_out_file, spoa_path):
 def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_id, max_seqs_to_spoa=200,iso_abundance=1):
     print("Generating the Isoforms")
     mapping = {}
-    consensus_name="spoa"+str(batch_id)+".fa"
+    consensus_name="spoa"+str(batch_id)+".fastq"
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
     seq_counter=0
     mapping_cter = 0
@@ -383,7 +383,7 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
 def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance,merged_dict,merged_consensuses,called_consensuses,consensus_map):
     print("Generating the Isoforms-merged")
     mapping = {}
-    consensus_name = "spoa" + str(batch_id) + "merged.fa"
+    consensus_name = "spoa" + str(batch_id) + "merged.fastq"
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
     seq_counter=0
     other_mapping_cter=0
@@ -454,7 +454,7 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                     reads_path.close()
                     spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
                     # print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
-                    consensus_file.write(">{0}\n{1}\n".format(name, spoa_ref))
+                    consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(name, spoa_ref,"+" * len(spoa_ref)))
             #else:
                 #print("HW")
             # print(mapping)

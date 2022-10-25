@@ -35,7 +35,7 @@ INPUT:  work_dir  : The working directory in which to store the file
 OUTPUT: spoa_ref:   The consensus
 """
 def read_spoa_file(batch_id,cl_dir):
-    filename ="spoa"+str(batch_id)+"merged.fa"
+    filename ="spoa"+str(batch_id)+"merged.fastq"
     batch_reads_id={}
     with open( os.path.join(cl_dir, filename)) as f:
         for id, sequence in itertools.zip_longest(*[f] * 2):
@@ -97,11 +97,15 @@ def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
     print("Writing file")
     mapping_out_cter=0
     #print(folder)
+    support_name="support_"+str(folder)+".txt"
+    other_support_name="support_"+str(folder)+"low_abundance.txt"
     consensus_name = "cluster"+str(folder)+"_merged.fq"
     other_consensus_name = "cluster"+str(folder)+"_merged_low_abundance.fq"
     mapping_name = "cluster"+str(folder)+"_mapping.txt"
     other_mapping_name = "cluster"+str(folder)+"_mapping_low_abundance.txt"
     #print(consensus_name)
+    support_file=open(os.path.join(outfolder, support_name), "w")
+    other_support_file=open(os.path.join(outfolder, other_support_name), "w")
     consensus_file = open(os.path.join(outfolder, consensus_name), "w")
     other_consensus = open(os.path.join(outfolder, other_consensus_name), 'w')
     mapping_file = open(os.path.join(outfolder, mapping_name), 'w')
@@ -120,12 +124,14 @@ def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
                     #print(all_infos_dict[batchid][id].reads)
                     read_cter_mapping += len(all_infos_dict[batchid][id].reads)
                     mapping_file.write(">{0}\n{1}\n".format(new_id,  all_infos_dict[batchid][id].reads))
-                    consensus_file.write("@{0}, support: {1}\n{2}\n+\n{3}\n".format(new_id, len(all_infos_dict[batchid][id].reads), all_infos_dict[batchid][id].sequence,
+                    consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,
                                                                       "+" * len(all_infos_dict[batchid][id].sequence)))
+                    support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[batchid][id].reads)))
                 else:
                         other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,
                                                                            "+" * len(
                                                                                all_infos_dict[batchid][id].sequence)))
+                        other_support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[batchid][id].reads)))
                         other_mapping.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].reads))
     nr_skipped=0
     for skipfile in os.listdir(cl_dir):
@@ -146,6 +152,7 @@ def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
                 nr_skipped+=this_skip
                 for acc,seq in skipped_reads.items():
                     other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(acc, seq,"+"*len(seq)))
+                    other_support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[batchid][id].reads)))
                     other_mapping.write(">{0}\n{1}\n".format(acc, acc))
     print("NR out mappings",str(mapping_out_cter))
     print("Skipped:",nr_skipped)
@@ -283,7 +290,7 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
             #iterate over all batchfiles that were generated into the cluster's folder
             for batchfile in os.listdir(cl_dir):
                 #print(batchfile)
-                if batchfile.endswith("_batchfile.fa"):
+                if batchfile.endswith("_batchfile.fastq"):
                     #print(batchfile)
                     tmp_bname = batchfile.split('/')
                     #print(tmp_bname)

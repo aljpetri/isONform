@@ -6,10 +6,7 @@ import tempfile
 import pickle
 
 """ This method is used to generate the consensus file needed for the consensus generation
-
 INPUT:  work_dir  : The working directory in which to store the file
-
-
 OUTPUT: spoa_ref:   The consensus
 """
 def generate_consensus_path(work_dir,mappings1,mappings2, all_sequences,spoa_count):
@@ -44,8 +41,8 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
         batch_reads={}
         batch_mappings={}
 
-        filename="spoa" + str(batchid) + "merged.fa"
-        batchfilename=str(batchid)+"_batchfile.fa"
+        filename="spoa" + str(batchid) + "merged.fastq"
+        batchfilename=str(batchid)+"_batchfile.fastq"
         mappingname= "mapping" + str(batchid) + ".txt"
         print("File: ",filename)
         all_infos_dict[batchid]={}
@@ -85,7 +82,7 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
                 #id=int(inter_id.replace('',''))
                 seq = seq.replace('\n', '')
                 all_batch_sequences[id]=seq
-
+        #TODO: got a key error here. Check this script and correct what is wrong
         #print(batch_mappings)
         for key, value in batch_reads.items():
             reads=batch_mappings[key]
