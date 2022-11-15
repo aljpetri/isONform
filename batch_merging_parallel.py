@@ -35,7 +35,7 @@ INPUT:  work_dir  : The working directory in which to store the file
 OUTPUT: spoa_ref:   The consensus
 """
 def read_spoa_file(batch_id,cl_dir):
-    filename ="spoa"+str(batch_id)+"merged.fastq"
+    filename ="spoa"+str(batch_id)+"merged.fasta"
     batch_reads_id={}
     with open( os.path.join(cl_dir, filename)) as f:
         for id, sequence in itertools.zip_longest(*[f] * 2):
@@ -112,6 +112,7 @@ def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
     other_mapping = open(os.path.join(outfolder, other_mapping_name), 'w')
     skipped_reads = {}
     read_cter_mapping=0
+    print(all_infos_dict)
     for batchid, id_dict in all_infos_dict.items():
         for id, infos in id_dict.items():
             # print(id, " ", all_infos_dict[batchid][id].merged)
@@ -152,7 +153,7 @@ def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
                 nr_skipped+=this_skip
                 for acc,seq in skipped_reads.items():
                     other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(acc, seq,"+"*len(seq)))
-                    other_support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[batchid][id].reads)))
+                    other_support_file.write("{0}: {1}\n".format(acc, len(seq)))
                     other_mapping.write(">{0}\n{1}\n".format(acc, acc))
     print("NR out mappings",str(mapping_out_cter))
     print("Skipped:",nr_skipped)
@@ -269,17 +270,17 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
     #print(subfolders)
     #iterate over all folders in the out directory
     for folder in subfolders:
-        # print(file)
+        #print(file)
         tmp_fname = folder.split('/')
         fname=tmp_fname[-1]
         #print("FNAME",fname)
 
         cl_id = fname # file.split('_')
         unique_cl_ids.add(cl_id)
-        #print(unique_cl_ids)
+        print(unique_cl_ids)
         #enter the folder containing all output for each cluster
     for cl_id in unique_cl_ids:
-            #print("CLID",str(cl_id))
+            print("CLID",str(cl_id))
             all_infos_dict = {}
             batch_reads = {}
             batch_mappings = {}
@@ -290,7 +291,7 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
             #iterate over all batchfiles that were generated into the cluster's folder
             for batchfile in os.listdir(cl_dir):
                 #print(batchfile)
-                if batchfile.endswith("_batchfile.fastq"):
+                if batchfile.endswith("_batchfile.fa"):
                     #print(batchfile)
                     tmp_bname = batchfile.split('/')
                     #print(tmp_bname)

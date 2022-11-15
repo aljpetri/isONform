@@ -49,22 +49,26 @@ def generate_single_output(outfolder):
     subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
     f = open(os.path.join(outfolder,"transcriptome.fastq"), "w")
     for subfolder in subfolders:
+        print("subfolder",subfolder)
         actual_folder=subfolder.split("/")[-1]
-        #print(actual_folder)
+        print(actual_folder)
         if actual_folder.isdigit():
-            fname=os.path.join(outfolder,"cluster"+str(actual_folder)+"_merged.fastq")
-            #print(fname)
-
+            fname=os.path.join(outfolder,"cluster"+str(actual_folder)+"_merged.fq")
+            print(fname)
             if os.path.isfile(fname):
+                print("True")
                 g = open(fname, "r")
                 # read content from first file
                 for line in g:
+                    #if line.startswith('@'):
+                    #    line=line+"_"+str(actual_folder)
+                    #    print("LINE",line)
                     # append content to second file
                     f.write(line)
 
 def generate_low_abundance_output(outfolder):
     subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
-    f = open(os.path.join(outfolder, "transcriptome.fastq"), "w")
+    f = open(os.path.join(outfolder, "transcriptome_low.fastq"), "w")
     for subfolder in subfolders:
         actual_folder = subfolder.split("/")[-1]
                     # print(actual_folder)
@@ -76,6 +80,8 @@ def generate_low_abundance_output(outfolder):
                 g = open(fname, "r")
                 # read content from first file
                 for line in g:
+                    if line.startswith('@'):
+                        line=line+str(actual_folder)
                     # append content to second file
                     f.write(line)
             """otherfname= os.path.join(outfolder,"cluster"+str(actual_folder)+"_merged_low_abundance.fq")

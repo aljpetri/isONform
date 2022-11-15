@@ -628,7 +628,7 @@ def main(args):
     #w = args.w
     x_high = args.xmax
     x_low = args.xmin
-    new_all_reads= {}
+
     #print("AR",all_reads)
     max_batchid=0
     if args.parallel:
@@ -638,6 +638,7 @@ def main(args):
         skipfilename="skip"+p_batch_id+".fa"
 
     for batch_id, reads in enumerate(batch(all_reads, args.max_seqs)):
+        new_all_reads = {}
         max_batchid=batch_id
         if args.parallel:
             batchname=str(p_batch_id)+"_batchfile.fa"
@@ -931,8 +932,8 @@ def main(args):
     with open(os.path.join(outfolder, "all_batches_reads.txt"), 'wb') as file:
         file.write(pickle.dumps(all_batch_reads_dict))
     print("Starting batch merging")
-    if max_batchid>0:
-        if not args.parallel:
+    #if max_batchid>0:
+    if not args.parallel:
             print("Merging the batches with linear strategy")
             merge_batches(max_batchid, work_dir, outfolder, new_all_reads, merge_sub_isoforms_3, merge_sub_isoforms_5, delta,
                       delta_len, max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
@@ -953,8 +954,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo error correction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--version', action='version', version='%(prog)s 0.0.6')
-
     parser.add_argument('--fastq', type=str, default=False, help='Path to input fastq file with reads')
+    parser.add_argument('--input', type=str, default=False, help='Path to input directory containing folders representing each cluster')
     #parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
 
     parser.add_argument('--k', type=int, default=9, help='Kmer size')

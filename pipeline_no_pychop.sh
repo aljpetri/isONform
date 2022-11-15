@@ -9,24 +9,25 @@ raw_reads=$1
 outfolder=$2
 num_cores=$3
 isONform_folder=$4
+iso_abundance=$5
 echo "Running: " `basename $0` $raw_reads $outfolder $num_cores $isONform_folder
-isonform_folder=${isONform_folder::-1}
+#isonform_folder=${isONform_folder::-1}
 mkdir -p $outfolder
-
+echo "ISONfolder "$isONform_folder
 echo
 echo "Will run pychopper (cdna_classifier.py), isONclust, isONcorrect and isONform. Make sure you have these tools installed."
 echo "For installation see: https://github.com/ksahlin/isONcorrect#installation and  https://github.com/aljpetri/isONform"
 echo
 
-echo
-echo "Running pychopper"
-echo
+#echo
+#echo "Running pychopper"
+#echo
 
-pychopper  $raw_reads $outfolder/full_length.fq -t $num_cores
+#pychopper  $raw_reads $outfolder/full_length.fq -t $num_cores
 
-echo
-echo "Finished pychopper"
-echo
+#echo
+#echo "Finished pychopper"
+#echo
 
 
 
@@ -34,11 +35,11 @@ echo
 echo "Running isONclust"
 echo
 
-isONclust  --t $num_cores  --ont --fastq $outfolder/full_length.fq \
+isONclust  --t $num_cores  --ont --fastq $raw_reads \
              --outfolder $outfolder/clustering
 
 isONclust write_fastq --N 1 --clusters $outfolder/clustering/final_clusters.tsv \
-                      --fastq $outfolder/full_length.fq --outfolder  $outfolder/clustering/fastq_files
+                      --fastq $raw_reads --outfolder  $outfolder/clustering/fastq_files
 echo
 echo "Finished isONclust"
 echo
@@ -63,7 +64,7 @@ echo
 echo
 echo "Running isONform"
 echo
-python $isonform_folder/isONform_parallel.py --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder $outfolder/isoforms --iso_abundance 5 --split_wrt_batches
+python3.11 $isONform_folder/isONform_parallel.py --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches
 
 echo
 echo "Finished isONform"

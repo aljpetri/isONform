@@ -11,7 +11,7 @@ from IsoformGeneration import *
 import tempfile
 import shutil
 # from OriginalSimplifyGraph import *
-from ordered_set import OrderedSet
+
 
 """IsONform script containing the methods used to generate the Directed Graph from the Intervals coming from the Weighted Interval Scheduling Problem
 Author: Alexander Petri

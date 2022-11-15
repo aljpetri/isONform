@@ -7,7 +7,7 @@ from IsoformGeneration import *
 import copy
 from recordclass import recordclass
 from functools import cmp_to_key
-from ordered_set import OrderedSet
+
 #from pyinstrument import Profiler
 import itertools
 from pyinstrument import Profiler
@@ -799,7 +799,7 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
             DG.add_edge(key[0],key[1],edge_supp=value)
         else:
             #The edge was in the graph before, add old support to keep the graph consistent
-            print("Before:",value)
+            #print("Before:",value)
             #old_edge_supp=DG.edge[key[0]][key[1]]['edge_supp']
             old_edge_supp=DG.edges[key[0], key[1]]['edge_supp']
             #all_edges=DG.edges.data()
@@ -807,7 +807,7 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
             for old_supp in old_edge_supp:
                 if not old_supp in value:
                     value.append(old_supp)
-            print("After:",value)
+            #print("After:",value)
             DG.add_edge(key[0],key[1],edge_supp=value)
             #TODO: make this work
 
@@ -983,8 +983,8 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,m
             #print("popping works")
             s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
                                                                                        match_score=2,
-                                                                                       mismatch_penalty=-8,
-                                                                                       opening_penalty=12, gap_ext=1)
+                                                                                       mismatch_penalty=-8,#standard: -8
+                                                                                       opening_penalty=12, gap_ext=1) #opening penalty: standard: 12
             good_to_pop = parse_cigar_diversity(cigar_tuples, delta, delta_len)
             if DEBUG:
                 print("GOODTOPOP?",good_to_pop)
@@ -1431,6 +1431,7 @@ def find_all_read_paths(DG,all_reads,merged_dict):
     edge_attr = nx.get_edge_attributes(DG, "edge_supp")
     for r_id in all_reads.keys():
         if not r_id in merged_dict:
+            print(r_id)
             all_read_paths[r_id]=find_path(r_id,DG,edge_attr)
         else:
             all_read_paths[r_id]=all_read_paths[merged_dict[r_id]]
@@ -1482,10 +1483,7 @@ INPUT:      DG:         our directed graph
 OUTPUT: The simplified graph.
 """
 def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_intervals):
-    #print("DG Type:", str(type(DG)))
-    #print("Initial state of the graph")
-    ##print(DG.nodes(data=True))
-    ##print(DG.edges(data=True))
+
     not_viable_global=set()
     not_viable_multibubble = set()
     has_combinations=True
@@ -1499,10 +1497,9 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
     this_it_pops=0
     initial_edge_nr=len(DG.edges())
     #all_r_ids=set(all_reads.keys())
+    print("finding all paths")
     all_paths_s_to_t, all_path_sets = find_all_read_paths(DG, all_reads, merged_dict)
-    if not old:
-
-        merged_dict=generate_equal_reads_dict(all_paths_s_to_t)
+    print("paths found")
     prev_marked=set()
     #print(all_paths_s_to_t[6])
     #print("ERD",equal_reads_dict)
@@ -1862,6 +1859,7 @@ def simplifyGraph(DG, all_reads, work_dir, k_size,delta_len,known_intervals):
     #draw_Graph(DG)
     #profiler = Profiler()
     #profiler.start()
+    print("Simplifying the graph")
     new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_intervals)
     #profiler.stop()
     #profiler.print()

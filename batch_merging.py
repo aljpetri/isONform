@@ -4,6 +4,37 @@ from recordclass import recordclass
 from IsoformGeneration import align_to_merge
 import tempfile
 import pickle
+def readfq(fp): # this is a generator function
+    last = None # this is a buffer keeping the last unprocessed line
+    while True: # mimic closure; is it a bad idea?
+        if not last: # the first record or a record following a fastq
+            for l in fp: # search for the start of the next record
+                if l[0] in '>@': # fasta/q header line
+                    last = l[:-1] # save this line
+                    break
+        if not last: break
+        name, seqs, last = last[1:].split()[0], [], None
+        for l in fp: # read the sequence
+            if l[0] in '@+>':
+                last = l[:-1]
+                break
+            seqs.append(l[:-1])
+        if not last or last[0] != '+': # this is a fasta record
+            yield name, (''.join(seqs), None) # yield a fasta record
+            if not last: break
+        else: # this is a fastq record
+            seq, leng, seqs = ''.join(seqs), 0, []
+            for l in fp: # read the quality
+                seqs.append(l[:-1])
+                leng += len(l) - 1
+                if leng >= len(seq): # have read enough quality
+                    last = None
+                    yield name, (seq, ''.join(seqs)); # yield a fastq record
+                    break
+            if last: # reach EOF before reading enough quality
+                yield name, (seq, None) # yield a fasta record instead
+                break
+
 
 """ This method is used to generate the consensus file needed for the consensus generation
 INPUT:  work_dir  : The working directory in which to store the file
@@ -41,15 +72,19 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
         batch_reads={}
         batch_mappings={}
 
-        filename="spoa" + str(batchid) + "merged.fastq"
-        batchfilename=str(batchid)+"_batchfile.fastq"
+        filename="spoa" + str(batchid) + "merged.fasta"
+        batchfilename=str(batchid)+"_batchfile.fa"
         mappingname= "mapping" + str(batchid) + ".txt"
         print("File: ",filename)
         all_infos_dict[batchid]={}
+        fq_res=os.path.join(outfolder,filename)
+        #fastq = { acc : (seq,qual) for acc, (seq,qual) in readfq(open(fq_res, 'r'))}
+        #print(fastq)
         with open(os.path.join(outfolder,filename)) as f:
             for id, sequence in itertools.zip_longest(*[f] * 2):
-                #print(id, sequence)
+                print(id, sequence)
                 inter_id=id.replace('\n','')
+                print(inter_id)
                 id=int(inter_id.replace('>consensus',''))
                 sequence = sequence.replace('\n', '')
                 #print("Seq_len",len(sequence))
@@ -58,7 +93,7 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
         #print(batch_reads)
         with open(os.path.join(outfolder,mappingname)) as g:
             for id, reads in itertools.zip_longest(*[g] * 2):
-                #print(id, reads)
+                print(id, reads)
                 inter_id=id.replace('\n','')
                 id=int(inter_id.replace('consensus',''))
                 #print("ID",id)
@@ -83,12 +118,16 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
                 seq = seq.replace('\n', '')
                 all_batch_sequences[id]=seq
         #TODO: got a key error here. Check this script and correct what is wrong
-        #print(batch_mappings)
+        #print("Keys")
+        #print(batch_mappings.keys())
+        #print(batch_reads.keys())
+        #print(len(batch_mappings),len(batch_reads))
         for key, value in batch_reads.items():
-            reads=batch_mappings[key]
-            #print("READS",reads)
-            read_mapping=Read(value,reads,False)
-            all_infos_dict[batchid][key]=read_mapping
+            if key in batch_mappings:
+                reads=batch_mappings[key]
+                #print("READS",reads)
+                read_mapping=Read(value,reads,False)
+                all_infos_dict[batchid][key]=read_mapping
     #print("Len of batchid 0:",len(all_infos_dict[0]))
     #print("Len of batchid 1:", len(all_infos_dict[1]))
     cter=0
@@ -167,7 +206,7 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
     other_mapping=open(os.path.join(outfolder, other_mapping_name), 'w')
     for batchid, id_dict in all_infos_dict.items():
         for id, infos in id_dict.items():
-            print(id," ",all_infos_dict[batchid][id].merged)
+            #print(id," ",all_infos_dict[batchid][id].merged)
             if not all_infos_dict[batchid][id].merged:
                 new_id = str(batchid) + "_" + str(id)
                 if len(all_infos_dict[batchid][id].reads) >= iso_abundance:
