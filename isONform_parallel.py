@@ -54,7 +54,7 @@ def isONform(data):
                  #"--max_seqs", str(isONform_algorithm_params["max_seqs"]),
                  "--k", str(isONform_algorithm_params["k"]), "--w", str(isONform_algorithm_params["w"]),
                  "--xmin", str(isONform_algorithm_params["xmin"]), "--xmax",
-                 str(isONform_algorithm_params["xmax"]),
+                 str(isONform_algorithm_params["xmax"]),"--delta_len", str(isONform_algorithm_params["delta_len"]),
                  "--exact", "--parallel", "True"
                  #"--T", str(isONform_algorithm_params["T"])
                  ], stderr=error_file, stdout=isONform_out_file)
@@ -198,7 +198,7 @@ def main(args):
                 print("computing")
                 isONform_algorithm_params = {"set_w_dynamically": args.set_w_dynamically,
                                                 "exact_instance_limit": args.exact_instance_limit,
-                                                "delta_len": args.delta_len,
+                                                "delta_len": args.delta_len,"--exact": True,
                                                 "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
                                                 "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon,"parallel": True}
                 instances.append(

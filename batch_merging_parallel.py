@@ -127,12 +127,12 @@ def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
                     mapping_file.write(">{0}\n{1}\n".format(new_id,  all_infos_dict[batchid][id].reads))
                     consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,
                                                                       "+" * len(all_infos_dict[batchid][id].sequence)))
-                    support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[batchid][id].reads)))
+                    support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[new_id].reads)))
                 else:
                         other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,
                                                                            "+" * len(
                                                                                all_infos_dict[batchid][id].sequence)))
-                        other_support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[batchid][id].reads)))
+                        other_support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[new_id].reads)))
                         other_mapping.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].reads))
     nr_skipped=0
     for skipfile in os.listdir(cl_dir):
@@ -155,8 +155,8 @@ def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
                     other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(acc, seq,"+"*len(seq)))
                     other_support_file.write("{0}: {1}\n".format(acc, len(seq)))
                     other_mapping.write(">{0}\n{1}\n".format(acc, acc))
-    print("NR out mappings",str(mapping_out_cter))
-    print("Skipped:",nr_skipped)
+    #print("NR out mappings",str(mapping_out_cter))
+    #print("Skipped:",nr_skipped)
     #print("RCM",read_cter_mapping)
     consensus_file.close()
     mapping_file.close()
@@ -336,11 +336,11 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
                 for c_id, c_infos in b_infos.items():
                     if not c_infos.merged:
                         nr_reads += len(c_infos.reads)
-            print("NR_reads in all_infos_dict", nr_reads)
+            #print("NR_reads in all_infos_dict", nr_reads)
             #write the final output into files
             #print("AID2",all_infos_dict)
             write_final_output(all_infos_dict,outdir,iso_abundance,cl_dir,cl_id)
-    print("FUll mapping sum",full_mapping_sum)
+    #print("FUll mapping sum",full_mapping_sum)
     #rint("#mappings incoming",ingoing_mapping_read_cter)
         #shutil.rmtree(batch_id)
 def main():

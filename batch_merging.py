@@ -75,16 +75,16 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
         filename="spoa" + str(batchid) + "merged.fasta"
         batchfilename=str(batchid)+"_batchfile.fa"
         mappingname= "mapping" + str(batchid) + ".txt"
-        print("File: ",filename)
+        #print("File: ",filename)
         all_infos_dict[batchid]={}
         fq_res=os.path.join(outfolder,filename)
         #fastq = { acc : (seq,qual) for acc, (seq,qual) in readfq(open(fq_res, 'r'))}
         #print(fastq)
         with open(os.path.join(outfolder,filename)) as f:
             for id, sequence in itertools.zip_longest(*[f] * 2):
-                print(id, sequence)
+                #print(id, sequence)
                 inter_id=id.replace('\n','')
-                print(inter_id)
+                #print(inter_id)
                 id=int(inter_id.replace('>consensus',''))
                 sequence = sequence.replace('\n', '')
                 #print("Seq_len",len(sequence))
@@ -93,7 +93,7 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
         #print(batch_reads)
         with open(os.path.join(outfolder,mappingname)) as g:
             for id, reads in itertools.zip_longest(*[g] * 2):
-                print(id, reads)
+                #print(id, reads)
                 inter_id=id.replace('\n','')
                 id=int(inter_id.replace('consensus',''))
                 #print("ID",id)
@@ -131,12 +131,12 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
     #print("Len of batchid 0:",len(all_infos_dict[0]))
     #print("Len of batchid 1:", len(all_infos_dict[1]))
     cter=0
-    print("count of input sequences:",str(seq_count))
+    #print("count of input sequences:",str(seq_count))
     #print(read_mapping)
     for batchid,id_dict in all_infos_dict.items():
         for batchid2, id_dict2 in all_infos_dict.items():
             if not batchid2 <= batchid:# and not batchid2==batchid:
-                print("bid",batchid,"bid2",batchid2)
+                #print("bid",batchid,"bid2",batchid2)
                 for id,infos in id_dict.items():
                     if not infos.merged:
                         for id2, infos2 in id_dict2.items():
@@ -144,12 +144,12 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
                                 cter+=1
                                 consensus1=infos.sequence
                                 consensus2=infos2.sequence
-                                print("ID",id)
-                                print(consensus1, "\n")
-                                print("ID2",id2)
-                                print(consensus2, "\n")
+                                #print("ID",id)
+                                #print(consensus1, "\n")
+                                #print("ID2",id2)
+                                #print(consensus2, "\n")
                                 good_to_pop=align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5)
-                                print(good_to_pop)
+                                #print(good_to_pop)
                                 if good_to_pop:
                                     if len(infos.reads) > 50:
                                         if len(infos.sequence)>=len(infos2.sequence):
@@ -158,7 +158,7 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
                                         else:
                                             infos2.reads=infos2.reads +infos.reads
                                             infos.merged=True
-                                        print("Merging",batchid,"_",id," and ",batchid2,"_",id2)
+                                        #print("Merging",batchid,"_",id," and ",batchid2,"_",id2)
                                     else:
                                         #print("Else")
                                         # TODO generate consensus and add all infos to longer read id
@@ -189,7 +189,7 @@ def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3
     #for m_batch in merged_batches
     #print("MB",merged_batches," ",len(merged_batches))
     #print(all_infos_dict)
-    print("Combi count ",cter)
+    #print("Combi count ",cter)
     print("Writing file")
     consensus_name = "cluster_merged.fastq"
     other_consensus_name="cluster_merged_low_abundance.fastq"
