@@ -143,9 +143,14 @@ def generate_combinations(possible_starts,possible_ends,TopoNodes,combis):
 def filter_combinations(combinations,not_viable,combinations_filtered):
     #iterate over all combinations
     for combi in combinations:
-        #if the combination is not viable add  it to combinations_filtered
-        if combi not in not_viable:
+        #if the combination is viable add it to combinations_filtered
+        if not combi in not_viable:
             combinations_filtered.append(combi)
+def filter_function(elem,set):
+    if elem in set:
+       return False
+    else:
+        return True
 """detect the paths in our bubble
 """
 def find_edges_with_supp(r_id,DG):
@@ -168,6 +173,7 @@ def find_paths(DG,startnode,endnode,support,all_paths):
     all_supp=set(support)
     #we iterate as long as still not all support was allocated to a path
     while node_support_left:
+        #print(node_support_left)
         node = startnode
         #current_node_support = node_support_left
         read=node_support_left.pop()
@@ -201,8 +207,12 @@ def find_paths(DG,startnode,endnode,support,all_paths):
                 final_add_support=all_supp-current_node_support
                 path_supp_tup = (visited_nodes, tuple(sorted(current_node_support)), final_add_support)
                 all_paths.append(path_supp_tup)
-    if DEBUG:
-        print("PATHSFOUND")
+        else:
+            #print("Hello")
+            break
+
+    #if DEBUG:
+        #print("PATHSFOUND")
 """
 Helper method used to find all the reads, which are in startnode and may be part of a bubble(at least the next node is part of the bubble)
 INPUT:          listofnodes:  A list of nodes which make up the bubble(found to be a bubble by being a cycle in an undirected graph
@@ -869,8 +879,8 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size,spoa_c
     #print("RPL",reads_path_len)
         if reads_path_len>0:
             spoa_count+=1
-            if (spoa_count%100)==0:
-                print("Spoa_count",spoa_count)
+            #if (spoa_count%100)==0:
+                #print("Spoa_count",spoa_count)
             spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
         #print("spoa_ref", spoa_ref)
             return spoa_ref,seq_infos,spoa_count
@@ -905,9 +915,9 @@ def collect_consensus_reads(consensus_attributes):
 
 #TODO: Either we have to change the calculation of the positions or we have to think more about pop threshold
 def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,multi_consensuses,is_megabubble,combination,delta_len):
-    if DEBUG:
-        print("aligning")
-        print("current consensus_infos",consensus_infos)
+    #if DEBUG:
+    #    print("aligning")
+     #   print("current consensus_infos",consensus_infos)
     consensus_list = []
     consensus_log= {}
     seq_infos={}
@@ -964,9 +974,9 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,m
     consensus1 = consensus_list[0]
 
     consensus2 = consensus_list[1]
-    if DEBUG:
-        print("consensus1",consensus1)
-        print("consensus2",consensus2)
+    #if DEBUG:
+    #    print("consensus1",consensus1)
+    #    print("consensus2",consensus2)
     s1_len = len(consensus1)
     s2_len = len(consensus2)
     if s1_len > s2_len:
@@ -977,8 +987,8 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,m
         shorter_len = s1_len
     delta = 0.20
     if shorter_len > delta_len and longer_len > delta_len:
-        if DEBUG:
-            print("long:", longer_len, " , short ", shorter_len, "ratio ", (longer_len - shorter_len) / longer_len)
+        #if DEBUG:
+        #    print("long:", longer_len, " , short ", shorter_len, "ratio ", (longer_len - shorter_len) / longer_len)
         if (longer_len - shorter_len) / longer_len < delta:
             #print("popping works")
             s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
@@ -986,32 +996,32 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size,spoa_count,m
                                                                                        mismatch_penalty=-8,#standard: -8
                                                                                        opening_penalty=12, gap_ext=1) #opening penalty: standard: 12
             good_to_pop = parse_cigar_diversity(cigar_tuples, delta, delta_len)
-            if DEBUG:
-                print("GOODTOPOP?",good_to_pop)
+            #if DEBUG:
+                #print("GOODTOPOP?",good_to_pop)
             cigar_alignment = (s1_alignment, s2_alignment)
-            if good_to_pop and DEBUG:
-                print("deemed to be poppable", cigar_alignment," ",combination,"$$$ ",consensus_infos,"€€",cigar_tuples)
+            #if good_to_pop and DEBUG:
+                #print("deemed to be poppable", cigar_alignment," ",combination,"$$$ ",consensus_infos,"€€",cigar_tuples)
             #else:
                 #print("No pop", cigar_alignment, " ", consensus_infos,"€€",cigar_tuples)
             return good_to_pop, cigar_alignment, seq_infos, consensus_log,spoa_count
         else:
-            if DEBUG:
+            #if DEBUG:
                 #print("deemed to be poppable", cigar_alignment, "")
-                print("No pop-too diverse ", combination)
+                #print("No pop-too diverse ", combination)
             return False,"","", consensus_log,spoa_count
     elif shorter_len < delta_len and longer_len < delta_len:
-        if DEBUG:
-            print("deemed Poppable as short ",consensus_infos)
+        #if DEBUG:
+            #print("deemed Poppable as short ",consensus_infos)
         return True, "","",consensus_log,spoa_count
 
     else:
         if (longer_len - shorter_len) < delta_len:
-            if DEBUG:
-                print("Poppable as short and not too different", consensus_infos)
+            #if DEBUG:
+                #print("Poppable as short and not too different", consensus_infos)
             return True, "", "", consensus_log,spoa_count
         else:
-            if DEBUG:
-                print("Not poppable as short but too different", consensus_infos)
+            #if DEBUG:
+                #print("Not poppable as short but too different", consensus_infos)
             return False, "", "", consensus_log,spoa_count
         #good_to_pop=False
 
@@ -1408,7 +1418,7 @@ def find_path(r_id,DG,edge_attr):
         # add current node to the list of visited_nodes
         visited_nodes.append(current_node)
         prev_node = current_node
-        # print("CurrnodebefMethod",current_node)
+        #print("CurrnodebefMethod",current_node)
         # print()
         edgelist = list(DG.out_edges(current_node))
         for edge in edgelist:
@@ -1418,11 +1428,16 @@ def find_path(r_id,DG,edge_attr):
 
         # print("current node returned by get best supported edge node", current_node)
         edge_tup = (prev_node, current_node)
-        # print("edge_tup",edge_tup)
+        #print("edge_tup",edge_tup)
         visited_edges.append(edge_tup)
         if current_node == "t":
             visited_nodes.append("t")
             reached_t = True
+        else:
+            #print("not there yet")
+            if prev_node==current_node:
+                print("ERROR")
+                break
     return visited_nodes
 
 def find_all_read_paths(DG,all_reads,merged_dict):
@@ -1431,7 +1446,7 @@ def find_all_read_paths(DG,all_reads,merged_dict):
     edge_attr = nx.get_edge_attributes(DG, "edge_supp")
     for r_id in all_reads.keys():
         if not r_id in merged_dict:
-            print(r_id)
+            #print(r_id)
             all_read_paths[r_id]=find_path(r_id,DG,edge_attr)
         else:
             all_read_paths[r_id]=all_read_paths[merged_dict[r_id]]
@@ -1504,7 +1519,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
     #print(all_paths_s_to_t[6])
     #print("ERD",equal_reads_dict)
     #changed_reads=[]
-    pop_threshold = int(initial_edge_nr / 200)
+    pop_threshold = max(int(initial_edge_nr / 100),1)
     #we want to continue the simplification process as long as we find combinations that have not been deemed to be "not viable" to pop
     while has_combinations:
         overall_pops+=this_it_pops
@@ -1525,6 +1540,11 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
         print()
         print("GRAPH NR NODES: {0} EDGES: {1} ".format(len(DG.nodes()), len(DG.edges())))
         print()
+        cyclic = isCyclic(DG)
+        if cyclic:
+            print("CYCLIC", cyclic)
+        else:
+            print("No cycles")
         #if iteration_number==5:
         #    DEBUG=True
         #else:
@@ -1533,9 +1553,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
         numedges=len(DG.edges())
         #if iteration_number>1:
         #    return
-        #if(isCyclic(DG)):
-        #    print("Cyclic Graph")
-        #    return-1
+
+            #return -1
         #TopoNodes holds the topological order of the nodes in our graph
         TopoNodes = list(nx.topological_sort(DG))
         topo_nodes_dict = {n : i for i,n in enumerate(TopoNodes)}
@@ -1554,40 +1573,28 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
         #print("Combinations:", len(combinations))
         combinations_filtered=[]
         #filter out the combinations we already have analysed in a previous iteration
-        filter_combinations(combinations, not_viable_global,combinations_filtered)
+        #filter_combinations(combinations, not_viable_global,combinations_filtered)
+        #combinations_filtered = [x for x in combinations if not x[0] in not_viable_global]
+        #combinations_filtered = filter(filter_function(elem,set), values)
+        combinations_filtered = [item for item in combinations if item not in not_viable_global]  # filters the list and keeps order of elements.
         #print("Combinations filtered:",len(combinations_filtered))
         #print("not_viable ", not_viable_global)
 
         #if we haven't found any new combinations we successfully finished our bubble popping
         if not combinations_filtered:
             break
-        #if DEBUG:
-            #print("combis",combinations_filtered)
 
         # sort the combinations so that the shortest combinations come first
         sorted_combinations=sorted(combinations_filtered, key=lambda x: TopoNodes.index(x[1])-TopoNodes.index(x[0]))
+        if DEBUG:
+            print("NOTVIABLE",not_viable_global)
+            print("Sorted combis",sorted_combinations)
         #iterate over all combinations
         for combination in sorted_combinations:
-            edges=DG.edges()
-            """if ('15, 49, 6', '58, 98, 6') in edges:
-                print("IT is inside!")
-            print(combination[0],combination[1])
-            if numnodes==1029 and numedges==1304:
-                print("COMBINATION STARTS HERE")
-                if 6 in combination[2]:
-                    #DEBUG=True
-                    print("THIS_COMBI",combination)
-                #else:
-                    #DEBUG=False
-                if combination[0]=='s' and combination[1]=='72, 99, 3':
-                    thebug = True
 
-                elif combination[0]=='1673, 1687, 9' and combination[1]=='714, 779, 19':
-                    thebug = True
-                else: thebug=False
-            else:
-                thebug=False
-            #print(thebug)"""
+            #print("Leftover",sorted_combinations[sorted_combinations.index(combination):])
+            if DEBUG:
+                print("this combination",combination)
             thebug=False
             #print(thebug)
             is_alignable=True
@@ -1597,9 +1604,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
             else:
             #we find all paths from s' to t' via find_paths
                     #if DEBUG:
-                    #    cyclic=isCyclic(DG)
-                    #    if cyclic:
-                    #        print("CYCLIC",cyclic)
+
                     if thebug:
                         find_edges_with_supp(6, DG)
                         print("FINDPATHS outside")
@@ -1610,8 +1615,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
                     if not all_paths:
                         combiset= {combination[0],combination[1]}
                         #print("NO ALLPATHS found")
-                        for r_id in combination[2]:
-                            print("Difference",combiset.difference(all_paths_s_to_t[r_id]))
+                        #for r_id in combination[2]:
+                        #    print("Difference",combiset.difference(all_paths_s_to_t[r_id]))
                         #not_viable_global.add(combination)
             #print("FINDPATHS ended")
             #if DEBUG:
@@ -1835,6 +1840,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,known_i
                         else:
                             #the combination is not poppable
                             not_viable_multibubble.add(this_combi)
+
         print("This iterations pops ", this_it_pops)
         if this_it_pops<pop_threshold:
             break

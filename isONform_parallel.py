@@ -163,6 +163,7 @@ def main(args):
     print(directory)
     isONform_location = os.path.dirname(os.path.realpath(__file__))
     if args.split_wrt_batches:
+        print("SPLITWRTBATCHES")
         tmp_work_dir = tempfile.mkdtemp()
         print("Temporary workdirektory:", tmp_work_dir)
         split_tmp_directory = split_cluster_in_batches(directory, args.outfolder, tmp_work_dir, args.max_seqs)
@@ -233,8 +234,9 @@ def main(args):
     print("Time elapsed multiprocessing:", time() - start_multi)
 
     if args.split_wrt_batches:
+        print("STILLSPLITWRTBATCHES")
         file_handling = time()
-        join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.merge_sub_isoforms_3,args.merge_sub_isoforms_5, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance)
+        join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.merge_sub_isoforms_3,args.merge_sub_isoforms_5, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance,args.rc_identity_threshold)
         generate_full_output(args.outfolder)
         shutil.rmtree(split_directory)
         print("Joined back batched files in:", time() - file_handling)
@@ -308,7 +310,8 @@ if __name__ == '__main__':
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
-
+    parser.add_argument('--rc_identity_threshold', type=float, default=0.9,
+                        help='Threshold for isoformGeneration algorithm. Define a reverse complement if identity is over this threshold (default 0.9)')
     args = parser.parse_args()
     print(len(sys.argv))
     if len(sys.argv) == 1:

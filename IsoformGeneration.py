@@ -213,8 +213,8 @@ def compute_equal_reads2(DG,support):
             out_edges=DG.out_edges(node)
             next_found=False
             for edge in out_edges:
-                if DEBUG:
-                    print("edge",edge)
+                #if DEBUG:
+                    #print("edge",edge)
                 edge_supp = DG[edge[0]][edge[1]]['edge_supp']
                 if read in edge_supp:
                     node=edge[1]
@@ -395,11 +395,6 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
         #print(len(value))
         seq_counter += len(value)
         name = 'consensus' + str(key)
-        #print("Sequence count:",seq_counter)
-        #print("Mapping count:",other_mapping_cter)
-        #print(key,value)
-        #print(key,len(value))
-        #print(merged_dict)
         #if our key is in merged_consensuses, we know that we merged this consensus during get_isoform_similarity
         if key in merged_consensuses:
             #If the key is in merged_dict i.e.  key is still a consensus id
@@ -425,7 +420,7 @@ def generate_isoform_using_spoa_merged(curr_best_seqs, reads, work_dir, outfolde
                         mapping[name] = []
 
                     mapping[name].append(singleread[0])
-        #there is no else case because we skip keys that are no merged_dict keys
+
         else:
             # This is exactly what we do in the normal generate_isoform_using_spoa
 
@@ -588,7 +583,7 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
     mod_div_rate = max_bp_diff / alignment_len
     #print("3'",three_prime," 5'",five_prime)
 
-    #print("diversity", diversity, "mod_div", mod_div_rate)
+    print("diversity", diversity, "mod_div", mod_div_rate)
     if diversity <= mod_div_rate and three_prime and five_prime:  # delta_perc:
         return True
     else:
@@ -674,19 +669,19 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                         print("combi ",id,", ",id2,", eq2: ",equality_2,"\n")
                         # if equality_2 > 0.8:
                     if True:
-
                         similarity_file.write("{0} subisoform of {1} indicated by {2}\n".format(id2, id, equality_2))
-                        if id2 not in merged_consensuses:
+                        if id2 not in consensus_map and id not in consensus_map:
+                            print(id ,"and ",id2," not in ",consensus_map)
                             consensuses=generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,called_consensuses)
                         #print(consensuses)
                             consensus1=consensuses[id]
                             consensus2=consensuses[id2]
                             merge_consensuses=align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5)
+                            print("WEMERGE?",merge_consensuses)
                         #if we do not merge the consensuses, we add them to called_consensuses to be able to retreive them if needed
                             if not merge_consensuses:
                                 called_consensuses[id]=consensus1
                                 called_consensuses[id2]=consensus2
-
                             else:
                                 # We have to figure out whether id is in merged_dict
                                 if not(id in merged_dict):
@@ -705,7 +700,7 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                                 merged_consensuses.add(id)
                                 merged_consensuses.add(id2)
                                 consensus_map[id2]=id
-                        elif id2 in merged_dict:
+                        elif id2 in merged_dict and id not in consensus_map:
                             id_list_2 = []
                             id_list_2.append(id2)
                             for idee in merged_dict[id2].otherIDs:
@@ -733,8 +728,9 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                                     merged_dict.pop(id2)
                                 for id2_entry in id_list_2:
                                     consensus_map[id2_entry] = id
-                if DEBUG:
-                    print("Equality of ",id," vs ",id2,": ",equality_1)
+                        print("MERGED",merged_dict)
+                #if DEBUG:
+                #    print("Equality of ",id," vs ",id2,": ",equality_1)
                 similarity_file.write("{0},{1}: {2} \n".format(id, id2,equality_1))
     path_file.close()
     return merged_dict, merged_consensuses, called_consensuses, consensus_map
@@ -760,6 +756,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
     #calculate_isoform_similarity(equal_reads,work_dir,isoform_paths,outfolder,delta,delta_len,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,all_reads,max_seqs_to_spoa,delta_iso_len_3=0,delta_iso_len_5=0)
     #generate_isoform_using_spoa(equal_reads,all_reads, work_dir,outfolder,batch_id, max_seqs_to_spoa,iso_abundance)
     if merge_sub_isoforms_5 or merge_sub_isoforms_3:
+        print("MergingTrue")
         #generate_isoform_using_spoa(equal_reads, all_reads, work_dir, old_outfolder, batch_id, max_seqs_to_spoa,
         #                            iso_abundance)
         merged_dict,merged_consensuses,called_consensuses,consensus_map = calculate_isoform_similarity(equal_reads, work_dir, isoform_paths, outfolder, delta, delta_len, batch_id,
@@ -770,7 +767,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
         generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance)
 
 
-DEBUG=False
+DEBUG=True
 
 def main():
     outfolder="100kSIRV/20722_abundance2_par/22"

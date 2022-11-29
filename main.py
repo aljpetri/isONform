@@ -2,7 +2,9 @@
 from __future__ import print_function
 from GraphGeneration import *
 from IsoformGeneration import *
+from OldGraphGeneration import *
 import os, sys
+#from tkinter import *
 import argparse
 import linecache
 import networkx as nx
@@ -356,8 +358,13 @@ def find_most_supported_span3(r_id, m1, p1, m1_curr_spans, minimizer_combination
             for relevant_read_id, pos1, pos2 in grouper(relevant_reads, 3): #relevant_reads:
                 if r_id  == relevant_read_id:
                     continue
+                #TODO: this could improve our graph
+                #elif math.abs((p2 - p1) - (pos2 - pos1)) <= delta_len:
+                #    to_add[relevant_read_id] = (relevant_read_id, pos1, pos2, 0)
+                    #abs(p2-p1)-abs(pos2-pos)
                 else:
                     to_add[relevant_read_id] = (relevant_read_id, pos1, pos2, 0)
+
             seqs = array("I")
             for relev_r_id in to_add:
                 add_items(seqs, to_add[relev_r_id][0], to_add[relev_r_id][1], to_add[relev_r_id][2])
@@ -596,6 +603,7 @@ def main(args):
     if os.path.exists("mapping.txt"):
         os.remove("mapping.txt")
     outfolder = args.outfolder
+    #sys.stdout = open(os.path.join(outfolder,"single_stdout.txt"), "w")
     # read the file
     all_reads = {i + 1: (acc, seq, qual) for i, (acc, (seq, qual)) in
                  enumerate(help_functions.readfq(open(args.fastq, 'r')))}
@@ -675,7 +683,7 @@ def main(args):
         while is_cyclic:
             graph_id = 1
             print("Working on {0} reads in a batch".format(len(reads)))
-            batch_start_time = time()
+            #batch_start_time = time()
             hash_fcn = "lex"
             not_used=0
             # for hash_fcn in ["lex"]: # ["lex"]: #  add "rev_lex" # add four others
@@ -855,8 +863,26 @@ def main(args):
             print("Generating the graph")
             all_batch_reads_dict[batch_id] = new_all_reads
             read_len_dict = get_read_lengths(all_reads)
+            """DG2=nx.DiGraph()
+            DG2.add_edge("s","a")
+            DG2.add_edge("s","b")
+            DG2.add_edge("s","c")
+            DG2.add_edge("s","d")
+            DG2.add_edge("a","t")
+            DG2.add_edge("b","t")
+            DG2.add_edge("c","t")
+            DG2.add_edge("d","e")
+            DG2.add_edge("e","t")
+            this_topo=list(nx.topological_sort(DG2))
+            print("THISTOPO",this_topo)"""
+            #print("Used for GraphGen",", ",k_size,", ",delta_len,", ",read_len_dict,", ",new_all_reads)
+            import time
+            start_time = time.time()
             DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
                 all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
+            #DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervalsOld(
+            #    all_intervals_for_graph, k_size, delta_len, read_len_dict, new_all_reads)
+            print("--- %s seconds ---" % (time.time() - start_time))
             print(DG.number_of_nodes()," Nodes in our Graph")
             is_cyclic=isCyclic(DG)
             if is_cyclic:
@@ -867,6 +893,7 @@ def main(args):
         #print("Known intervals")
         #print(known_intervals)
         print("Graph built up!")
+        #draw_Graph(DG)
         #print(list(DG.nodes(data=True)))
         #print(DG.out_edges("s",data=True))
         #node='166, 197, 9'
@@ -880,7 +907,7 @@ def main(args):
         #snapshot2 = tracemalloc.take_snapshot()
         #print(snapshot2)
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
-        #draw_Graph(DG)
+
         #print("finding the reads, which make up the isoforms")
 
         # for iso in isoform_reads:
@@ -936,7 +963,7 @@ def main(args):
     if not args.parallel:
             print("Merging the batches with linear strategy")
             merge_batches(max_batchid, work_dir, outfolder, new_all_reads, merge_sub_isoforms_3, merge_sub_isoforms_5, delta,
-                      delta_len, max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
+                      delta_len, max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance,args.rc_identity_threshold)
     # eprint("tot_before:", tot_errors_before)
     # eprint("tot_after:", sum(tot_errors_after.values()), tot_errors_after)
     # eprint(len(corrected_reads))
@@ -947,7 +974,9 @@ def main(args):
     # outfile.close()
 
     print("removing temporary workdir")
+    #sys.stdout.close()
     shutil.rmtree(work_dir)
+
 RUNAFTER=False
 DEBUG=False
 if __name__ == '__main__':
@@ -955,7 +984,6 @@ if __name__ == '__main__':
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--version', action='version', version='%(prog)s 0.0.6')
     parser.add_argument('--fastq', type=str, default=False, help='Path to input fastq file with reads')
-    parser.add_argument('--input', type=str, default=False, help='Path to input directory containing folders representing each cluster')
     #parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
 
     parser.add_argument('--k', type=int, default=9, help='Kmer size')
@@ -998,6 +1026,9 @@ if __name__ == '__main__':
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--parallel',type=bool,default=False,help='indicates whether we run the parallelization wrapper script')
+    parser.add_argument('--rc_identity_threshold', type=float, default=0.9,
+                        help='Threshold for isoformGeneration algorithm. Define a reverse complement if identity is over this threshold (default 0.9)')
+
     # parser.set_defaults(which='main')
     args = parser.parse_args()
 
@@ -1008,10 +1039,8 @@ if __name__ == '__main__':
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit()
-    if not args.fastq and not args.flnc and not args.ccs:
-        parser.print_help()
-        sys.exit()
 
+    os.environ['PYTHONHASHSEED'] = '0'
     if args.outfolder and not os.path.exists(args.outfolder):
         os.makedirs(args.outfolder)
 

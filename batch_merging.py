@@ -58,7 +58,7 @@ def generate_consensus_path(work_dir,mappings1,mappings2, all_sequences,spoa_cou
     return spoa_ref
 """The last step of our algorithm: We take all isoforms that were generated for each batch and align them to merge same isoforms
 """
-def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance):
+def merge_batches(max_batchid,work_dir, outfolder,all_reads,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance,rc_threshold):
     all_infos_dict={}
     #if max_batchid==0:
     #    print("returning from batch-merging")
