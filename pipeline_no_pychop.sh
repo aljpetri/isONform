@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-if [ $# -ne 4 ]; then
+if [ $# -ne 5 ]; then
         echo "Usage: `basename $0`  <raw_reads.fq>  <outfolder>  <num_cores> "
         exit 0
 fi
@@ -10,7 +10,7 @@ outfolder=$2
 num_cores=$3
 isONform_folder=$4
 iso_abundance=$5
-echo "Running: " `basename $0` $raw_reads $outfolder $num_cores $isONform_folder
+echo "Running: " `basename $0` $raw_reads $outfolder $num_cores $isONform_folder $iso_abundance
 #isonform_folder=${isONform_folder::-1}
 mkdir -p $outfolder
 echo "ISONfolder "$isONform_folder
@@ -58,10 +58,6 @@ echo
 
 
 echo
-echo "Merging reads back to single file. Corrected reads per cluster are still stored in: " $outfolder/correction/
-echo
-
-echo
 echo "Running isONform"
 echo
 python3.11 $isONform_folder/isONform_parallel.py --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches
@@ -79,5 +75,5 @@ echo
 #done
 
 echo
-echo "Finished with pipeline and wrote corrected reads to: " $outfolder
+echo "Finished with pipeline and wrote corrected reads to: " $outfolder/isoforms
 echo
