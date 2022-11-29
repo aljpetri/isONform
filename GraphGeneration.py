@@ -40,7 +40,6 @@ INPUT:      inter:              the current interval holding the information
             prior_read_infos:   information about other reads
             name:               name of the node we appoint the information to
             k:                  minimizer length
-
 OUTPUT:     prior_read_infos:   information about other reads extended by this intervals infos
 """
 
@@ -82,7 +81,6 @@ def convert_array_to_hash(info_array):
 
 
 """Function to get all nodes which are part of a cycle
-
     INPUT:  current_read_state: The current state of known_intervals[r_id-1] (known_intervals of the current read)
             cycle_start:        The last occurence of the repeating node before the cycle starts
     OUTPUT: cycle_nodes:        A list of entries indicating which nodes are in the cycle, having the following form: (startpos, node_id, endpos)
@@ -163,12 +161,106 @@ def find_topo_alternative(topo_graph,previous_node,name,topo_alternatives):
             if topo_graph.index(previous_node) < topo_graph.index(alternative):
                 return alternative
     return ""
+########################################
+######## KRISTOFFER START ##############
+########################################
+def subsequence(seq):
+    if not seq:
+        return seq
+    M = [None] * len(seq)    # offset by 1 (j -> j-1)
+    P = [None] * len(seq)
+
+    # Since we have at least one element in our list, we can start by
+    # knowing that the there's at least an increasing subsequence of length one:
+    # the first element.
+    L = 1
+    M[0] = 0
+
+    # Looping over the sequence starting from the second element
+    for i in range(1, len(seq)):
+        # Binary search: we want the largest j <= L
+        #  such that seq[M[j]] < seq[i] (default j = 0),
+        #  hence we want the lower bound at the end of the search process.
+        lower = 0
+        upper = L
+
+        # Since the binary search will not look at the upper bound value,
+        # we'll have to check that manually
+        if seq[M[upper-1]][0] < seq[i][0]:
+            j = upper
+
+        else:
+            # actual binary search loop
+            while upper - lower > 1:
+                mid = (upper + lower) // 2
+                if seq[M[mid-1]][0] < seq[i][0]:
+                    lower = mid
+                else:
+                    upper = mid
+
+            j = lower    # this will also set the default value to 0
+
+        P[i] = M[j-1]
+
+        if j == L or seq[i][0] < seq[M[j]][0]:
+            M[j] = i
+            L = max(L, j+1)
+
+    # Building the result: [seq[M[L-1]], seq[P[M[L-1]]], seq[P[P[M[L-1]]]], ...]
+    result = []
+    pos = M[L-1]
+    for _ in range(L):
+        result.append(seq[pos])
+        pos = P[pos]
+
+    return result[::-1]    # reversing
+########################################
+######## KRISTOFFER END   ##############
+########################################
+
+def find_LIS(DG, r_id, intervals_for_read,k,delta_len):
+    top_order = {name: order for order, name in enumerate(nx.topological_sort(DG))}
+    anchors = []
+    for read_order, (start, stop, weight, supp_int) in enumerate(intervals_for_read):
+        _, curr_start, curr_stop = supp_int[:3]
+        curr_node_name = "{0}, {1}, {2}".format(curr_start + k, curr_stop, r_id)
+        curr_node_distance=curr_stop-(curr_start+k)
+        for i in range(len(supp_int) // 3):
+            supp_r_id, supp_start, supp_stop = supp_int[3 * i:3 * i + 3]
+            if supp_r_id == r_id:
+                continue
+            supp_node_name = "{0}, {1}, {2}".format(supp_start + k, supp_stop, supp_r_id)
+            supp_node_distance=supp_stop-(supp_start+k)
+            # print(supp_node_name)
+            if supp_node_name in DG:
+                if abs(supp_node_distance-curr_node_distance)>delta_len:
+                    anchors.append((top_order[supp_node_name], supp_node_name,
+                                curr_node_name))  # (order in graph, graph node name, read_node_name)
+                # print('Found!')
+
+    print(anchors, '<-- All anchors')
+    ans = subsequence(anchors)
+    print(ans, '<-- Longest increasing subsequence of anchors')
+
+    # or a bit nicer for the eyes
+    tmp_1 = [a[0] for a in anchors]  # only the orders
+    tmp_2 = [a[0] for a in ans]  # only the orders
+    print(tmp_1)
+    print(tmp_2)
+    print(
+        "This above list is the final longer increasing chain of nodes in the read that was found in the graph.")
+    print(
+        "The nodes missing from this will have to be added in by forming new nodes or finding them between the LIS (because I use DFG generated topological sort to get the orders")
+    # Alex: this is just to check where the LIS was different, i.e., complication _could_ occur. this f statement should be removed/ or sys.exit uncommented
+    if anchors != ans:
+        print('FOUND INTERESTING CASE, stopping')
+        sys.exit()
+    return anchors
 """ generates a networkx graph from the intervals given in all_intervals_for_graph.
 # INPUT:    all_intervals_for_graph:    A dictonary holding lists of minimizer intervals.
             k:                          K-mer length  
             delta_len:                  integer holding the maximum lenght difference for two reads to still land in the same Isoform
             readlen_dict:               dictionary holding the read_id as key and the length of the read as value
-
 #OUTPUT:    result                      a tuple of different output values of the algo
             DG                          The Networkx Graph object 
             known_intervals             A list of intervals used to check the correctness of the algo
@@ -179,8 +271,7 @@ TODO:   add dictionary to store infos about known instances
 """
 
 
-# TODO: find inconsistency for this example ( read 184 is not connected to s)
-# TODO: find out where the double edges came from (why we have to use 'if not r_id in edge_info:'
+#TODO: invoke list_solution to actually merge nodes.
 def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_dict, all_reads):
     Read_infos = namedtuple('Read_Infos',
                             'start_mini_end end_mini_start original_support')
@@ -227,25 +318,22 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
     # iterate through the different reads stored in all_intervals_for_graph. For each read one path is built up from source to sink if the nodes needed for that are not already present
     # intervals_for_read holds all intervals which make up the solution for the WIS of a read
     for r_id, intervals_for_read in all_intervals_for_graph.items():
-        #print(r_id)
-        #if r_id==291:
-        #    print(intervals_for_read)
-        # if not intervals_for_read:
-        #    continue
-        # print(r_id)
-        # print(type(r_id))
-        # if r_id==92:
-        #    DEBUG=True
-        # if r_id==184:
-        #    print("HERE")
-        #    DEBUG=True
-        #    print(DEBUG)
-        #    print(intervals_for_read)
-        #if r_id==292:
-        #   DEBUG=False
-        # elif r_id==93:
-        #    DEBUG=False
-        #    print("NFG", nodes_for_graph['601, 652, 20'])
+        ########################################
+        ######## KRISTOFFER START ##############
+        ########################################
+        #print(r_id, intervals_for_read)
+        #print('CURR READ:', r_id)
+        #print(DG.nodes())  # print(DG.nodes(data=True))
+        #print()
+        #print(DG.edges(data=True))
+        #print(list(nx.topological_sort(DG)))
+        if len(DG) > 2:  # we have added at least one read to the graph already
+            lis_solution = find_LIS(DG, r_id, intervals_for_read,k,delta_len)
+        else:
+            lis_solution=[]
+        ########################################
+        ######## KRISTOFFER END   ##############
+        ########################################
         containscycle = False
         # set previous_node to be s. This is the node all subsequent nodes are going to have edges with
         previous_node = "s"
@@ -255,7 +343,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
 
         # the name of each node is defined to be readID, startminimizerpos , endminimizerpos
         # iterate over all intervals, which are in the solution of a certain read
-        for inter in intervals_for_read:
+        for pos,inter in enumerate(intervals_for_read):
             prev_nodelist = {}
             info_tuple = (r_id, inter[0], inter[1])
             if DEBUG:
@@ -272,6 +360,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                 is_repetative = False
 
             # access prior_read_infos, if the same interval was already found in previous reads
+            lis_sol_occ=[x for x in lis_solution if x[0]==pos]
+            print("LSO",lis_sol_occ)
             if info_tuple in prior_read_infos:
 
                 # if the interval repeats during this read
@@ -296,7 +386,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                             if DEBUG:
                                 print("No edge")
                             #if we would harm the topological order in our graph by adding the edge
-                            if topo_graph.index(previous_node) > topo_graph.index(name):
+                            if True:
+                                """if topo_graph.index(previous_node) > topo_graph.index(name):
                                 old_name=name
                                 #find alternatives for the node in topo_alternatives
                                 topo_alt_result=find_topo_alternative(topo_graph,previous_node,name,topo_alternatives)
@@ -369,7 +460,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                             edge_info.append(r_id)
                                             edge_support[previous_node, name] = edge_info
 
-                            else:
+                            else:"""
                                 # update the read information of node name
                                 prev_nodelist = nodes_for_graph[name]
                                 seq = all_reads[r_id][1]
@@ -388,8 +479,30 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                 if DEBUG:
                                     print("Adding edge, foundnode, topo order not violated  for prevnode, name")
                                 DG.add_edge(previous_node, name, length=length)
-                                edge_support[previous_node, name] = []
-                                edge_support[previous_node, name].append(r_id)
+                                try:
+                                    topo_sort=nx.topological_sort(DG)
+                                    print(topo_sort[0])
+                                except:
+                                    DG.remove_edge(previous_node, name)
+                                    name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
+                                    if not DG.has_node(name):
+                                        DG.add_node(name)
+                                    nodelist = {}
+                                    r_infos = Read_infos(inter[0], inter[1], True)
+                                    end_mini_seq = seq[inter[1]:inter[1] + k]
+                                    node_sequence[name] = end_mini_seq
+                                    nodelist[r_id] = r_infos
+                                    # nodelist[r_id] = (inter[0], inter[1])
+                                    # prev_nodelist[r_id] = r_infos
+                                    nodes_for_graph[name] = nodelist
+                                    DG.add_edge(previous_node, name, length=length)
+                                    print("adding edge clear", previous_node, ",", name)
+                                    edge_support[previous_node, name] = []
+                                    edge_support[previous_node, name].append(r_id)
+                                else:
+                                    print("adding edge hope", previous_node, ",", name)
+                                    edge_support[previous_node, name] = []
+                                    edge_support[previous_node, name].append(r_id)
                         #we found an edge from previous_node to name. We only have to add the read(-interval) information
                         else:
                             if DEBUG:
@@ -439,10 +552,11 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                         if DEBUG:
                             print("Adding edge, newnode no similar cycles connecting prevnode, name")
                         DG.add_edge(previous_node, name, length=length)
+                        print("adding edge clear", previous_node, ",", name)
                         edge_support[previous_node, name] = []
                         edge_support[previous_node, name].append(r_id)
-                        if r_id > 1:
-                            topo_graph = list(nx.topological_sort(DG))
+                        #if r_id > 1:
+                            #topo_graph = list(nx.topological_sort(DG))
 
                 # the interval did not repeat during this read
                 else:
@@ -460,7 +574,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                     if not DG.has_edge(previous_node, name):
                         if DEBUG:
                             print("no edge")
-                        if topo_graph.index(previous_node) > topo_graph.index(name):
+                        if True:
+                            """if topo_graph.index(previous_node) > topo_graph.index(name):
                             old_name = name
                             # find alternatives for the node in topo_alternatives
                             topo_alt_result = find_topo_alternative(topo_graph, previous_node, name, topo_alternatives)
@@ -534,7 +649,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                         edge_info.append(r_id)
                                         edge_support[previous_node, name] = edge_info
 
-                        else:
+                        else:"""
                             # update the read information of node name
                             prev_nodelist = nodes_for_graph[name]
 
@@ -552,9 +667,34 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                             length = this_len
                             if DEBUG:
                                 print("Adding edge, not similar to cycles, topo not violated prevnode, name")
-                            DG.add_edge(previous_node, name, length=length)
-                            edge_support[previous_node, name] = []
-                            edge_support[previous_node, name].append(r_id)
+                                DG.add_edge(previous_node, name, length=length)
+                                try:
+                                    topo_sort = nx.topological_sort(DG)
+                                    print(topo_sort[0])
+                                except:
+                                    DG.remove_edge(previous_node, name)
+                                    name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
+                                    if not DG.has_node(name):
+                                        DG.add_node(name)
+                                    nodelist = {}
+                                    r_infos = Read_infos(inter[0], inter[1], True)
+                                    end_mini_seq = seq[inter[1]:inter[1] + k]
+                                    node_sequence[name] = end_mini_seq
+                                    nodelist[r_id] = r_infos
+                                    # nodelist[r_id] = (inter[0], inter[1])
+                                    # prev_nodelist[r_id] = r_infos
+                                    nodes_for_graph[name] = nodelist
+                                    DG.add_edge(previous_node, name, length=length)
+                                    print("adding edge clear", previous_node, ",", name)
+                                    edge_support[previous_node, name] = []
+                                    edge_support[previous_node, name].append(r_id)
+                                else:
+                                    print("adding edge hope", previous_node, ",", name)
+                                    edge_support[previous_node, name] = []
+                                    edge_support[previous_node, name].append(r_id)
+                            #DG.add_edge(previous_node, name, length=length)
+                            #edge_support[previous_node, name] = []
+                            #edge_support[previous_node, name].append(r_id)
                     # TODO: add topological sort and everything after this point
                     # if there is an edge connecting previous_node and name: test if length difference is not higher than delta_len
                     else:
@@ -609,10 +749,11 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                 if DEBUG:
                                     print("delta len < actual diff, adding new node ")
                                 DG.add_edge(previous_node, name, length=this_len)
+                                print("adding edge clear", previous_node, ",", name)
                                 edge_support[previous_node, name] = []
                                 edge_support[previous_node, name].append(r_id)
-                                if r_id > 1:
-                                    topo_graph = list(nx.topological_sort(DG))
+                                #if r_id > 1:
+                                    #topo_graph = list(nx.topological_sort(DG))
                             # if we already know old_node (it is a key in alternative_nodes)
                             else:
                                 alternative_infos_list = alternative_nodes[old_node]
@@ -624,7 +765,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                     node_info = alternatives_filtered[0]
                                     # print("Ninfo",node_info)
                                     name = node_info[0]
-                                    if topo_graph.index(previous_node) > topo_graph.index(name):
+                                    if True:
+                                        """if topo_graph.index(previous_node) > topo_graph.index(name):
                                         old_name = name
                                         # find alternatives for the node in topo_alternatives
                                         topo_alt_result = find_topo_alternative(topo_graph, previous_node, name,
@@ -670,8 +812,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                                 DG.add_edge(previous_node, name, length=length)
                                                 edge_support[previous_node, name] = []
                                                 edge_support[previous_node, name].append(r_id)
-                                            if r_id > 1:
-                                                topo_graph = list(nx.topological_sort(DG))
+                                            #if r_id > 1:
+                                                #topo_graph = list(nx.topological_sort(DG))
                                         else:
                                             length = this_len
                                             name = topo_alt_result
@@ -696,7 +838,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                                 if not r_id in edge_info:
                                                     edge_info.append(r_id)
                                                     edge_support[previous_node, name] = edge_info
-                                    else:
+                                    else:"""
                                         # update the read information of node name
                                         prev_nodelist = nodes_for_graph[name]
                                         r_infos = Read_infos(inter[0], inter[1], True)
@@ -709,7 +851,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                         # if name == '601, 652, 20':
                                         #    print("Adding infosf to the node", name, " : ", prev_nodelist)
                                         if not DG.has_edge(previous_node, name):
-                                            if topo_graph.index(previous_node) > topo_graph.index(name):
+                                            if True:
+                                                """if topo_graph.index(previous_node) > topo_graph.index(name):
                                                 old_name = name
                                                 # find alternatives for the node in topo_alternatives
                                                 topo_alt_result = find_topo_alternative(topo_graph, previous_node, name,
@@ -782,16 +925,41 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                                         if not r_id in edge_info:
                                                             edge_info.append(r_id)
                                                             edge_support[previous_node, name] = edge_info
-                                            else:
+                                            else:"""
                                                 if DG.has_edge(previous_node,name):
                                                     edge_info = edge_support[previous_node, name]
                                                     if not r_id in edge_info:
                                                         edge_info.append(r_id)
                                                         edge_support[previous_node, name] = edge_info
                                                 else:
+                                                    #DG.add_edge(previous_node, name, length=length)
+                                                    #edge_support[previous_node, name] = []
+                                                    #edge_support[previous_node, name].append(r_id)
                                                     DG.add_edge(previous_node, name, length=length)
-                                                    edge_support[previous_node, name] = []
-                                                    edge_support[previous_node, name].append(r_id)
+                                                    try:
+                                                        topo_sort=nx.topological_sort(DG)
+                                                        print(topo_sort[0])
+                                                    except:
+                                                        DG.remove_edge(previous_node, name)
+                                                        name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
+                                                        if not DG.has_node(name):
+                                                            DG.add_node(name)
+                                                        nodelist = {}
+                                                        r_infos = Read_infos(inter[0], inter[1], True)
+                                                        end_mini_seq = seq[inter[1]:inter[1] + k]
+                                                        node_sequence[name] = end_mini_seq
+                                                        nodelist[r_id] = r_infos
+                                                        # nodelist[r_id] = (inter[0], inter[1])
+                                                        # prev_nodelist[r_id] = r_infos
+                                                        nodes_for_graph[name] = nodelist
+                                                        DG.add_edge(previous_node, name, length=length)
+                                                        print("adding edge clear", previous_node, ",", name)
+                                                        edge_support[previous_node, name] = []
+                                                        edge_support[previous_node, name].append(r_id)
+                                                    else:
+                                                        print("adding edge hope", previous_node, ",", name)
+                                                        edge_support[previous_node, name] = []
+                                                        edge_support[previous_node, name].append(r_id)
                                         else:
                                             edge_info = edge_support[previous_node, name]
                                             if not r_id in edge_info:
@@ -828,11 +996,13 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                     # connect the node to the previous one
                                     if DEBUG:
                                         print("768")
+
                                     DG.add_edge(previous_node, name, length=length)
+                                    print("adding edge clear", previous_node, ",", name)
                                     edge_support[previous_node, name] = []
                                     edge_support[previous_node, name].append(r_id)
-                                    if r_id > 1:
-                                        topo_graph = list(nx.topological_sort(DG))
+                                    #if r_id > 1:
+                                     #   topo_graph = list(nx.topological_sort(DG))
                 # keep known_intervals up to date
                 known_intervals[r_id - 1].append((inter[0], name, inter[1]))
                 node_overview_read[r_id - 1].append(name)
@@ -864,12 +1034,14 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                 if DEBUG:
                     print("803")
                 DG.add_edge(previous_node, name, length=length)
+                print("adding edge clear", previous_node, ",", name)
                 edge_support[previous_node, name] = []
                 edge_support[previous_node, name].append(r_id)
-                if r_id > 1:
-                    topo_graph = list(nx.topological_sort(DG))
+                #if r_id > 1:
+                #    topo_graph = list(nx.topological_sort(DG))
             # set the previous node for the next iteration
             previous_node = name
+            print(previous_node)
             previous_end = inter[1]
             # find out whether the current hash has already been added to read_hashs
             if not is_repetative:
@@ -893,6 +1065,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
         # add an edge from name to "t" as name was the last node in the read
         if not DG.has_edge(name, "t"):
             DG.add_edge(name, "t", length=0)
+            print("adding edge clear", name, ",", "t")
             edge_support[name, "t"] = []
             edge_support[name, "t"].append(r_id)
         else:
@@ -902,8 +1075,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                 edge_support[name, "t"] = edge_info
         # print("Finished for read "+str(r_id))
         # print(edge_support[name,"t"])
-        if r_id==1:
-            topo_graph = list(nx.topological_sort(DG))
+        #if r_id==1:
+        #    topo_graph = list(nx.topological_sort(DG))
     # set the node attributes to be nodes_for_graph, very convenient way of solving this
     # print("NFG",nodes_for_graph)
     nx.set_node_attributes(DG, nodes_for_graph, name="reads")
