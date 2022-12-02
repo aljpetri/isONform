@@ -55,7 +55,7 @@ def isONform(data):
                  "--k", str(isONform_algorithm_params["k"]), "--w", str(isONform_algorithm_params["w"]),
                  "--xmin", str(isONform_algorithm_params["xmin"]), "--xmax",
                  str(isONform_algorithm_params["xmax"]),"--delta_len", str(isONform_algorithm_params["delta_len"]),
-                 "--exact", "--parallel", "True"
+                 "--exact", "--parallel", "True", "--merge_sub_isoforms_3",str(isONform_algorithm_params["merge_sub_isoforms_3"]),"--merge_sub_isoforms_5",str(isONform_algorithm_params["merge_sub_isoforms_5"])
                  #"--T", str(isONform_algorithm_params["T"])
                  ], stderr=error_file, stdout=isONform_out_file)
 
@@ -158,9 +158,11 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
     return tmp_work_dir
 PYTHONHASHSEED = 0
 def main(args):
+    print("MERGE?", args.merge_sub_isoforms_3, args.merge_sub_isoforms_5)
     globstart = time()
     directory = args.fastq_folder  # os.fsencode(args.fastq_folder)
     print(directory)
+    print("ARGS",args)
     isONform_location = os.path.dirname(os.path.realpath(__file__))
     if args.split_wrt_batches:
         print("SPLITWRTBATCHES")
@@ -201,7 +203,7 @@ def main(args):
                                                 "exact_instance_limit": args.exact_instance_limit,
                                                 "delta_len": args.delta_len,"--exact": True,
                                                 "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
-                                                "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon,"parallel": True}
+                                                "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon,"parallel": True,"merge_sub_isoforms_3": args.merge_sub_isoforms_3, "merge_sub_isoforms_5": args.merge_sub_isoforms_5}
                 instances.append(
                     (isONform_location, fastq_file_path, outfolder, batch_id, isONform_algorithm_params,cl_id))
         else:
@@ -302,9 +304,9 @@ if __name__ == '__main__':
                                                                             could be to adjust upper interval legnth dynamically to guarantee a certain number of spanning intervals.')
     parser.add_argument('--iso_abundance', type=int, default=1,
                         help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
-    parser.add_argument('--merge_sub_isoforms_3', type=bool, default=True,
+    parser.add_argument('--merge_sub_isoforms_3',  default=True,
                         help='Parameter to determine whether we want to merge sub isoforms (shorter at 3prime end) into bigger isoforms')
-    parser.add_argument('--merge_sub_isoforms_5', type=bool, default=True,
+    parser.add_argument('--merge_sub_isoforms_5',  default=True,
                         help='Parameter to determine whether we want to merge sub isoforms (shorter at 5prime end) into bigger isoforms')
     parser.add_argument('--delta_iso_len_3', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
@@ -314,6 +316,7 @@ if __name__ == '__main__':
                         help='Threshold for isoformGeneration algorithm. Define a reverse complement if identity is over this threshold (default 0.9)')
     args = parser.parse_args()
     print(len(sys.argv))
+    print(args.merge_sub_isoforms_3)
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit()
@@ -324,7 +327,10 @@ if __name__ == '__main__':
     # elif args.paired_minimizers and 'max_seqs' not in args:
     #     print("max_seqs was not specified. Setting max_seqs to 1000")
     #     args.max_seqs = 1000
+    elif 'merge_sub_isoforms_3' not in args:
 
+        parser.print_help()
+        sys.exit()
     if args.set_layers_manually and 'layers' not in args:
         args.layers = 2
 

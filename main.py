@@ -28,6 +28,7 @@ import tracemalloc
 from SimplifyGraph import simplifyGraph,isCyclic
 from modules import create_augmented_reference, help_functions, correct_seqs  # ,align
 from batch_merging import *
+from GraphGenerationOld import *
 
 
 def eprint(*args, **kwargs):
@@ -347,7 +348,25 @@ def add_items(seqs, r_id, p1, p2):
     seqs.append(r_id)
     seqs.append(p1)
     seqs.append(p2)
-
+def find_most_supported_span4(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database, reads, all_intervals, k_size, delta_len):
+    #print("DELTA",delta_len)
+    acc, seq, qual = reads[r_id]
+    for (m2,p2) in m1_curr_spans:
+        relevant_reads = minimizer_combinations_database[m1][m2]
+        to_add = {}
+        if len(relevant_reads)//3 >= 3:
+            to_add[r_id] = (r_id, p1, p2, 0)
+            for relevant_read_id, pos1, pos2 in grouper(relevant_reads, 3): #relevant_reads:
+                if r_id  == relevant_read_id:
+                    continue
+                elif abs((p2-p1)-(pos2-pos1)) < delta_len:
+                    #print("elif")
+                    to_add[relevant_read_id] = (relevant_read_id, pos1, pos2, 0)
+            seqs = array("I")
+            for relev_r_id in to_add:
+                add_items(seqs, to_add[relev_r_id][0], to_add[relev_r_id][1], to_add[relev_r_id][2])
+            all_intervals.append( (p1 + k_size, p2,  len(seqs)//3, seqs) )
+    #return tmp_cnt, read_complexity_cnt
 def find_most_supported_span3(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database, reads, all_intervals, k_size, tmp_cnt, read_complexity_cnt, quality_values_database, already_computed):
     acc, seq, qual = reads[r_id]
     for (m2,p2) in m1_curr_spans:
@@ -593,10 +612,35 @@ def get_qvs(reads):
             tmp_tot_sum += qv
     return quality_values_database
 #PYTHONHASHSEED=0
+"""def filter_intervals(all_intervals_for_graph,delta_len):
+    index_to_delete=[]
+    for id,inter_list in all_intervals_for_graph.items():
+        print(id)
+        for interval in inter_list:
+            this_interval_length=interval[1]-interval[0]
+            print(this_interval_length)
+            other_inters_array=interval[3]
+            print(other_inters_array)
+            read_id = other_inters_array[slice(0, len(other_inters_array),
+                                     3)]  # recover the read id from the array of instances which was delivered with all_intervals_for_graph
+            start_coord = other_inters_array[slice(1, len(other_inters_array),
+                                         3)]  # recover the start coordinate of an interval from the array of instances
+            end_coord = other_inters_array[slice(2, len(other_inters_array), 3)]
+            print("READID",read_id)
+            for i,r_id in enumerate(read_id):
+                len_i=end_coord[i]-start_coord[i]
+                len_diff=abs(len_i-this_interval_length)
+                print("LD",len_diff)
+                if len_diff>delta_len:
+                    index_to_delete.append(i)
+            index_to_delete.sort(reverse=True)
+            print(index_to_delete)
+            for index in index_to_delete"""
 #TODO: several errors in errors/reads_5_9.fq->empty intervals added to graph generation, cleaning does yield error!
 #TODO:simplify graph adds an error to the data that is not in the initial graph!!! see errors/merge/reads_5_4.fq: 3.
 def main(args):
     print("Input: ",args.fastq)
+    print("ARGS",args)
     all_batch_reads_dict={}
     print(args.parallel)
     # start = time()
@@ -777,10 +821,15 @@ def main(args):
                                                                                 minimizer_combinations_database, reads,
                                                                                 all_intervals, k_size, tmp_cnt,
                                                                                 read_complexity_cnt, already_computed)"""
-                        tmp_cnt, read_complexity_cnt = find_most_supported_span3(r_id, m1, p1, not_prev_corrected_spans,
-                                                                                minimizer_combinations_database, reads,
-                                                                                all_intervals, k_size, tmp_cnt,
-                                                                                read_complexity_cnt,quality_values_database, already_computed)
+                        #tmp_cnt, read_complexity_cnt = find_most_supported_span3(r_id, m1, p1, not_prev_corrected_spans,
+                        #                                                        minimizer_combinations_database, reads,
+                        #                                                        all_intervals, k_size, tmp_cnt,
+                        #                                                        read_complexity_cnt,quality_values_database, already_computed)
+                        find_most_supported_span4(r_id, m1, p1, not_prev_corrected_spans,
+                                                                                 minimizer_combinations_database, reads,
+                                                                                 all_intervals, k_size, args.delta_len)
+                        #find_most_supported_span4(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database, reads,
+                        #                          all_intervals, k_size, tmp_cnt, read_complexity_cnt, delta_len)
 
                 # sys.exit()
                 # if args.verbose:
@@ -878,21 +927,34 @@ def main(args):
             #print("Used for GraphGen",", ",k_size,", ",delta_len,", ",read_len_dict,", ",new_all_reads)
             import time
             start_time = time.time()
+
             DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
                 all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
             #DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervalsOld(
             #    all_intervals_for_graph, k_size, delta_len, read_len_dict, new_all_reads)
             print("--- %s seconds ---" % (time.time() - start_time))
-            print(DG.number_of_nodes()," Nodes in our Graph")
+            #print(DG.number_of_nodes()," Nodes in our Graph")
             is_cyclic=isCyclic(DG)
             if is_cyclic:
                 k_size+=1
                 w+=1
                 eprint("The graph has a cycle - critical error")
                 return -1
+        #for id, inter_list in all_intervals_for_graph.items():
+            #print(id)
+        #    for interval in inter_list:
+        #        if id==198 or id==226 or id==251 or id==212:
+        #            print(id,": " ,interval)
         #print("Known intervals")
-        #print(known_intervals)
-        print("Graph built up!")
+        #print("198",known_intervals[197])
+        #print("226",known_intervals[225])
+        #print("211",known_intervals[211])
+        #print("252",known_intervals[251])
+        #for id, value in all_batch_reads_dict.items():
+        #    for other_id,other_val in value.items():
+        #        print(id,": ",other_id,":",other_val[0])
+        #print(all_batch_reads_dict)
+        #print("Graph built up!")
         #draw_Graph(DG)
         #print(list(DG.nodes(data=True)))
         #print(DG.out_edges("s",data=True))
@@ -903,7 +965,8 @@ def main(args):
         #print("out_edges:", out_edges_data)
         #in_edges = DG.in_edges(node, data=True)
         #print("in_edges:", in_edges)
-        simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len,known_intervals)
+        mode="slow"
+        simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len,mode)
         #snapshot2 = tracemalloc.take_snapshot()
         #print(snapshot2)
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
@@ -1016,9 +1079,9 @@ if __name__ == '__main__':
     parser.add_argument('--outfolder', type=str, default=None,
                         help='A fasta file with transcripts that are shared between samples and have perfect illumina support.')
     parser.add_argument('--iso_abundance', type=int,default=1, help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
-    parser.add_argument('--merge_sub_isoforms_3', type=bool, default=True,
+    parser.add_argument('--merge_sub_isoforms_3', default=True,
                         help='Parameter to determine whether we want to merge sub isoforms (shorter at 3prime end) into bigger isoforms')
-    parser.add_argument('--merge_sub_isoforms_5', type=bool, default=True,
+    parser.add_argument('--merge_sub_isoforms_5', default=True,
                         help='Parameter to determine whether we want to merge sub isoforms (shorter at 5prime end) into bigger isoforms')
 
     parser.add_argument('--delta_iso_len_3', type=int, default=30,

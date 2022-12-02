@@ -226,6 +226,7 @@ def actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,m
                                     else:
                                         #print("Else")
                                         # TODO generate consensus and add all infos to longer read id
+                                        #the sequence of infos is longer than the sequence of infos2
                                         if len(infos.sequence) >= len(
                                                 infos2.sequence):
 
@@ -277,7 +278,6 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
     unique_cl_ids = set()
     full_mapping_sum=0
     subfolders = [f.path for f in os.scandir(outdir) if f.is_dir()]
-    #print(subfolders)
     #iterate over all folders in the out directory
     for folder in subfolders:
         #print(file)
@@ -288,7 +288,7 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
         cl_id = fname # file.split('_')
         unique_cl_ids.add(cl_id)
         print(unique_cl_ids)
-        #enter the folder containing all output for each cluster
+    #enter the folder containing all output for each cluster
     for cl_id in unique_cl_ids:
             print("CLID",str(cl_id))
             all_infos_dict = {}
@@ -306,17 +306,12 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
                     tmp_bname = batchfile.split('/')
                     #print(tmp_bname)
                     tmp_bname2=tmp_bname[-1].split('_')
-
                     batch_id=int(tmp_bname2[0])
-
-                    #mkdir_p(out_pattern)
                     #read all files needed to perform the batch merging and store the respective infos into all_infos_dict as well as all_reads_dict
                     read_batch_file(batch_id, all_infos_dict, all_reads_dict, cl_dir)
                     batch_reads[batch_id]=read_spoa_file(batch_id,cl_dir)
-                    #print("BatchReads",batch_reads)
                     batch_mappings[batch_id]=read_mapping_file(batch_id,cl_dir)
                     ingoing_mapping_read_cter += len(batch_mappings[batch_id])
-                    #print("ALL INFOS",all_infos_dict)
             #collect the information so that we have one data structure containing all infos
             for b_id, value in batch_reads.items():
                 all_infos_batch={}
@@ -346,13 +341,9 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
                 for c_id, c_infos in b_infos.items():
                     if not c_infos.merged:
                         nr_reads += len(c_infos.reads)
-                #print("NR_reads in all_infos_dict", nr_reads)
+
                 #write the final output into files
-                #print("AID2",all_infos_dict)
                 write_final_output(all_infos_dict,outdir,iso_abundance,cl_dir,cl_id)
-    #print("FUll mapping sum",full_mapping_sum)
-    #rint("#mappings incoming",ingoing_mapping_read_cter)
-        #shutil.rmtree(batch_id)
 DEBUG=True
 def main():
     #outfolder= "/home/alexanderpetri/isONform_analysis/Paraout_500_cl0"
