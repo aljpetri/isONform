@@ -201,6 +201,7 @@ def compute_equal_reads2(DG,support):
     all_supp=set(support)
     #we iterate as long as still not all support was allocated to a path
     while node_support_left:
+        #print("Node_support_left",node_support_left)
         node = "s"
         #current_node_support = node_support_left
         read=node_support_left.pop()
@@ -213,8 +214,8 @@ def compute_equal_reads2(DG,support):
             out_edges=DG.out_edges(node)
             next_found=False
             for edge in out_edges:
-                #if DEBUG:
-                    #print("edge",edge)
+                if DEBUG:
+                    print("edge",edge)
                 edge_supp = DG[edge[0]][edge[1]]['edge_supp']
                 if read in edge_supp:
                     node=edge[1]
@@ -314,7 +315,7 @@ def run_spoa(reads, spoa_out_file, spoa_path):
 def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_id, max_seqs_to_spoa=200,iso_abundance=1):
     print("Generating the Isoforms")
     mapping = {}
-    consensus_name="spoa"+str(batch_id)+".fastq"
+    consensus_name="spoa"+str(batch_id)+"merged.fasta"
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
     seq_counter=0
     mapping_cter = 0
@@ -365,8 +366,8 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
     #print("Mapping has length "+str(len(mapping)))
 
         #print("Mapping",mapping)
-        mapping_name="mapping_"+str(batch_id)+".txt"
-        mappingfile = open(os.path.join(outfolder, mapping_name), "w")
+    mapping_name="mapping"+str(batch_id)+".txt"
+    mappingfile = open(os.path.join(outfolder, mapping_name), "w")
         #print(mapping)
     for id, readlist in mapping.items():
 
@@ -540,7 +541,7 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
     miss_match_length = 0
     alignment_len = 0
     # print("Now we are parsing....")
-    # print(cigar_tuples)
+    #print(cigar_tuples)
     too_long_indel = False
     three_prime=True
     five_prime=True
@@ -558,24 +559,25 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
             miss_match_length += cig_len
             # we also want to make sure that we do not have too large internal sequence differences
             if cig_len > delta_len:
-                if i == 0:
-                    if merge_sub_isoforms_5:
+                if merge_sub_isoforms_5:
+                    if this_start_pos + cig_len<delta_iso_len_5:
                         if cig_len<delta_iso_len_5:
                             five_prime=True
                         else:
                             five_prime=False
-                elif i == (len(cigar_tuples)-1):
-                    if merge_sub_isoforms_3:
-                        if this_start_pos > (overall_len- delta_iso_len_3):
-                            three_prime=True
-                        else:
-                            three_prime=False
+                #elif i == (len(cigar_tuples)-1):
                 elif merge_sub_isoforms_3:
-                    if this_start_pos > (overall_len - delta_iso_len_3):
-                        three_prime = True
+                    if this_start_pos > (overall_len- delta_iso_len_3):
+                        three_prime=True
                     else:
-                        three_prime = False
+                        three_prime=False
+                #elif merge_sub_isoforms_3:
+                #    if this_start_pos > (overall_len - delta_iso_len_3):
+                #        three_prime = True
+                #    else:
+                #        three_prime = False
                 else:
+                    print("no pop due to 3' and 5' both False")
                     return False
     #print("Tuples",len(cigar_tuples),"max_pos",max_pos)
     diversity = (miss_match_length / alignment_len)
@@ -584,10 +586,12 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
     #print("3'",three_prime," 5'",five_prime)
 
     print("diversity", diversity, "mod_div", mod_div_rate)
-    if diversity <= mod_div_rate and three_prime and five_prime:  # delta_perc:
+    diversity_bool=diversity <= mod_div_rate
+    if diversity_bool and three_prime and five_prime:  # delta_perc:
+        print("Div:",diversity_bool,"3' ",three_prime," 5' ",five_prime)
         return True
     else:
-        # print("no pop due to diversity")
+        print("no pop due to diversity")
         return False
 def get_overall_alignment_len(cigar_tuples):
     overall_len=0
@@ -604,7 +608,7 @@ def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,me
     #print(cigar_tuples)
     #print(overall_len)
     good_to_pop = parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len)
-    #print(good_to_pop)
+    print(good_to_pop)
     return good_to_pop
 
 
@@ -670,7 +674,8 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                         # if equality_2 > 0.8:
                     if True:
                         similarity_file.write("{0} subisoform of {1} indicated by {2}\n".format(id2, id, equality_2))
-                        if id2 not in consensus_map and id not in consensus_map:
+                        #if both ids are not in consensus_map yet (i.e. both consensuses were not merged yet into another consensus)
+                        if id not in consensus_map and id2 not in merged_dict:
                             print(id ,"and ",id2," not in ",consensus_map)
                             consensuses=generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,called_consensuses)
                         #print(consensuses)
@@ -700,7 +705,8 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                                 merged_consensuses.add(id)
                                 merged_consensuses.add(id2)
                                 consensus_map[id2]=id
-                        elif id2 in merged_dict and id not in consensus_map:
+                                print(consensus_map)
+                        elif id2 in merged_dict:
                             id_list_2 = []
                             id_list_2.append(id2)
                             for idee in merged_dict[id2].otherIDs:
@@ -728,6 +734,7 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                                     merged_dict.pop(id2)
                                 for id2_entry in id_list_2:
                                     consensus_map[id2_entry] = id
+                                    print(consensus_map)
                         print("MERGED",merged_dict)
                 #if DEBUG:
                 #    print("Equality of ",id," vs ",id2,": ",equality_1)
@@ -741,8 +748,12 @@ Wrapper method used for the isoform generation
 def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,delta_iso_len_3,delta_iso_len_5,iso_abundance,max_seqs_to_spoa=200):
     #print("s", DG.nodes["s"]['reads'])
     #print("t", DG.nodes["t"]['reads'])
+    #print("Importante")
+    #print(merge_sub_isoforms_3)
+    #print(merge_sub_isoforms_5)
     equal_reads,isoform_paths=compute_equal_reads2(DG,reads)
     equal_reads_name='equal_reads_'+str(batch_id)+'.txt'
+    #print("EQUALS",equal_reads)
     #print("s",DG.nodes["s"]['reads'])
     #print("t",DG.nodes["t"]['reads'])
     with open(os.path.join(outfolder, equal_reads_name), 'wb') as file:
@@ -755,7 +766,11 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
         #old_outfolder=os.path.join(outfolder,"out")
     #calculate_isoform_similarity(equal_reads,work_dir,isoform_paths,outfolder,delta,delta_len,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,all_reads,max_seqs_to_spoa,delta_iso_len_3=0,delta_iso_len_5=0)
     #generate_isoform_using_spoa(equal_reads,all_reads, work_dir,outfolder,batch_id, max_seqs_to_spoa,iso_abundance)
-    if merge_sub_isoforms_5 or merge_sub_isoforms_3:
+    #print(merge_sub_isoforms_3)
+    merge_sub_isos_5=(merge_sub_isoforms_5=='True')
+    merge_sub_isos_3 = (merge_sub_isoforms_3 == 'True')
+    #print(merge_sub_isoforms_5)
+    if merge_sub_isos_5 or merge_sub_isos_3:
         print("MergingTrue")
         #generate_isoform_using_spoa(equal_reads, all_reads, work_dir, old_outfolder, batch_id, max_seqs_to_spoa,
         #                            iso_abundance)
@@ -767,7 +782,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
         generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance)
 
 
-DEBUG=True
+DEBUG=False
 
 def main():
     outfolder="100kSIRV/20722_abundance2_par/22"
@@ -789,12 +804,13 @@ def main():
     delta=0.10
     delta_len=5
 
-    merge_sub_isoforms_3=True
-    merge_sub_isoforms_5 = True
+    #merge_sub_isoforms_3=True
+    #merge_sub_isoforms_5 = True
     delta_iso_len_3=30
     delta_iso_len_5 = 50
     max_seqs_to_spoa=200
     iso_abundance=1
+
     if merge_sub_isoforms_5 or merge_sub_isoforms_3:
         merged_dict,merged_consensuses,called_consensuses,consensus_map = calculate_isoform_similarity(equal_reads, work_dir, isoform_paths, outfolder, delta, delta_len, batch_id,
                                  merge_sub_isoforms_3, merge_sub_isoforms_5, all_reads, max_seqs_to_spoa,
