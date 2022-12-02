@@ -17,6 +17,7 @@
 4. `parasail`
 5. `edlib`
 6. `pyinstrument`
+7. `namedtuple`
 
 
 ### Installation guide
