@@ -1498,7 +1498,7 @@ INPUT:      DG:         our directed graph
             k_size:     the length of our k_mers
 OUTPUT: The simplified graph.
 """
-def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,mode):
+def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,slowmode):
 
     not_viable_global=set()
     not_viable_multibubble = set()
@@ -1529,7 +1529,8 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,mode):
     #if id == 198 or id == 226 or id == 251 or id == 212:
     #print("ERD",equal_reads_dict)
     #changed_reads=[]
-    if mode=="slow":
+    print("SLOW",slowmode)
+    if slowmode:
         pop_threshold=1
     else:
         pop_threshold = max(int(initial_edge_nr / 100),1)

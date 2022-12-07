@@ -966,7 +966,7 @@ def main(args):
         #print("out_edges:", out_edges_data)
         #in_edges = DG.in_edges(node, data=True)
         #print("in_edges:", in_edges)
-        mode="slow"
+        mode=args.slow
         simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len,mode)
         #snapshot2 = tracemalloc.take_snapshot()
         #print(snapshot2)
@@ -1080,9 +1080,9 @@ if __name__ == '__main__':
     parser.add_argument('--outfolder', type=str, default=None,
                         help='A fasta file with transcripts that are shared between samples and have perfect illumina support.')
     parser.add_argument('--iso_abundance', type=int,default=1, help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
-    parser.add_argument('--merge_sub_isoforms_3', default=True,
+    parser.add_argument('--merge_sub_isoforms_3', action='store_true',
                         help='Parameter to determine whether we want to merge sub isoforms (shorter at 3prime end) into bigger isoforms')
-    parser.add_argument('--merge_sub_isoforms_5', default=True,
+    parser.add_argument('--merge_sub_isoforms_5', action='store_true',
                         help='Parameter to determine whether we want to merge sub isoforms (shorter at 5prime end) into bigger isoforms')
 
     parser.add_argument('--delta_iso_len_3', type=int, default=30,
@@ -1092,7 +1092,7 @@ if __name__ == '__main__':
     parser.add_argument('--parallel',type=bool,default=False,help='indicates whether we run the parallelization wrapper script')
     parser.add_argument('--rc_identity_threshold', type=float, default=0.9,
                         help='Threshold for isoformGeneration algorithm. Define a reverse complement if identity is over this threshold (default 0.9)')
-
+    parser.add_argument('--slow',action="store_true", help='use the slow mode for the simplification of the graph (bubble popping), slow mode: every bubble gets popped')
     # parser.set_defaults(which='main')
     args = parser.parse_args()
 

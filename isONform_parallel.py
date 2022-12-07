@@ -55,7 +55,7 @@ def isONform(data):
                  "--k", str(isONform_algorithm_params["k"]), "--w", str(isONform_algorithm_params["w"]),
                  "--xmin", str(isONform_algorithm_params["xmin"]), "--xmax",
                  str(isONform_algorithm_params["xmax"]),"--delta_len", str(isONform_algorithm_params["delta_len"]),
-                 "--exact", "--parallel", "True", "--merge_sub_isoforms_3",str(isONform_algorithm_params["merge_sub_isoforms_3"]),"--merge_sub_isoforms_5",str(isONform_algorithm_params["merge_sub_isoforms_5"])
+                 "--exact", "--parallel", "True", "--merge_sub_isoforms_3","--merge_sub_isoforms_5"
                  #"--T", str(isONform_algorithm_params["T"])
                  ], stderr=error_file, stdout=isONform_out_file)
 
@@ -203,7 +203,7 @@ def main(args):
                                                 "exact_instance_limit": args.exact_instance_limit,
                                                 "delta_len": args.delta_len,"--exact": True,
                                                 "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
-                                                "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon,"parallel": True,"merge_sub_isoforms_3": args.merge_sub_isoforms_3, "merge_sub_isoforms_5": args.merge_sub_isoforms_5}
+                                                "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon,"parallel": True,"merge_sub_isoforms_3": args.merge_sub_isoforms_3, "merge_sub_isoforms_5": args.merge_sub_isoforms_5, "--slow":True }
                 instances.append(
                     (isONform_location, fastq_file_path, outfolder, batch_id, isONform_algorithm_params,cl_id))
         else:
@@ -314,6 +314,8 @@ if __name__ == '__main__':
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--rc_identity_threshold', type=float, default=0.9,
                         help='Threshold for isoformGeneration algorithm. Define a reverse complement if identity is over this threshold (default 0.9)')
+    parser.add_argument('--slow', action="store_true",
+                        help='use the slow mode for the simplification of the graph (bubble popping), slow mode: every bubble gets popped')
     args = parser.parse_args()
     print(len(sys.argv))
     print(args.merge_sub_isoforms_3)
