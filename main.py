@@ -694,6 +694,7 @@ def main(args):
         max_batchid=batch_id
         if args.parallel:
             batchname=str(p_batch_id)+"_batchfile.fa"
+            print("BATCHNAME",batchname)
         else:
             skipfilename="skip"+str(batch_id)+".fa"
             batchname = str(batch_id) + "_batchfile.fa"
@@ -950,9 +951,9 @@ def main(args):
         #print("226",known_intervals[225])
         #print("211",known_intervals[211])
         #print("252",known_intervals[251])
-        #for id, value in all_batch_reads_dict.items():
-        #    for other_id,other_val in value.items():
-        #        print(id,": ",other_id,":",other_val[0])
+        for id, value in all_batch_reads_dict.items():
+            for other_id,other_val in value.items():
+                print(id,": ",other_id,":",other_val[0])
         #print(all_batch_reads_dict)
         #print("Graph built up!")
         #draw_Graph(DG)
@@ -977,7 +978,7 @@ def main(args):
         #print("hello")
         #print("FoundCycles:",isCyclic(DG))
         #if not (possible_cycles):
-        delta = 0.10
+        delta = 0.15
         print("Starting to generate Isoforms")
         #graphname="DG_"+str(batch_id)+".txt"
         #with open(graphname, 'wb') as graphfile:

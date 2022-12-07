@@ -538,10 +538,11 @@ def generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,c
     return consensuses
     #print(mapping)
 def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len):
+    print("Overall_length",overall_len)
     miss_match_length = 0
     alignment_len = 0
     # print("Now we are parsing....")
-    #print(cigar_tuples)
+    print(cigar_tuples)
     too_long_indel = False
     three_prime=True
     five_prime=True
@@ -559,34 +560,46 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
             miss_match_length += cig_len
             # we also want to make sure that we do not have too large internal sequence differences
             if cig_len > delta_len:
+                #if the user wants us to merge the 5'end
                 if merge_sub_isoforms_5:
-                    if this_start_pos + cig_len<delta_iso_len_5:
-                        if cig_len<delta_iso_len_5:
+                    #make sure that the startposition of the cigar tuple is in delta_iso_len
+                    if this_start_pos <delta_iso_len_5:
+                        startpos=this_start_pos+cig_len
+                        print("startpos",startpos)
+                        #we only want to merge if the cigar tuple does not span into the read by more than delta_len + delta_iso_len_5 base pairs
+                        if this_start_pos+cig_len<delta_iso_len_5+delta_len:
                             five_prime=True
                         else:
                             five_prime=False
-                #elif i == (len(cigar_tuples)-1):
-                elif merge_sub_isoforms_3:
-                    if this_start_pos > (overall_len- delta_iso_len_3):
+
+                    else:
+                        print("no pop due to  5' False")
+                        return False
+                #the user want us to merge the 3' end
+                if merge_sub_isoforms_3:
+                    #we now want that the cigar string starts at most delta_iso_len+delta_len base pairs before the end of the read
+                    if this_start_pos > ((overall_len- delta_iso_len_3)-delta_len):
                         three_prime=True
                     else:
                         three_prime=False
+                #the user wanted us to neither merge at 3' nor at 5', but we found a cigar tuple entry longer than delta_len indicating a missmatch
+                return False
                 #elif merge_sub_isoforms_3:
                 #    if this_start_pos > (overall_len - delta_iso_len_3):
                 #        three_prime = True
                 #    else:
                 #        three_prime = False
-                else:
-                    print("no pop due to 3' and 5' both False")
-                    return False
-    #print("Tuples",len(cigar_tuples),"max_pos",max_pos)
+
+    #We calculate the diversity of our alignment
     diversity = (miss_match_length / alignment_len)
     max_bp_diff = max(delta * alignment_len, delta_len)
     mod_div_rate = max_bp_diff / alignment_len
     #print("3'",three_prime," 5'",five_prime)
 
     print("diversity", diversity, "mod_div", mod_div_rate)
+    #we additionally make sure that the two consensuses are not too diverse
     diversity_bool=diversity <= mod_div_rate
+    #if any of the three parameters we look at tells us not to merge we do not merge
     if diversity_bool and three_prime and five_prime:  # delta_perc:
         print("Div:",diversity_bool,"3' ",three_prime," 5' ",five_prime)
         return True
@@ -753,7 +766,8 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
     #print(merge_sub_isoforms_5)
     equal_reads,isoform_paths=compute_equal_reads2(DG,reads)
     equal_reads_name='equal_reads_'+str(batch_id)+'.txt'
-    #print("EQUALS",equal_reads)
+    print("EQUALS",equal_reads)
+    print("BID",batch_id)
     #print("s",DG.nodes["s"]['reads'])
     #print("t",DG.nodes["t"]['reads'])
     with open(os.path.join(outfolder, equal_reads_name), 'wb') as file:
@@ -804,8 +818,8 @@ def main():
     delta=0.10
     delta_len=5
 
-    #merge_sub_isoforms_3=True
-    #merge_sub_isoforms_5 = True
+    merge_sub_isoforms_3=True
+    merge_sub_isoforms_5 = True
     delta_iso_len_3=30
     delta_iso_len_5 = 50
     max_seqs_to_spoa=200

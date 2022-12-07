@@ -304,9 +304,9 @@ if __name__ == '__main__':
                                                                             could be to adjust upper interval legnth dynamically to guarantee a certain number of spanning intervals.')
     parser.add_argument('--iso_abundance', type=int, default=1,
                         help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
-    parser.add_argument('--merge_sub_isoforms_3',  default=True,
+    parser.add_argument('--merge_sub_isoforms_3',  action=argparse.BooleanOptionalAction,
                         help='Parameter to determine whether we want to merge sub isoforms (shorter at 3prime end) into bigger isoforms')
-    parser.add_argument('--merge_sub_isoforms_5',  default=True,
+    parser.add_argument('--merge_sub_isoforms_5',  action=argparse.BooleanOptionalAction,
                         help='Parameter to determine whether we want to merge sub isoforms (shorter at 5prime end) into bigger isoforms')
     parser.add_argument('--delta_iso_len_3', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
