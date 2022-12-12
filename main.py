@@ -684,7 +684,8 @@ def main(args):
     #print("AR",all_reads)
     max_batchid=0
     if args.parallel:
-        tmp_filename=args.fastq.split("_")
+        filename=args.fastq.split("/")[-1]
+        tmp_filename=filename.split("_")
         tmp_lastpart=tmp_filename[-1].split(".")
         p_batch_id=tmp_lastpart[0]
         skipfilename="skip"+p_batch_id+".fa"
@@ -983,9 +984,9 @@ def main(args):
         #graphname="DG_"+str(batch_id)+".txt"
         #with open(graphname, 'wb') as graphfile:
         #    graphfile.write(pickle.dumps(DG))
-        all_reads_name="all_reads_"+str(batch_id)+".txt"
-        with open(os.path.join(outfolder, all_reads_name), 'wb') as file:
-            file.write(pickle.dumps(all_reads))
+        #all_reads_name="all_reads_"+str(batch_id)+".txt"
+        #with open(os.path.join(outfolder, all_reads_name), 'wb') as file:
+        #    file.write(pickle.dumps(all_reads))
         #draw_Graph(DG)
         if args.parallel:
             batch_id=p_batch_id
@@ -1020,8 +1021,8 @@ def main(args):
         # for index in opt_indicies:
         #    print(type(index))
         #    print(index)
-    with open(os.path.join(outfolder, "all_batches_reads.txt"), 'wb') as file:
-        file.write(pickle.dumps(all_batch_reads_dict))
+    #with open(os.path.join(outfolder, "all_batches_reads.txt"), 'wb') as file:
+    #    file.write(pickle.dumps(all_batch_reads_dict))
     print("Starting batch merging")
     #if max_batchid>0:
     if not args.parallel:

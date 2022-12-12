@@ -36,8 +36,7 @@ echo "Running isONclust"
 echo
 
 isONclust  --t $num_cores  --ont --fastq $raw_reads \
-             --outfolder $outfolder/clustering --w 12 --k 10 --min_shared 3
-
+             --outfolder $outfolder/clustering  --k 8 --w 9 --min_shared 3 #old k=10 oldw=12
 isONclust write_fastq --N 1 --clusters $outfolder/clustering/final_clusters.tsv \
                       --fastq $raw_reads --outfolder  $outfolder/clustering/fastq_files
 echo

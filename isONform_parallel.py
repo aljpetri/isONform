@@ -203,7 +203,8 @@ def main(args):
                                                 "exact_instance_limit": args.exact_instance_limit,
                                                 "delta_len": args.delta_len,"--exact": True,
                                                 "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
-                                                "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon,"parallel": True,"merge_sub_isoforms_3": args.merge_sub_isoforms_3, "merge_sub_isoforms_5": args.merge_sub_isoforms_5, "--slow":True }
+                                                "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon,"parallel": True,"merge_sub_isoforms_3": args.merge_sub_isoforms_3, "merge_sub_isoforms_5": args.merge_sub_isoforms_5, "--slow":True, "--delta_iso_len_3": args.delta_iso_len_3,
+                                             "--delta_iso_len_5": args.delta_iso_len_5}
                 instances.append(
                     (isONform_location, fastq_file_path, outfolder, batch_id, isONform_algorithm_params,cl_id))
         else:

@@ -14,7 +14,25 @@ from pyinstrument import Profiler
 """Helper function used to plot the graph. Taken from GraphGeneration.
     INPUT: DG   Directed Graph to plot
 """
-#TODO: Add delta len again!
+
+
+#Implemented using chatGPT
+def cycle_finder(DG, start_node):
+    visited = set()
+    path = [start_node]
+    while len(path) > 0:
+        current_node = path.pop(0)
+        visited.add(current_node)
+        for neighbor in DG.neighbors(current_node):
+            if neighbor in visited:
+                # We have found a cycle!
+                return True
+            else:
+                path.append(neighbor)
+    # No cycle was found
+    return False
+    
+    
 #Implemented according to https://www.geeksforgeeks.org/detect-cycle-in-a-graph/
 def isCyclicUtil(DG, nodes_dict, node):
     # Mark current node as visited and
@@ -22,10 +40,6 @@ def isCyclicUtil(DG, nodes_dict, node):
     CNode = namedtuple('CNode', 'visited recStack')
     cnode = CNode(True, True)
     nodes_dict[node]=cnode
-    #print(nodes_dict)
-    #nodes_dict[node].recStack=True
-     #visited[v] = True
-    #recStack[v] = True
 
     # Recur for all neighbours
     # if any neighbour is visited and in
@@ -40,13 +54,22 @@ def isCyclicUtil(DG, nodes_dict, node):
             #print(neighbour)
             return True
 
-    # The node needs to be poped from
+    # The node needs to be popped from
     # recursion stack before function ends
     prev_visited=nodes_dict[node].visited
     nodes_dict[node] = CNode(prev_visited,False)
     return False
 
-
+def isCyclic2(DG,thisnode):
+    nodes = DG.nodes
+    nodes_dict = {}
+    CNode = namedtuple('CNode', 'visited recStack', defaults=(False, False))
+    cnode = CNode(False, False)
+    for node in nodes:
+        nodes_dict[node] = cnode
+    if isCyclicUtil(DG,nodes_dict,thisnode) == True:
+        return True
+    return False
 """Helper method used to detect cycles in our graph:
 INPUT: DG       our directed Graph
 OUTPUT: iscyclic    A boolean value indicating whether a cycle was found
@@ -1632,15 +1655,6 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size,delta_len,slowmod
                         print("NEW",all_paths)"""
                     if not all_paths:
                         combiset= {combination[0],combination[1]}
-                        #print("NO ALLPATHS found")
-                        #for r_id in combination[2]:
-                        #    print("Difference",combiset.difference(all_paths_s_to_t[r_id]))
-                        #not_viable_global.add(combination)
-            #print("FINDPATHS ended")
-            #if DEBUG:
-                #print("all_paths:", all_paths,"len",len(all_paths))
-                #for path in all_paths:
-                    #print(path[0], path[1], path[2])
             initial_all_paths=len(all_paths)
             #if DEBUG:
                 #print("initial_all_paths", initial_all_paths)

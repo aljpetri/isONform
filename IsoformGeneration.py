@@ -565,7 +565,7 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
                     #make sure that the startposition of the cigar tuple is in delta_iso_len
                     if this_start_pos <delta_iso_len_5:
                         startpos=this_start_pos+cig_len
-                        print("startpos",startpos)
+                        #print("startpos",startpos)
                         #we only want to merge if the cigar tuple does not span into the read by more than delta_len + delta_iso_len_5 base pairs
                         if this_start_pos+cig_len<delta_iso_len_5+delta_len:
                             five_prime=True
@@ -621,7 +621,7 @@ def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,me
     #print(cigar_tuples)
     #print(overall_len)
     good_to_pop = parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len)
-    print(good_to_pop)
+    #print(good_to_pop)
     return good_to_pop
 
 
@@ -659,16 +659,16 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
     #consensus_name = "inter_spoa" + str(batch_id) + ".fa"
     called_consensuses={}
     #consensus_file_inter = open(os.path.join(outfolder, consensus_name), 'w')
-    eq_file_name="similarity_batch_"+str(batch_id)+".txt"
-    path_file_name="path_"+str(batch_id)+".txt"
-    similarity_file = open(os.path.join(outfolder, eq_file_name), 'w')
-    path_file = open(os.path.join(outfolder, path_file_name), "w")
+    #eq_file_name="similarity_batch_"+str(batch_id)+".txt"
+    #path_file_name="path_"+str(batch_id)+".txt"
+    #similarity_file = open(os.path.join(outfolder, eq_file_name), 'w')
+    #path_file = open(os.path.join(outfolder, path_file_name), "w")
     consensus_map = {}
     #merged consensuses holds all ids for which a merge was done
     merged_consensuses=set()
     for id, path in isoform_paths.items():
         path_set=set(path)
-        path_file.write("{0}: {1}\n".format(id, path))
+        #path_file.write("{0}: {1}\n".format(id, path))
         l1 = len(path)
         if DEBUG:
             print(id, ": ", path)
@@ -686,16 +686,16 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                         print("combi ",id,", ",id2,", eq2: ",equality_2,"\n")
                         # if equality_2 > 0.8:
                     if True:
-                        similarity_file.write("{0} subisoform of {1} indicated by {2}\n".format(id2, id, equality_2))
+                        #similarity_file.write("{0} subisoform of {1} indicated by {2}\n".format(id2, id, equality_2))
                         #if both ids are not in consensus_map yet (i.e. both consensuses were not merged yet into another consensus)
                         if id not in consensus_map and id2 not in merged_dict:
-                            print(id ,"and ",id2," not in ",consensus_map)
+                            #print(id ,"and ",id2," not in ",consensus_map)
                             consensuses=generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,called_consensuses)
                         #print(consensuses)
                             consensus1=consensuses[id]
                             consensus2=consensuses[id2]
                             merge_consensuses=align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5)
-                            print("WEMERGE?",merge_consensuses)
+                            #print("WEMERGE?",merge_consensuses)
                         #if we do not merge the consensuses, we add them to called_consensuses to be able to retreive them if needed
                             if not merge_consensuses:
                                 called_consensuses[id]=consensus1
@@ -718,7 +718,7 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                                 merged_consensuses.add(id)
                                 merged_consensuses.add(id2)
                                 consensus_map[id2]=id
-                                print(consensus_map)
+                                #print(consensus_map)
                         elif id2 in merged_dict:
                             id_list_2 = []
                             id_list_2.append(id2)
@@ -747,12 +747,12 @@ def calculate_isoform_similarity(curr_best_seqs,work_dir,isoform_paths,outfolder
                                     merged_dict.pop(id2)
                                 for id2_entry in id_list_2:
                                     consensus_map[id2_entry] = id
-                                    print(consensus_map)
-                        print("MERGED",merged_dict)
+                                    #print(consensus_map)
+                        #print("MERGED",merged_dict)
                 #if DEBUG:
                 #    print("Equality of ",id," vs ",id2,": ",equality_1)
-                similarity_file.write("{0},{1}: {2} \n".format(id, id2,equality_1))
-    path_file.close()
+                #similarity_file.write("{0},{1}: {2} \n".format(id, id2,equality_1))
+    #path_file.close()
     return merged_dict, merged_consensuses, called_consensuses, consensus_map
 
 """
@@ -766,25 +766,25 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
     #print(merge_sub_isoforms_5)
     equal_reads,isoform_paths=compute_equal_reads2(DG,reads)
     equal_reads_name='equal_reads_'+str(batch_id)+'.txt'
-    print("EQUALS",equal_reads)
-    print("BID",batch_id)
+    #print("EQUALS",equal_reads)
+    #print("BID",batch_id)
     #print("s",DG.nodes["s"]['reads'])
     #print("t",DG.nodes["t"]['reads'])
-    with open(os.path.join(outfolder, equal_reads_name), 'wb') as file:
-        file.write(pickle.dumps(equal_reads))
-    isoform_paths_name='isoform_paths_'+str(batch_id)+'.txt'
-    with open(os.path.join(outfolder, isoform_paths_name), 'wb') as file:
-        file.write(pickle.dumps(isoform_paths))
-    with open('all_reads.txt', 'wb') as file:
-        file.write(pickle.dumps(all_reads))
+    #with open(os.path.join(outfolder, equal_reads_name), 'wb') as file:
+    #    file.write(pickle.dumps(equal_reads))
+    #isoform_paths_name='isoform_paths_'+str(batch_id)+'.txt'
+    #with open(os.path.join(outfolder, isoform_paths_name), 'wb') as file:
+    #    file.write(pickle.dumps(isoform_paths))
+    #with open('all_reads.txt', 'wb') as file:
+    #    file.write(pickle.dumps(all_reads))
         #old_outfolder=os.path.join(outfolder,"out")
     #calculate_isoform_similarity(equal_reads,work_dir,isoform_paths,outfolder,delta,delta_len,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,all_reads,max_seqs_to_spoa,delta_iso_len_3=0,delta_iso_len_5=0)
     #generate_isoform_using_spoa(equal_reads,all_reads, work_dir,outfolder,batch_id, max_seqs_to_spoa,iso_abundance)
     #print(merge_sub_isoforms_3)
-    merge_sub_isos_5=(merge_sub_isoforms_5=='True')
-    merge_sub_isos_3 = (merge_sub_isoforms_3 == 'True')
-    #print(merge_sub_isoforms_5)
-    if merge_sub_isos_5 or merge_sub_isos_3:
+    #merge_sub_isos_5=(merge_sub_isoforms_5=='True')
+    #merge_sub_isos_3 = (merge_sub_isoforms_3 == 'True')
+    #print("DO WE MERGE?",merge_sub_isoforms_5,merge_sub_isoforms_3)
+    if merge_sub_isoforms_5 or merge_sub_isoforms_3:
         print("MergingTrue")
         #generate_isoform_using_spoa(equal_reads, all_reads, work_dir, old_outfolder, batch_id, max_seqs_to_spoa,
         #                            iso_abundance)

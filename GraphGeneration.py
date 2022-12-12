@@ -326,6 +326,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
         ########################################
         ######## KRISTOFFER START ##############
         ########################################
+        print("READ",r_id)
         #print(r_id, intervals_for_read)
         if DEBUG:
             print('CURR READ:', r_id)
@@ -333,10 +334,10 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
         #print()
         #print(DG.edges(data=True))
         #print(list(nx.topological_sort(DG)))
-        if len(DG) > 2:  # we have added at least one read to the graph already
-            lis_solution = find_LIS(DG, r_id, intervals_for_read,k,delta_len)
-        else:
-            lis_solution=[]
+        #if len(DG) > 2:  # we have added at least one read to the graph already
+        #    lis_solution = find_LIS(DG, r_id, intervals_for_read,k,delta_len)
+        #else:
+        #    lis_solution=[]
         ########################################
         ######## KRISTOFFER END   ##############
         ########################################
@@ -350,6 +351,10 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
         # the name of each node is defined to be readID, startminimizerpos , endminimizerpos
         # iterate over all intervals, which are in the solution of a certain read
         for pos,inter in enumerate(intervals_for_read):
+            #if isCyclic(DG):
+            #    print("ERROR-CYCLIC")
+            #    print(DG.edges())
+            #    sys.exit()
             if DEBUG:
                 print("PRNode",previous_node)
             prev_nodelist = {}
@@ -365,12 +370,12 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
             else:
                 is_repetative = False
             # access prior_read_infos, if the same interval was already found in previous reads
-            lis_sol_occ=[x for x in lis_solution if x[0]==pos]
+            #lis_sol_occ=[x for x in lis_solution if x[0]==pos]
             #print("LSO",lis_sol_occ)
             if info_tuple in prior_read_infos:
                 if DEBUG:
-                    for id,prior_info in prior_read_infos.items():
-                        print(id,prior_info)
+                    #for id,prior_info in prior_read_infos.items():
+                        #print(id,prior_info)
                     print("in prior read infos")
                 # if the interval repeats during this read
                 if is_repetative:
@@ -406,7 +411,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                     name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
                                     if not DG.has_node(name):
                                         DG.add_node(name)
-
                                     else:
                                         if DEBUG:
                                             print("Node", name, " already present")
@@ -467,7 +471,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                         if not r_id in edge_info:
                                             edge_info.append(r_id)
                                             edge_support[previous_node, name] = edge_info
-
                             else:"""
                                 # update the read information of node name
                             prev_nodelist = nodes_for_graph[name]
@@ -487,10 +490,18 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                             if DEBUG:
                                 print("Adding edge, foundnode, topo order not violated  for prevnode, name")
                             DG.add_edge(previous_node, name, length=length)
-                            try:
-                                topo_sort=nx.topological_sort(DG)
-                                #print(topo_sort[0])
-                            except:
+                            cycle_added = isCyclic(DG)
+                            cycle_added2 = cycle_finder(DG,previous_node)
+                            cycle_added3 = cycle_finder(DG,name)
+                            #if cycle_added != cycle_added2 and cycle_added != cycle_added3:
+                            #	print(cycle_added,cycle_added2,cycle_added3)
+                            #	sys.exit(1)
+                            #cycle_added =isCyclic2(DG,name)
+                            #try:
+                            #    topo_sort=nx.topological_sort(DG)
+                            #    #print(topo_sort[0])
+                            #except:
+                            if cycle_added2:
                                 DG.remove_edge(previous_node, name)
                                 name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
                                 if not DG.has_node(name):
@@ -504,7 +515,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                 # prev_nodelist[r_id] = r_infos
                                 nodes_for_graph[name] = nodelist
                                 DG.add_edge(previous_node, name, length=length)
-                                #print("adding edge clear", previous_node, ",", name)
+                                print("adding edge clear509", previous_node, ",", name)
                                 edge_support[previous_node, name] = []
                                 edge_support[previous_node, name].append(r_id)
                             else:
@@ -594,7 +605,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                 length = this_len
                                 # add new node that either is named 'name' or 'name1..1'
                                 name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
-
                                 if not DG.has_node(name):
                                     DG.add_node(name)
                                 else:
@@ -633,7 +643,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                     edge_support[previous_node, name].append(r_id)
                                 if r_id > 1:
                                     topo_graph = list(nx.topological_sort(DG))
-
                             else:
                                 length = this_len
                                 name = topo_alt_result
@@ -658,7 +667,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                     if not r_id in edge_info:
                                         edge_info.append(r_id)
                                         edge_support[previous_node, name] = edge_info
-
                         else:"""
                             # update the read information of node name
                             prev_nodelist = nodes_for_graph[name]
@@ -679,17 +687,22 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                             if True:
                                 #print("Adding edge, not similar to cycles, topo not violated prevnode, name")
                                 DG.add_edge(previous_node, name, length=length)
-                                if DEBUG:
-                                    print(previous_node,name)
-                                    print(DG.edges)
-                                try:
-                                    if DEBUG:
-                                        print("FINding TOPO ORDER")
-                                    topo_sort = nx.topological_sort(DG)
-
-                                    #print(topo_sort[0])
-                                except:
-                                    print("NO TOPO Found")
+                                #cycle_added=isCyclic(DG)
+                                cycle_added2 = cycle_finder(DG,previous_node)
+                                #cycle_added3 = cycle_finder(DG,name)
+                                #if cycle_added != cycle_added2 and cycle_added != cycle_added3:
+                                #    print(cycle_added,cycle_added2,cycle_added3)
+                                #    sys.exit(1)
+                                #cycle_added = isCyclic2(DG, name)
+                                #if DEBUG:
+                                #    print(previous_node,name)
+                                    #print(DG.edges)
+                                #try:
+                                #    print("ADDINGCYCLIC?",)
+                                #    topo_sort = nx.topological_sort(DG)
+                                #    #print(topo_sort[0])
+                                if cycle_added2:
+                                    #print("NO TOPO Found")
                                     DG.remove_edge(previous_node, name)
                                     if DEBUG:
                                         print(DG.edges)
@@ -707,13 +720,15 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                     #print(nodes_for_graph[name])
                                     #print(previous_node)
                                     DG.add_edge(previous_node, name, length=length)
-                                    #print("adding edge clear 686", previous_node, ",", name)
+                                    if DEBUG:
+                                        print("adding edge clear 686", previous_node, ",", name)
                                     edge_support[previous_node, name] = []
                                     edge_support[previous_node, name].append(r_id)
                                     #print(edge_support[previous_node, name])
                                     #print(DG.edges)
                                     #print("ISFALSE",is_false)
                                 else:
+                                    #print("ELSE")
                                     if DEBUG:
                                         print("adding edge hope690", previous_node, ",", name)
                                     edge_support[previous_node, name] = []
@@ -806,7 +821,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                             name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
                                             if not DG.has_node(name):
                                                 DG.add_node(name)
-
                                             else:
                                                 if DEBUG:
                                                     print("Node", name, " already present")
@@ -926,7 +940,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                                         DG.add_edge(previous_node, name, length=length)
                                                         edge_support[previous_node, name] = []
                                                         edge_support[previous_node, name].append(r_id)
-
                                                     if r_id > 1:
                                                         topo_graph = list(nx.topological_sort(DG))
                                                 else:
@@ -964,10 +977,18 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                                     #edge_support[previous_node, name] = []
                                                     #edge_support[previous_node, name].append(r_id)
                                                     DG.add_edge(previous_node, name, length=length)
-                                                    try:
-                                                        topo_sort=nx.topological_sort(DG)
-                                                        #print(topo_sort[0])
-                                                    except:
+                                                    cycle_added = isCyclic(DG)
+                                                    cycle_added2 = cycle_finder(DG,previous_node)
+                                                    #cycle_added3 = cycle_finder(DG,name)
+                                                    #if cycle_added != cycle_added2 and cycle_added != cycle_added3:
+                                                    #    print(cycle_added,cycle_added2,cycle_added3)
+                                                    #    sys.exit(1)
+                                                    #cycle_added = isCyclic2(DG, name)
+                                                    #try:
+                                                    #    topo_sort=nx.topological_sort(DG)
+                                                    #    #print(topo_sort[0])
+                                                    #except:
+                                                    if cycle_added2:
                                                         DG.remove_edge(previous_node, name)
                                                         name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
                                                         if not DG.has_node(name):

@@ -14,7 +14,7 @@ echo "Running: " `basename $0` $raw_reads $outfolder $num_cores $isONform_folder
 #isonform_folder=${isONform_folder::-1}
 mkdir -p $outfolder
 echo "ISONfolder "$isONform_folder
-echo
+echo "Outfolder "$outfolder
 echo "Will run pychopper (cdna_classifier.py), isONclust, isONcorrect and isONform. Make sure you have these tools installed."
 echo "For installation see: https://github.com/ksahlin/isONcorrect#installation and  https://github.com/aljpetri/isONform"
 echo
@@ -31,21 +31,28 @@ echo
 
 
 
-echo
-echo "Running isONclust"
-echo
+#echo
+#echo "Running isONclust"
+#echo
 
-isONclust  --t $num_cores  --ont --fastq $raw_reads \
-             --outfolder $outfolder/clustering
+#isONclust  --t $num_cores  --ont --fastq $raw_reads \
+#             --outfolder $outfolder/clustering --k 8 --w 9 
+#ONT: k 14 w 20
+#isONclust write_fastq --N 1 --clusters $outfolder/clustering/final_clusters.tsv \
+#                      --fastq $raw_reads --outfolder  $outfolder/clustering/fastq_files --N $iso_abundance
+#echo
+#echo "Finished isONclust"
+#echo
 
-isONclust write_fastq --N 1 --clusters $outfolder/clustering/final_clusters.tsv \
-                      --fastq $raw_reads --outfolder  $outfolder/clustering/fastq_files
-echo
-echo "Finished isONclust"
-echo
 
+#echo
+#echo "Filtering clusters"
+#echo
+#python3.11 $isONform_folder/filter_clusters_by_size.py --in_folder $outfolder/clustering/fastq_files --abundance $iso_abundance
 
-
+#echo
+#echo "Filtering done"
+#echo
 echo
 echo "Running isONcorrect"
 echo
@@ -63,7 +70,7 @@ echo "Running isONform"
 echo
 #python3.11 $isONform_folder/isONform_parallel.py --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches
 #python3.11 $isONform_folder/main.py --fastq $outfolder/correction/*/*.fastq --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder $outfolder/singleisoforms --iso_abundance $iso_abundance
-python3.11 $isONform_folder/isONform_parallel.py --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches --merge_sub_isoforms_3  --merge_sub_isoforms_5 --slow
+python3.11 $isONform_folder/isONform_parallel.py --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches --merge_sub_isoforms_3  --merge_sub_isoforms_5 --delta_iso_len_3 5 --delta_iso_len_5 5 --slow
 echo
 echo "Finished isONform"
 echo
