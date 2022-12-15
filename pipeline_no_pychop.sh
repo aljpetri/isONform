@@ -38,7 +38,7 @@ echo
 isONclust  --t $num_cores  --ont --fastq $raw_reads \
              --outfolder $outfolder/clustering --k 8 --w 9 
 #ONT: k 14 w 20
-isONclust write_fastq --N 1 --clusters $outfolder/clustering/final_clusters.tsv \
+isONclust write_fastq --clusters $outfolder/clustering/final_clusters.tsv \
                       --fastq $raw_reads --outfolder  $outfolder/clustering/fastq_files --N $iso_abundance
 echo
 echo "Finished isONclust"
