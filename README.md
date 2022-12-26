@@ -34,8 +34,8 @@
 		`pip install ordered-set`<br />
 		`conda install matplotlib`<br />
 		`pip install parasail`<br />
-		`pip install pyinstrument`
-		`conda install -c cerebis recordclass`
+		`pip install pyinstrument`<br />
+		`conda install -c cerebis recordclass`<br />
 		
 
 
