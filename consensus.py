@@ -54,7 +54,7 @@ def cigar_to_seq(cigar, query, ref):
     return "".join([s for s in q_aln]), "".join([s for s in r_aln]), cigar_tuples
 
 
-def parasail_alignment(s1, s2, match_score = 2, mismatch_penalty = -2, opening_penalty = 50, gap_ext = 1):
+def parasail_alignment(s1, s2, match_score = 2, mismatch_penalty = -2, opening_penalty = 12, gap_ext = 1):
     #print("s1", s1)
     #print("s2",s2)
     user_matrix = parasail.matrix_create("ACGT", match_score, mismatch_penalty)

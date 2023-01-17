@@ -42,6 +42,7 @@ def isONform(data):
         2], data[3], data[4], data[5]
     mkdir_p(outfolder)
     print("OUT",outfolder)
+    print("Algoparams",isONform_algorithm_params)
     isONform_exec = os.path.join(isONform_location, "main.py")
     isONform_error_file = os.path.join(outfolder, "stderr.txt")
     with open(isONform_error_file, "w") as error_file:
@@ -55,7 +56,7 @@ def isONform(data):
                  "--k", str(isONform_algorithm_params["k"]), "--w", str(isONform_algorithm_params["w"]),
                  "--xmin", str(isONform_algorithm_params["xmin"]), "--xmax",
                  str(isONform_algorithm_params["xmax"]),"--delta_len", str(isONform_algorithm_params["delta_len"]),
-                 "--exact", "--parallel", "True", "--merge_sub_isoforms_3","--merge_sub_isoforms_5"
+                 "--exact", "--parallel", "True", "--merge_sub_isoforms_3","--merge_sub_isoforms_5",  "--delta_iso_len_3", str(isONform_algorithm_params["delta_iso_len_3"]), "--delta_iso_len_5", str(isONform_algorithm_params["delta_iso_len_5"])
                  #"--T", str(isONform_algorithm_params["T"])
                  ], stderr=error_file, stdout=isONform_out_file)
 
@@ -203,8 +204,8 @@ def main(args):
                                                 "exact_instance_limit": args.exact_instance_limit,
                                                 "delta_len": args.delta_len,"--exact": True,
                                                 "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
-                                                "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon,"parallel": True,"merge_sub_isoforms_3": args.merge_sub_isoforms_3, "merge_sub_isoforms_5": args.merge_sub_isoforms_5, "--slow":True, "--delta_iso_len_3": args.delta_iso_len_3,
-                                             "--delta_iso_len_5": args.delta_iso_len_5}
+                                                "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon,"parallel": True,"merge_sub_isoforms_3": args.merge_sub_isoforms_3, "merge_sub_isoforms_5": args.merge_sub_isoforms_5, "--slow":True, "delta_iso_len_3": args.delta_iso_len_3,
+                                             "delta_iso_len_5": args.delta_iso_len_5}
                 instances.append(
                     (isONform_location, fastq_file_path, outfolder, batch_id, isONform_algorithm_params,cl_id))
         else:
@@ -309,7 +310,7 @@ if __name__ == '__main__':
                         help='Parameter to determine whether we want to merge sub isoforms (shorter at 3prime end) into bigger isoforms')
     parser.add_argument('--merge_sub_isoforms_5',  action=argparse.BooleanOptionalAction,
                         help='Parameter to determine whether we want to merge sub isoforms (shorter at 5prime end) into bigger isoforms')
-    parser.add_argument('--delta_iso_len_3', type=int, default=50,
+    parser.add_argument('--delta_iso_len_3', type=int, default=30,
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
