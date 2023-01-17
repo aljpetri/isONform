@@ -326,7 +326,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
         ########################################
         ######## KRISTOFFER START ##############
         ########################################
-        print("READ",r_id)
+        #print("READ",r_id)
         #print(r_id, intervals_for_read)
         if DEBUG:
             print('CURR READ:', r_id)

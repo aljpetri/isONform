@@ -280,11 +280,11 @@ def generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,c
     return consensuses
     #print(mapping)
 def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len):
-    print("Overall_length",overall_len)
+    #print("Overall_length",overall_len)
     miss_match_length = 0
     alignment_len = 0
     # print("Now we are parsing....")
-    print(cigar_tuples)
+    #print(cigar_tuples)
     too_long_indel = False
     three_prime=True
     five_prime=True
@@ -329,10 +329,10 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
     diversity_bool=diversity <= mod_div_rate
     #if any of the three parameters we look at tells us not to merge we do not merge
     if diversity_bool:  # delta_perc:
-        print("Div:",diversity_bool,"3' ",three_prime," 5' ",five_prime)
+        #print("Div:",diversity_bool,"3' ",three_prime," 5' ",five_prime)
         return True
     else:
-        print("no pop due to diversity")
+        #print("no pop due to diversity")
         return False
 def get_overall_alignment_len(cigar_tuples):
     overall_len=0
@@ -357,6 +357,8 @@ def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,me
 
 
 def generate_new_full_consensus(id,id2,reads,curr_best_seqs,work_dir,max_seqs_to_spoa):
+    #print("again best seqs")
+    #print(curr_best_seqs)
     consensus_infos1 = curr_best_seqs[id]
     consensus_infos2 = curr_best_seqs[id2]
     reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
@@ -374,7 +376,7 @@ def generate_new_full_consensus(id,id2,reads,curr_best_seqs,work_dir,max_seqs_to
     spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
     return spoa_ref
 def generate_all_consensuses(all_consensuses,alternative_consensuses,curr_best_seqs,reads,work_dir,max_seqs_to_spoa):
-    #print("Generating")
+    print("Generating")
     for id,seqs in curr_best_seqs.items():
         reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
         # print("k",key,"vv",value)
@@ -420,6 +422,7 @@ INPUT: isoform_paths: List object of all nodes visited for each isoform
 def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delta_len,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,reads,max_seqs_to_spoa,delta_iso_len_3,delta_iso_len_5):
     #print("merging consensuses")
     new_best_seqs={}
+    #print("best_seqs")
     #print(curr_best_seqs)
     #for key,value in reads.items():
     #    print(key,value)
@@ -432,6 +435,7 @@ def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delt
     #for consensus in alternative_consensuses:
         #print(consensus[0],len(consensus[1]))
     for i, consensus in enumerate(alternative_consensuses[:len(alternative_consensuses)-1]):
+        #print("con",consensus)
         id1=consensus[0]
         #if id1 in merge_set:
         #    continue
@@ -443,28 +447,29 @@ def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delt
             id2=consensus2[0]
             #if id2 in merge_set:
             #    continue
-            if not id1==id2: #todo get rid of this line
-                #print(id1,id2)
-                seq2=consensus2[1]
-                #as soon as we have a length difference larger than delta_iso_len_3+delta_iso_len_5 we break out of the inner loop
-                if len(seq2)-len(seq1)>delta_iso_len_3+delta_iso_len_5:
-                    break
-                consensus1 = seq1
-                consensus2 = seq2
-                merge_consensuses = align_to_merge(consensus1, consensus2, delta, delta_len, merge_sub_isoforms_3,
-                                                       merge_sub_isoforms_5, delta_iso_len_3, delta_iso_len_5)
-                if merge_consensuses:
-                    #print("WEMERGE")
-                    #merge_set.add(id2)
-                    first_consensus=[item for item in alternative_consensuses if item[0] == id2][0]
-                    #second_consensus=[item for item in alternative_consensuses if item[0] == id2][0]
-                    if len(curr_best_seqs[id2]) > 50:
-                        #print("enough")
-                        add_merged_reads(curr_best_seqs, id2,id1)
-                        new_consensuses[id2]=first_consensus[1]
-                    else:
-                        new_consensuses[id2]=generate_new_full_consensus(id1,id2,reads,curr_best_seqs,work_dir,max_seqs_to_spoa)
-                        add_merged_reads(curr_best_seqs, id2, id1)
+            #if not id1==id2: #todo get rid of this line
+            #print(id1,id2)
+            seq2=consensus2[1]
+            #as soon as we have a length difference larger than delta_iso_len_3+delta_iso_len_5 we break out of the inner loop
+            if len(seq2)-len(seq1)>delta_iso_len_3+delta_iso_len_5:
+                break
+            consensus1 = seq1
+            consensus2 = seq2
+            merge_consensuses = align_to_merge(consensus1, consensus2, delta, delta_len, merge_sub_isoforms_3,
+                                                   merge_sub_isoforms_5, delta_iso_len_3, delta_iso_len_5)
+            if merge_consensuses:
+                #print("WEMERGE")
+                #merge_set.add(id2)
+                first_consensus=[item for item in alternative_consensuses if item[0] == id2][0]
+                #second_consensus=[item for item in alternative_consensuses if item[0] == id2][0]
+                if len(curr_best_seqs[id2]) > 50:
+                    print("merge id1 into id2",id," ", id2)
+                    add_merged_reads(curr_best_seqs, id2,id1)
+                    new_consensuses[id2]=first_consensus[1]
+                else:
+                    new_consensuses[id2]=generate_new_full_consensus(id1,id2,reads,curr_best_seqs,work_dir,max_seqs_to_spoa)
+                    add_merged_reads(curr_best_seqs, id2, id1)
+                break
 
     for id,support in curr_best_seqs.items():
         if not id in new_consensuses:
@@ -529,7 +534,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
     #print(merge_sub_isoforms_3)
     #print(merge_sub_isoforms_5)
     equal_reads,isoform_paths=compute_equal_reads2(DG,reads)
-    equal_reads_name='equal_reads_'+str(batch_id)+'.txt'
+    #equal_reads_name='equal_reads_'+str(batch_id)+'.txt'
     #print("EQUALS",equal_reads)
     #print("BID",batch_id)
     #print("s",DG.nodes["s"]['reads'])
@@ -549,11 +554,11 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
     #merge_sub_isos_3 = (merge_sub_isoforms_3 == 'True')
     #print("DO WE MERGE?",merge_sub_isoforms_5,merge_sub_isoforms_3)
     if merge_sub_isoforms_5 or merge_sub_isoforms_3:
-        print("MergingTrue")
-        print("EQUALS",equal_reads)
-        for c_id, supp_reads in equal_reads.items():
-            for supp_read in supp_reads:
-                print("{0}_{1}: {2} ".format(c_id,supp_read, all_reads[supp_read]))
+        #print("MergingTrue")
+        #print("EQUALS",equal_reads)
+        #for c_id, supp_reads in equal_reads.items():
+            #for supp_read in supp_reads:
+                #print("{0}_{1}: {2} ".format(c_id,supp_read, all_reads[supp_read]))
 
         new_consensuses=merge_consensuses(equal_reads, work_dir, isoform_paths, outfolder, delta, delta_len, batch_id,
                                  merge_sub_isoforms_3, merge_sub_isoforms_5, all_reads, max_seqs_to_spoa,
