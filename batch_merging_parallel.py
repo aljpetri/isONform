@@ -172,10 +172,10 @@ def actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,m
     cter = 0
     seq_count_bef=0
     #print("NEWAID",all_infos_dict[5])
-    all_infos_list=sorted(all_infos_dict.items())
-    for b_i,(batchid,id_dict) in enumerate(all_infos_list)[:len(all_infos_list)-1]:
+    all_infos_list=sorted(all_infos_dict,key=lambda key: all_infos_dict[key])
+    for b_i,(batchid,id_dict) in enumerate(all_infos_list[:len(all_infos_list)-1]):
         batch_id_list = sorted(id_dict.items(),key=lambda x: len(x[1]))
-        for b_j,(batchid2, id_dict2) in enumerate(all_infos_list)[b_i+1:]:
+        for b_j,(batchid2, id_dict2) in enumerate(all_infos_list[b_i+1:]):
             batch_id_list2 = sorted(id_dict2.items(), key=lambda x: len(x[1]))
             if not batchid2 <= batchid:# and not batchid2==batchid:#todo get rid of this line
                 print("bid",batchid,"bid2",batchid2)
