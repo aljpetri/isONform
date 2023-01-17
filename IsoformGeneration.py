@@ -463,7 +463,7 @@ def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delt
                 first_consensus=[item for item in alternative_consensuses if item[0] == id2][0]
                 #second_consensus=[item for item in alternative_consensuses if item[0] == id2][0]
                 if len(curr_best_seqs[id2]) > 50:
-                    print("merge id1 into id2",id," ", id2)
+                    #print("merge id1 into id2",id," ", id2)
                     add_merged_reads(curr_best_seqs, id2,id1)
                     new_consensuses[id2]=first_consensus[1]
                 else:

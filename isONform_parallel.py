@@ -41,8 +41,8 @@ def isONform(data):
     isONform_location, read_fastq_file, outfolder, batch_id, isONform_algorithm_params,cl_id = data[0], data[1], data[
         2], data[3], data[4], data[5]
     mkdir_p(outfolder)
-    print("OUT",outfolder)
-    print("Algoparams",isONform_algorithm_params)
+    #print("OUT",outfolder)
+    #print("Algoparams",isONform_algorithm_params)
     isONform_exec = os.path.join(isONform_location, "main.py")
     isONform_error_file = os.path.join(outfolder, "stderr.txt")
     with open(isONform_error_file, "w") as error_file:
@@ -74,15 +74,15 @@ def splitfile(indir, tmp_outdir, fname, chunksize,cl_id,ext):
     infilepath = os.path.join(indir, fname)
     #infilepath=indir
     # print(fpath, cl_id, ext)
-    print("now at splitfile")
-    print(indir, tmp_outdir, cl_id, ext)
+    #print("now at splitfile")
+    #print(indir, tmp_outdir, cl_id, ext)
 
     i = 0
     written = False
     with open(infilepath) as infile:
         while True:
             outfilepath = os.path.join(tmp_outdir, '{0}_{1}.{2}'.format(cl_id, i, ext) ) #"{}_{}.{}".format(foutpath, fname, i, ext)
-            print(outfilepath)
+            #print(outfilepath)
             with open(outfilepath, 'w') as outfile:
                 for line in (infile.readline() for _ in range(chunksize)):
                     outfile.write(line)
@@ -121,35 +121,35 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
     pat=Path(indir)
     #collect all fastq files located in this directory or any subdirectories
     file_list=list(pat.rglob('*.fastq'))
-    print("FLIST",file_list)
+    #print("FLIST",file_list)
     #iterate over the fastq_files
     for filepath in file_list:
         smaller_than_max_seqs = False
-        print("FPATH",filepath)
+        #print("FPATH",filepath)
         old_fastq_file=str(filepath.resolve())
         path_split=old_fastq_file.split("/")
         folder=path_split[-2]
-        print(folder)
+        #print(folder)
         fastq_file=path_split[-1]
         #we do not want to look at the analysis fastq file
         if not folder=="Analysis":
             cl_id=path_split[-2]
-            print("CLID",cl_id)
+            #print("CLID",cl_id)
 
             #if we have more lines than max_seqs
             new_indir=os.path.join(indir,folder)
-            print(new_indir)
+            #print(new_indir)
             if not smaller_than_max_seqs:
 
                 num_lines = sum(1 for line in open(os.path.join(new_indir, fastq_file)))
-                print("Number Lines", fastq_file, num_lines)
+                #print("Number Lines", fastq_file, num_lines)
                 #we reset smaller_than_max_seqs as we now want to see if we really have more than max_seqs reads
                 smaller_than_max_seqs = False if num_lines > 4 * max_seqs else True
             else:
                 smaller_than_max_seqs = True
 
             if not smaller_than_max_seqs:
-                print("Splitting",filepath)
+                #print("Splitting",filepath)
                 ext = fastq_file.rsplit('.', 1)[1]
                 splitfile(new_indir, tmp_work_dir, fastq_file, 4 * max_seqs,cl_id,ext)  # is fastq file
             else:
@@ -159,43 +159,43 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
     return tmp_work_dir
 PYTHONHASHSEED = 0
 def main(args):
-    print("MERGE?", args.merge_sub_isoforms_3, args.merge_sub_isoforms_5)
+    #print("MERGE?", args.merge_sub_isoforms_3, args.merge_sub_isoforms_5)
     globstart = time()
     directory = args.fastq_folder  # os.fsencode(args.fastq_folder)
-    print(directory)
-    print("ARGS",args)
+    #print(directory)
+    #print("ARGS",args)
     isONform_location = os.path.dirname(os.path.realpath(__file__))
     if args.split_wrt_batches:
-        print("SPLITWRTBATCHES")
+        #print("SPLITWRTBATCHES")
         tmp_work_dir = tempfile.mkdtemp()
         print("Temporary workdirektory:", tmp_work_dir)
         split_tmp_directory = split_cluster_in_batches(directory, args.outfolder, tmp_work_dir, args.max_seqs)
         split_directory = os.fsencode(split_tmp_directory)
-        print("SplitDIR",split_directory)
+        #print("SplitDIR",split_directory)
     else:
         split_directory = os.fsencode(directory)
 
     instances = []
     for file_ in os.listdir(split_directory):
-        print(file_)
+        #print(file_)
         read_fastq_file = os.fsdecode(file_)
         if read_fastq_file.endswith(".fastq"):
-            print("True")
+            #print("True")
             tmp_id= read_fastq_file.split(".")[0]
             snd_tmp_id=tmp_id.split("_")
             cl_id = snd_tmp_id[0]
             batch_id=snd_tmp_id[1]
             outfolder = os.path.join(args.outfolder, cl_id)
-            print(batch_id,cl_id)
-            print(outfolder)
+            #print(batch_id,cl_id)
+            #print(outfolder)
             fastq_file_path = os.path.join(os.fsdecode(split_directory), read_fastq_file)
-            print(fastq_file_path)
+            #print(fastq_file_path)
             compute = True
             if args.keep_old:
                 candidate_corrected_file = os.path.join(outfolder, "isoforms.fastq")
                 if os.path.isfile(candidate_corrected_file):
                     if wccount(candidate_corrected_file) == wccount(fastq_file_path):
-                        print("already computed cluster and complete file", batch_id)
+                        #print("already computed cluster and complete file", batch_id)
                         compute = False
 
             if compute:
