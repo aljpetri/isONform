@@ -34,6 +34,21 @@ from GraphGenerationOld import *
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
+def remove_read_polyA_ends(seq, threshold_len, to_len):
+    end_length_window = min(len(seq)//2, 100)
+    seq_list = [ seq[:-end_length_window] ]
+
+    for ch, g in itertools.groupby(seq[-end_length_window:]):
+        h_len = sum(1 for x in g)
+        # print(ch, h_len, g )
+        if h_len > threshold_len and (ch == "A" or ch == "T"):
+            seq_list.append(ch*to_len)
+        else:
+            seq_list.append(ch*h_len)
+
+    seq_mod = "".join([s for s in seq_list])
+    return seq_mod
+
 def syncmers(seq, k, s, t ):
     window_smers = deque([hash(seq[i:i+s]) for i in range(0, k - s + 1 )])
     curr_min = min(window_smers)
@@ -649,8 +664,9 @@ def main(args):
     outfolder = args.outfolder
     #sys.stdout = open(os.path.join(outfolder,"single_stdout.txt"), "w")
     # read the file
-    all_reads = {i + 1: (acc, seq, qual) for i, (acc, (seq, qual)) in
-                 enumerate(help_functions.readfq(open(args.fastq, 'r')))}
+    #all_reads = {i + 1: (acc, seq, qual) for i, (acc, (seq, qual)) in
+    #             enumerate(help_functions.readfq(open(args.fastq, 'r')))}
+    all_reads = {i + 1: (acc, remove_read_polyA_ends(seq, 12, 1), qual) for i, (acc, (seq, qual)) in enumerate(help_functions.readfq(open(args.fastq, 'r')))}
     #eprint("Total cluster of {0} reads.".format(len(all_reads)))
     max_seqs_to_spoa = args.max_seqs_to_spoa
     if len(all_reads) <= args.exact_instance_limit:
