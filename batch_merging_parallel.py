@@ -172,11 +172,15 @@ def actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,m
     cter = 0
     seq_count_bef=0
     #print("NEWAID",all_infos_dict[5])
-    for batchid,id_dict in all_infos_dict.items():
-        for batchid2, id_dict2 in all_infos_dict.items():
-            if not batchid2 <= batchid:# and not batchid2==batchid:
+    all_infos_list=sorted(all_infos_dict.items())
+    for b_i,(batchid,id_dict) in enumerate(all_infos_list)[:len(all_infos_list)-1]:
+        batch_id_list = sorted(id_dict.items(),key=lambda x: len(x[1]))
+        for b_j,(batchid2, id_dict2) in enumerate(all_infos_list)[b_i+1:]:
+            batch_id_list2 = sorted(id_dict2.items(), key=lambda x: len(x[1]))
+            if not batchid2 <= batchid:# and not batchid2==batchid:#todo get rid of this line
                 print("bid",batchid,"bid2",batchid2)
-                for id,infos in id_dict.items():
+
+                for t_id1,(id,infos) in enumerate(batch_id_list):
                     id_merged=False
                     #print("IM",infos.merged)
                     #print("BID", str(batchid))
@@ -185,7 +189,11 @@ def actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,m
                     if not infos.merged:
                         #print("IDDICT", id_dict)
                         #print("IM", infos.merged)
-                        for id2, infos2 in id_dict2.items():
+                        for t_id2,(id2, infos2) in enumerate(batch_id_list2):
+                            if infos2.sequence-infos.sequence>delta_iso_len_3+delta_iso_len_5:
+                                break
+                            if infos.sequence-infos2.sequence>delta_iso_len_3+delta_iso_len_5:
+                                continue
                             if infos.merged:
                                 id_merged=True
                                 continue
@@ -334,7 +342,7 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
                     if not c_infos.merged:
                         nr_reads += len(c_infos.reads)
             #perform the merging step during which all consensuses are compared and if possible merged
-            print(all_infos_dict)
+            #print(all_infos_dict)
             actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa,all_reads_dict,outdir)
             nr_reads=0
             for b_id, b_infos in all_infos_dict.items():
