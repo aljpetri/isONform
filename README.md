@@ -18,6 +18,7 @@
 5. `edlib`
 6. `pyinstrument`
 7. `namedtuple`
+8. `recordclass`
 
 
 ### Installation guide
@@ -33,7 +34,8 @@
 		`pip install ordered-set`<br />
 		`conda install matplotlib`<br />
 		`pip install parasail`<br />
-		`pip install pyinstrument`
+		`pip install pyinstrument`<br />
+		`conda install -c cerebis recordclass`<br />
 		
 
 
