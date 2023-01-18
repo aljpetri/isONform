@@ -36,6 +36,7 @@
 		`pip install parasail`<br />
 		`pip install pyinstrument`<br />
 		`conda install -c cerebis recordclass`<br />
+4. clone this repository
 		
 
 
