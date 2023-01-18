@@ -174,7 +174,7 @@ def actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,m
     #print("NEWAID",all_infos_dict[5])
     #all_infos_list=sorted(all_infos_dict,key=lambda key: key)
     #all_infos_list=sorted(all_infos_dict,key=all_infos_dict.get)
-    all_infos_list = sorted(all_infos_dict.items(), key=lambda x: x[0])
+    all_infos_list = sorted(all_infos_dict.items(), key=lambda x: x[0], reverse=True)
     for b_i,(batchid,id_dict) in enumerate(all_infos_list[:len(all_infos_list)-1]):
         batch_id_list = sorted(id_dict.items(),key=lambda x: len(x[1]))
         for b_j,(batchid2, id_dict2) in enumerate(all_infos_list[b_i+1:]):
