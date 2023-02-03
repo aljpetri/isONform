@@ -21,13 +21,13 @@
 8. `recordclass`
 
 
-### Installation guide
-## Via pip
+## Installation guide
+### Via pip
 ```
 pip install isONform
 ```
 
-## Downloading source from github
+### Downloading source from github
 1. Create a new environment for isONform (at least python 3.7 required):<br />
 		`conda create -n isonform python=3.10 pip` <br />
 		`conda activate isonform` <br />
