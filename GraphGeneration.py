@@ -1,16 +1,11 @@
-import _pickle as pickle
-import collections
-from sys import stdout
+
 import networkx as nx
-import itertools
 import matplotlib.pyplot as plt
 from collections import namedtuple
 from SimplifyGraph import *
-from MemoryAnalysis import *
-from IsoformGeneration import *
 import tempfile
 import shutil
-# from OriginalSimplifyGraph import *
+
 
 
 """IsONform script containing the methods used to generate the Directed Graph from the Intervals coming from the Weighted Interval Scheduling Problem

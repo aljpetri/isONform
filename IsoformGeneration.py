@@ -1,15 +1,5 @@
 import _pickle as pickle
-import collections
-from sys import stdout
-import networkx as nx
-import subprocess
-import os, sys
-from EqualityObject import *
-import itertools
-import tempfile
 from consensus import *
-import matplotlib.pyplot as plt
-from collections import namedtuple
 from GraphGeneration import *
 def draw_Graph(DG):
     # defines the graph layout to use spectral_layout. Pos gives the position for each node
@@ -132,6 +122,7 @@ def compute_equal_reads2(DG,support):
 
         if current_node_support:
                 id = list(current_node_support)[0]
+                print(id)
                 isoforms[id]=list(current_node_support)
                 node_support_left-=current_node_support
                 visited_nodes_isoforms[id]=visited_nodes
@@ -351,6 +342,12 @@ def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,me
     #print(cigar_tuples)
     #print(overall_len)
     good_to_pop = parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len)
+    if DEBUG:
+        if good_to_pop:
+            print(cigar_tuples)
+            print(cigar_string)
+            print(s1_alignment)
+            print(s2_alignment)
     #print(good_to_pop)
     return good_to_pop
 
@@ -388,6 +385,7 @@ def generate_all_consensuses(all_consensuses,alternative_consensuses,curr_best_s
             #all_consensuses[id] = seq
             consensus_tuple = (id, seq)
             alternative_consensuses.append(consensus_tuple)
+            print("all cons_", id,", ",seq)
             # consensus_file.write(">{0}\n{1}\n".format(name, seq))
             reads_path.close()
         else:
@@ -420,13 +418,7 @@ INPUT: isoform_paths: List object of all nodes visited for each isoform
                                     A path file giving the paths of all final isoforms
 """
 def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delta_len,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,reads,max_seqs_to_spoa,delta_iso_len_3,delta_iso_len_5):
-    #print("merging consensuses")
-    new_best_seqs={}
-    #print("best_seqs")
-    #print(curr_best_seqs)
-    #for key,value in reads.items():
-    #    print(key,value)
-    #merge_set=set()
+
     new_consensuses={}
     all_consensuses={}
     alternative_consensuses=[]
@@ -448,17 +440,19 @@ def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delt
             #if id2 in merge_set:
             #    continue
             #if not id1==id2: #todo get rid of this line
-            #print(id1,id2)
+            if DEBUG:
+                print(id1,id2)
             seq2=consensus2[1]
             #as soon as we have a length difference larger than delta_iso_len_3+delta_iso_len_5 we break out of the inner loop
             if len(seq2)-len(seq1)>delta_iso_len_3+delta_iso_len_5:
                 break
             consensus1 = seq1
             consensus2 = seq2
-            merge_consensuses = align_to_merge(consensus1, consensus2, delta, delta_len, merge_sub_isoforms_3,
+            merge_consensuses_possible = align_to_merge(consensus1, consensus2, delta, delta_len, merge_sub_isoforms_3,
                                                    merge_sub_isoforms_5, delta_iso_len_3, delta_iso_len_5)
-            if merge_consensuses:
-                #print("WEMERGE")
+            if merge_consensuses_possible:
+                if DEBUG:
+                    print("WEMERGE")
                 #merge_set.add(id2)
                 first_consensus=[item for item in alternative_consensuses if item[0] == id2][0]
                 #second_consensus=[item for item in alternative_consensuses if item[0] == id2][0]
@@ -535,7 +529,8 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
     #print(merge_sub_isoforms_5)
     equal_reads,isoform_paths=compute_equal_reads2(DG,reads)
     #equal_reads_name='equal_reads_'+str(batch_id)+'.txt'
-    #print("EQUALS",equal_reads)
+    if DEBUG==True:
+        print("EQUALS",equal_reads)
     #print("BID",batch_id)
     #print("s",DG.nodes["s"]['reads'])
     #print("t",DG.nodes["t"]['reads'])
@@ -563,6 +558,8 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
         new_consensuses=merge_consensuses(equal_reads, work_dir, isoform_paths, outfolder, delta, delta_len, batch_id,
                                  merge_sub_isoforms_3, merge_sub_isoforms_5, all_reads, max_seqs_to_spoa,
                                  delta_iso_len_3, delta_iso_len_5)
+        if DEBUG:
+            print(new_consensuses)
 
         generate_isoforms_new(equal_reads, all_reads, work_dir, outfolder, batch_id, max_seqs_to_spoa,
                                            iso_abundance,new_consensuses)

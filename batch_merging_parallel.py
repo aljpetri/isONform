@@ -1,12 +1,8 @@
 import itertools
 from consensus import *
-#from recordclass import recordclass
 from IsoformGeneration import align_to_merge
-import tempfile
-import pickle
 from recordclass import *
 from Parallelization_side_functions import *
-from modules import  help_functions
 """ This method is used to generate the consensus file needed for the consensus generation
 INPUT:  work_dir  : The working directory in which to store the file
 OUTPUT: spoa_ref:   The consensus

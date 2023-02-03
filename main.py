@@ -1,31 +1,12 @@
 #! /usr/bin/env python
 from __future__ import print_function
 from GraphGeneration import *
-from IsoformGeneration import *
 from OldGraphGeneration import *
-import os, sys
-#from tkinter import *
 import argparse
-import linecache
-import networkx as nx
-import errno
-from time import time, sleep
-import itertools
-import tempfile
-import shutil
-import matplotlib
-# import parsefasta
 import math
-import re
-import subprocess
 from collections import deque
 from collections import defaultdict
-import matplotlib.pyplot as plt
 import edlib
-import _pickle as pickle
-from sys import stdout
-import tracemalloc
-from SimplifyGraph import simplifyGraph,isCyclic
 from modules import create_augmented_reference, help_functions, correct_seqs  # ,align
 from batch_merging import *
 from GraphGenerationOld import *
@@ -627,30 +608,6 @@ def get_qvs(reads):
             tmp_tot_sum += qv
     return quality_values_database
 #PYTHONHASHSEED=0
-"""def filter_intervals(all_intervals_for_graph,delta_len):
-    index_to_delete=[]
-    for id,inter_list in all_intervals_for_graph.items():
-        print(id)
-        for interval in inter_list:
-            this_interval_length=interval[1]-interval[0]
-            print(this_interval_length)
-            other_inters_array=interval[3]
-            print(other_inters_array)
-            read_id = other_inters_array[slice(0, len(other_inters_array),
-                                     3)]  # recover the read id from the array of instances which was delivered with all_intervals_for_graph
-            start_coord = other_inters_array[slice(1, len(other_inters_array),
-                                         3)]  # recover the start coordinate of an interval from the array of instances
-            end_coord = other_inters_array[slice(2, len(other_inters_array), 3)]
-            print("READID",read_id)
-            for i,r_id in enumerate(read_id):
-                len_i=end_coord[i]-start_coord[i]
-                len_diff=abs(len_i-this_interval_length)
-                print("LD",len_diff)
-                if len_diff>delta_len:
-                    index_to_delete.append(i)
-            index_to_delete.sort(reverse=True)
-            print(index_to_delete)
-            for index in index_to_delete"""
 #TODO: several errors in errors/reads_5_9.fq->empty intervals added to graph generation, cleaning does yield error!
 #TODO:simplify graph adds an error to the data that is not in the initial graph!!! see errors/merge/reads_5_4.fq: 3.
 def main(args):
@@ -896,10 +853,10 @@ def main(args):
                         (acc, seq, qual) = vals
                         skipfile.write(">{0}\n{1}\n".format(acc, seq))
                     #This can be utilized to find out which read_name maps to which r_id ->very helpful for Debugging
-                    if DEBUG:
-                        if graph_id==291:
-                            print("GID",graph_id," ",acc)
-                            print(intervals_to_correct)
+                    #if DEBUG:
+                    #    if graph_id==291:
+                    #        print("GID",graph_id," ",acc)
+                    #        print(intervals_to_correct)
 
                     #print(len(new_all_reads))
 
@@ -930,18 +887,7 @@ def main(args):
             print("Generating the graph")
             all_batch_reads_dict[batch_id] = new_all_reads
             read_len_dict = get_read_lengths(all_reads)
-            """DG2=nx.DiGraph()
-            DG2.add_edge("s","a")
-            DG2.add_edge("s","b")
-            DG2.add_edge("s","c")
-            DG2.add_edge("s","d")
-            DG2.add_edge("a","t")
-            DG2.add_edge("b","t")
-            DG2.add_edge("c","t")
-            DG2.add_edge("d","e")
-            DG2.add_edge("e","t")
-            this_topo=list(nx.topological_sort(DG2))
-            print("THISTOPO",this_topo)"""
+
             #print("Used for GraphGen",", ",k_size,", ",delta_len,", ",read_len_dict,", ",new_all_reads)
             import time
             start_time = time.time()
@@ -968,9 +914,11 @@ def main(args):
         #print("226",known_intervals[225])
         #print("211",known_intervals[211])
         #print("252",known_intervals[251])
-        #for id, value in all_batch_reads_dict.items():
-        #    for other_id,other_val in value.items():
-         #       print(id,": ",other_id,":",other_val[0])
+        if DEBUG==True:
+            print("BATCHID",batch_id)
+            for id, value in all_batch_reads_dict.items():
+                for other_id,other_val in value.items():
+                   print(id,": ",other_id,":",other_val[0],"::",other_val[1])
         #print(all_batch_reads_dict)
         #print("Graph built up!")
         #draw_Graph(DG)
@@ -1010,7 +958,7 @@ def main(args):
         merge_sub_isoforms_5=True
         delta_iso_len_3=5
         delta_iso_len_5=5"""
-        generate_isoforms(DG, all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len, delta_iso_len_3, delta_iso_len_5,iso_abundance,max_seqs_to_spoa)
+        generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len, delta_iso_len_3, delta_iso_len_5,iso_abundance,max_seqs_to_spoa)
 
         #snapshot3 = tracemalloc.take_snapshot()
         #print(snapshot3)
@@ -1059,7 +1007,7 @@ def main(args):
     shutil.rmtree(work_dir)
 
 RUNAFTER=False
-DEBUG=False
+DEBUG=True
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo error correction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)

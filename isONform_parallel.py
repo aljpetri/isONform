@@ -8,25 +8,14 @@ by Kristoffer Sahlin and changed by Alexander Petri to be usable with the isONfo
 # ! /usr/bin/env python
 
 from __future__ import print_function
-import os, sys
 import argparse
-from sys import stdout
-import shutil
-import subprocess
-import glob
 import tempfile
-import errno
 from time import time
 from pathlib import Path
-import itertools
-from Parallelization_side_functions import *
 import signal
 from multiprocessing import Pool
 import multiprocessing as mp
 from batch_merging_parallel import *
-
-# import math
-import re
 
 def wccount(filename):
     out = subprocess.Popen(['wc', '-l', filename],
@@ -48,7 +37,7 @@ def isONform(data):
     with open(isONform_error_file, "w") as error_file:
         print('Running isONform batch_id:{0}.{1}...'.format(cl_id,batch_id), end=' ')
         stdout.flush()
-        isONform_out_file = open(os.path.join(outfolder, "stdout.txt"), "w")
+        isONform_out_file = open(os.path.join(outfolder, "stdout{0}_{1}.txt".format(cl_id,batch_id)), "w")
         subprocess.check_call(
                 ["python", isONform_exec, "--fastq", read_fastq_file, "--outfolder", outfolder,
                  #"--exact_instance_limit", str(isONform_algorithm_params["exact_instance_limit"]),

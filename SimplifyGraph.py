@@ -1,16 +1,9 @@
-import networkx as nx
-from collections import Counter, namedtuple
-from consensus import *
-import matplotlib.pyplot as plt
-from IsoformGeneration import *
-#from MemoryAnalysis import *
-import copy
-from recordclass import recordclass
-from functools import cmp_to_key
 
-#from pyinstrument import Profiler
+from collections import Counter, namedtuple
+from IsoformGeneration import *
+from recordclass import recordclass
 import itertools
-from pyinstrument import Profiler
+
 """Helper function used to plot the graph. Taken from GraphGeneration.
     INPUT: DG   Directed Graph to plot
 """

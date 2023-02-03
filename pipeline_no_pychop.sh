@@ -58,7 +58,7 @@ echo "Running isONcorrect"
 echo
 #run_isoncorrect --t $num_cores  --fastq_folder $raw_reads  --outfolder $outfolder/correction/
 #the following line is without isONclust:
-run_isoncorrect --t $num_cores  --fastq_folder $outfolder/clustering/fastq_files  --outfolder $outfolder/correction/
+~/isONcorrect/run_isoncorrect --t $num_cores  --fastq_folder $outfolder/clustering/fastq_files  --outfolder $outfolder/correction/
 
 echo
 echo "Finished isONcorrect"
@@ -70,7 +70,7 @@ echo "Running isONform"
 echo
 #python3.11 $isONform_folder/isONform_parallel.py --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches
 #python3.11 $isONform_folder/main.py --fastq $outfolder/correction/*/*.fastq --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder $outfolder/singleisoforms --iso_abundance $iso_abundance
-python3.11 $isONform_folder/isONform_parallel.py --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 15 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches --merge_sub_isoforms_3  --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow
+python3.11 $isONform_folder/isONform_parallel.py --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches --merge_sub_isoforms_3  --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow
 echo
 echo "Finished isONform"
 echo
