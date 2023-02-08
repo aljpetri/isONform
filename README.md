@@ -21,8 +21,13 @@
 8. `recordclass`
 
 
-### Installation guide
+## Installation guide
+### Via pip
+```
+pip install isONform
+```
 
+### Downloading source from github
 1. Create a new environment for isONform (at least python 3.7 required):<br />
 		`conda create -n isonform python=3.10 pip` <br />
 		`conda activate isonform` <br />
@@ -50,14 +55,16 @@ The algorithm uses spoa to generate the final isoforms.<br />
 
 ## Output <a name="output"></a>
 
-The algorithm produces two files:<br />
+The algorithm produces three files:<br />
 -<strong>mapping.txt</strong> contains information about which reads were mapped together into which consensus. It has the following form:<br />
 Line1:consensusID <br />
 Line2: List of read names </p>
 
--<strong>spoa.fa</strong> contains the actual isoforms stored in the fasta format:<br />
+-<strong>transcriptome.fastq</strong> contains the actual isoforms stored in the fasta format:<br />
 Line1: >consensusID<br />
 Line2: consensus sequence<br />
+
+-<strong>support.txt<\strong> contains the consensusID as well as the number of reads supporting it<br/>
 ## Running the code <a name="Running"></a>
 
 To run the test analysis pipeline:
@@ -92,6 +99,11 @@ python main.py --fastq ~/PHDProject1/testout/isoforms.fa --k 9 --w 10 --xmin 14 
 ```
 python main.py --fastq /path/to/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --max_bubblesize 2 --delta_len 3 --outfolder testout
 ```
+the isON-pipeline can be run via:
+```
+./full_pipeline.sh    <raw_reads.fq>  <outfolder>  <num_cores> <isONform_folder> <iso_abundance>
+```
+(Note that this requires pychopper,isONclust and isONcorrect to be installed)
 
 ## Credits <a name="credits"></a>
 
