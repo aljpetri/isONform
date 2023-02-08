@@ -9,7 +9,7 @@ from collections import defaultdict
 import edlib
 from modules import create_augmented_reference, help_functions, correct_seqs  # ,align
 from batch_merging import *
-from GraphGenerationOld import *
+#from GraphGenerationOld import *
 
 
 def eprint(*args, **kwargs):
