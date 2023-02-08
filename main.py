@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 from __future__ import print_function
 from GraphGeneration import *
-from OldGraphGeneration import *
+#from OldGraphGeneration import *
 import argparse
 import math
 from collections import deque

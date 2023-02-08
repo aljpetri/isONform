@@ -188,7 +188,7 @@ def main(args):
                         compute = False
 
             if compute:
-                print("computing")
+                #print("computing")
                 isONform_algorithm_params = {"set_w_dynamically": args.set_w_dynamically,
                                                 "exact_instance_limit": args.exact_instance_limit,
                                                 "delta_len": args.delta_len,"--exact": True,
