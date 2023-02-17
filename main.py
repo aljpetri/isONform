@@ -1007,7 +1007,7 @@ def main(args):
     shutil.rmtree(work_dir)
 
 RUNAFTER=False
-DEBUG=True
+DEBUG=False
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo error correction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)

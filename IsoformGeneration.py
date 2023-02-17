@@ -83,6 +83,54 @@ def subtract_wrong_reads(edgelist,supported_reads,DG):
     #print(supported_reads)
     return supported_reads
 
+#taken from: https://www.w3resource.com/python-exercises/list/python-data-type-list-exercise-32.php
+def is_Sublist(l, s):
+    sub_set = False
+    if s == []:
+        sub_set = True
+    elif s == l:
+        sub_set = True
+    elif len(s) > len(l):
+        sub_set = False
+
+    else:
+        for i in range(len(l)):
+            if l[i] == s[0]:
+                n = 1
+                while (n < len(s)) and (l[i + n] == s[n]):
+                    n += 1
+
+                if n == len(s):
+                    sub_set = True
+
+    return sub_set
+"""
+Merges subisoforms into larger isoforms
+"""
+def merge_isoform_paths(isoforms,visited_nodes_isoforms):
+    isoform_set_dict={}
+    merge_list=[]
+    for id1, vis_nodes_set1 in isoform_set_dict.items():
+        for id2, vis_nodes_set2 in isoform_set_dict.items():
+            if id1<id2:
+                if is_Sublist(vis_nodes_set2,vis_nodes_set1):
+                    #vis_nodes_set1.issubset(vis_nodes_set2):
+                    print("MERGESUB")
+                    print(id1,id2)
+                    merge_tuple=(id1,id2)
+                    merge_list.append(merge_tuple)
+                elif is_Sublist(vis_nodes_set1,vis_nodes_set2): #vis_nodes_set2.issubset(vis_nodes_set1):
+                    merge_tuple=(id2,id1)
+                    print("MERGESUB")
+                    print(id2, id1)
+                    merge_list.append(merge_tuple)
+    for tup in merge_list:
+        subiso=tup[0]
+        largeiso=tup[1]
+        isoforms[largeiso].extend(isoforms[subiso])
+        del isoforms[subiso]
+        del visited_nodes_isoforms[subiso]
+    return isoforms
 """Method to generate the final isoforms by iterating through the graph structure
 INPUT:      DG          Directed Graph
             support       list of reads 
@@ -94,6 +142,8 @@ def compute_equal_reads2(DG,support):
     visited_nodes_isoforms={}
     isoforms={}
     all_supp=set(support)
+    #indicates whether we want to merge a true subisoform into another isoform (ie. the isoform is a continous sublist of the longer one)
+    merge_sub_isos=True
     #we iterate as long as still not all support was allocated to a path
     while node_support_left:
         #print("Node_support_left",node_support_left)
@@ -122,13 +172,15 @@ def compute_equal_reads2(DG,support):
 
         if current_node_support:
                 id = list(current_node_support)[0]
-                print(id)
+                #print(id)
                 isoforms[id]=list(current_node_support)
                 node_support_left-=current_node_support
                 visited_nodes_isoforms[id]=visited_nodes
         else:
             print("no current_node_support")
     print("Found ",len(isoforms)," isoforms")
+    if merge_sub_isos:
+        isoforms=merge_isoform_paths(isoforms,visited_nodes_isoforms)
     return isoforms,visited_nodes_isoforms
 
 
@@ -270,6 +322,149 @@ def generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,c
                 consensuses[key] = spoa_ref
     return consensuses
     #print(mapping)
+def search_last_entries(entry_since_sign_match,delta_len_3):
+    dist_to_last_match=0
+    deletion_len=0
+    insertion_len=0
+    #end_variab=30
+    for entry in entry_since_sign_match:
+        cig_len=entry[0]
+        cig_type=entry[1]
+        dist_to_last_match+=cig_len
+        if cig_type=="D":
+            deletion_len+=cig_len
+        if cig_type=="I":
+            insertion_len+=cig_len
+    #if DEBUG:
+        #print(dist_to_last_match)
+        #print(deletion_len)
+    if dist_to_last_match-deletion_len<delta_len_3:
+        #if DEBUG:
+            #print("res",dist_to_last_match-deletion_len<delta_len_3)
+        return True
+    else:
+        #if DEBUG:
+            #print("res",dist_to_last_match - deletion_len < delta_len_3)
+        return False
+def search_first_entries(before_fsm,first_sign_match,delta_len_5):
+    deletion_len=0
+    for entry in before_fsm:
+        cig_len = entry[0]
+        cig_type = entry[1]
+        if cig_type == "D":
+            deletion_len += cig_len
+
+    if DEBUG:
+        print(first_sign_match)
+        print(deletion_len)
+        print(delta_len_5)
+    if first_sign_match - deletion_len < delta_len_5:
+        if DEBUG:
+            print("res", first_sign_match - deletion_len < delta_len_5)
+        return True
+    else:
+        if DEBUG:
+            print("res", first_sign_match - deletion_len < delta_len_5)
+        return False
+#parses the parasail alignment output to figure out whether to merge
+def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len):
+    #print("Overall_length",overall_len)
+    miss_match_length = 0
+    alignment_len = 0
+    too_long_indel = False
+    three_prime=True
+    five_prime=True
+    miss_match_before=0
+    significant_match_len=delta_len
+    last_significant_match_end=0
+    entry_since_sign_match=[]
+    poss_false=False
+    error_positions=[]
+    first_sign_match=-1
+    before_fsm=[]
+
+    nomatch_after_lsm=False
+    for i, elem in enumerate(cigar_tuples):
+        this_start_pos=alignment_len
+        max_pos=i
+        cig_len = elem[0]
+        #print("cigar_len", cig_len)
+        cig_type = elem[1]
+        alignment_len += cig_len
+        if (cig_type != '=') and (cig_type != 'M'):
+            # we want to add up all missmatches to compare to sequence length
+            if cig_len <= delta_len:
+                miss_match_length+=delta_len
+                continue
+            # if we have not yet found a significant match between our sequences
+            if first_sign_match == -1:
+                #add the mismatch to before_fsm
+                before_fsm.append(elem)
+                continue
+            #we have had a first significant match
+            else:
+                #still increase miss_match_length
+                miss_match_length += cig_len
+                #append this mismatch to entry_since_sign_match
+                entry_since_sign_match.append(elem)
+                #if the mismatch is longer than delta_len: we want to stop parsing iff another significant match comes up
+                if cig_len> delta_len:
+                    nomatch_after_lsm=True
+
+            #we append the startposition of the missmatch to error_positions
+            error_positions.append(this_start_pos)
+        #we have a match
+        else:
+            #we know we have a match, but is it significant?
+            if cig_len>=significant_match_len:
+                # we want to be able to recover the length of mismatches up to the last significant match (lsm)-> store it as this could be the lsm
+                miss_match_before = miss_match_length
+                #store the position of where the lsm ends
+                last_significant_match_end=this_start_pos+cig_len
+                if first_sign_match==-1:
+                    first_sign_match=this_start_pos
+                if nomatch_after_lsm:
+                    print("Nomatch in between")
+                    return False
+                print("LSM:",elem)
+                entry_since_sign_match=[]
+            else:
+                before_fsm.append(elem)
+    if first_sign_match==-1:
+        return False
+    """"#we have iterated over the full cigar string and now know where the last significant match is located
+    if poss_false:
+        #we iterate over all error_positions
+        for pos in error_positions:
+            #if we find an error to be before last_significant_match we cannot merge the sequences
+            if pos<last_significant_match_end:
+                return False"""
+    mergeable_start=search_first_entries(before_fsm,first_sign_match,delta_iso_len_5)
+    #analyse the last entries of our cigar tuples to figure out what has happened after the lsm
+    mergeable=search_last_entries(entry_since_sign_match,delta_iso_len_3)
+    #the shorter sequence still went on longer than significant_match_len->not mergeable
+    if not mergeable or not mergeable_start:
+        if DEBUG:
+            print("NotMergeable",mergeable," start:",mergeable_start)
+            print(cigar_tuples)
+        return False
+    #We calculate the diversity of our alignment
+    similar_seq=last_significant_match_end-first_sign_match
+    diversity = (miss_match_before / similar_seq)
+    max_bp_diff = max(delta * similar_seq, delta_len)
+    mod_div_rate = max_bp_diff / similar_seq
+    #print("3'",three_prime," 5'",five_prime)
+    #print("diversity", diversity, "mod_div", mod_div_rate)
+    #we additionally make sure that the two consensuses are not too diverse
+    diversity_bool=diversity <= mod_div_rate
+    #if any of the three parameters we look at tells us not to merge we do not merge
+    if diversity_bool:  # delta_perc:
+        #print("Div:",diversity_bool,"3' ",three_prime," 5' ",five_prime)
+        return True
+    else:
+        print("no pop due to diversity")
+        return False
+
 def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len):
     #print("Overall_length",overall_len)
     miss_match_length = 0
@@ -331,6 +526,8 @@ def get_overall_alignment_len(cigar_tuples):
         overall_len += elem[0]
     return overall_len
 def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5):
+    if len(consensus1)<len(consensus2):
+        print("Wrong!, ",consensus1,len(consensus1),"<",consensus2,len(consensus2))
     s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
                                                                                        match_score=2,
                                                                                        mismatch_penalty=-2,
@@ -341,13 +538,14 @@ def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,me
     #print(s2_alignment)
     #print(cigar_tuples)
     #print(overall_len)
-    good_to_pop = parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len)
-    if DEBUG:
-        if good_to_pop:
-            print(cigar_tuples)
-            print(cigar_string)
-            print(s1_alignment)
-            print(s2_alignment)
+    #good_to_pop = parse_cigar_diversity_isoform_level(cigar_tuples, delta, delta_len, merge_sub_isoforms_3,merge_sub_isoforms_5, delta_iso_len_3, delta_iso_len_5,overall_len)
+    good_to_pop = parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len)
+    #if DEBUG:
+        #if good_to_pop:
+            #print(cigar_tuples)
+            #print(cigar_string)
+            #print(s1_alignment)
+            #print(s2_alignment)
     #print(good_to_pop)
     return good_to_pop
 
@@ -385,7 +583,7 @@ def generate_all_consensuses(all_consensuses,alternative_consensuses,curr_best_s
             #all_consensuses[id] = seq
             consensus_tuple = (id, seq)
             alternative_consensuses.append(consensus_tuple)
-            print("all cons_", id,", ",seq)
+            #print("all cons_", id,", ",seq)
             # consensus_file.write(">{0}\n{1}\n".format(name, seq))
             reads_path.close()
         else:
@@ -401,13 +599,17 @@ def generate_all_consensuses(all_consensuses,alternative_consensuses,curr_best_s
             all_consensuses[id] = spoa_ref
             consensus_tuple=(id,spoa_ref)
             alternative_consensuses.append(consensus_tuple)
+
+
 def add_merged_reads(curr_best_seqs, id2,id1):
+    #we want to merge all sequences of id1 into id2
     consensus_to_update=curr_best_seqs[id2]
     consensus_updates=curr_best_seqs[id1]
-    #print("TOUPDATE:",consensus_to_update)
-    #print("UPDATES:",consensus_updates)
+    #all the support of id1 and id2 are merged into new_consensus
     new_consensus=consensus_to_update+consensus_updates
+    #add the new consensuses to curr_best_seqs for id2
     curr_best_seqs[id2]=new_consensus
+    #we pop id1 from curr_best_Seqs as this id is not needed anymore
     curr_best_seqs.pop(id1)
 """
 This method is used to find out how similar the consensuses are (by figuring out how much of their intervals are shared.
@@ -424,8 +626,10 @@ def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delt
     alternative_consensuses=[]
     generate_all_consensuses(all_consensuses,alternative_consensuses,curr_best_seqs,reads,work_dir,max_seqs_to_spoa)
     alternative_consensuses.sort(key=lambda x: len(x[1]))
-    #for consensus in alternative_consensuses:
-        #print(consensus[0],len(consensus[1]))
+    print("sorted consensuses")
+    for consensus in alternative_consensuses:
+        print(consensus[0],len(consensus[1]))
+    print("Finished")
     for i, consensus in enumerate(alternative_consensuses[:len(alternative_consensuses)-1]):
         #print("con",consensus)
         id1=consensus[0]
@@ -437,22 +641,24 @@ def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delt
             seq1=new_consensuses[id1]
         for consensus2 in alternative_consensuses[i+1:]:
             id2=consensus2[0]
-            #if id2 in merge_set:
-            #    continue
-            #if not id1==id2: #todo get rid of this line
             if DEBUG:
                 print(id1,id2)
             seq2=consensus2[1]
             #as soon as we have a length difference larger than delta_iso_len_3+delta_iso_len_5 we break out of the inner loop
-            if len(seq2)-len(seq1)>delta_iso_len_3+delta_iso_len_5:
-                break
-            consensus1 = seq1
-            consensus2 = seq2
+            #if len(seq2)-len(seq1)>delta_iso_len_3+delta_iso_len_5:
+            #    break
+            if seq2<seq1:
+                consensus1=seq2
+                consensus2=seq1
+            else:
+            #if True:
+                consensus1 = seq1
+                consensus2 = seq2
             merge_consensuses_possible = align_to_merge(consensus1, consensus2, delta, delta_len, merge_sub_isoforms_3,
                                                    merge_sub_isoforms_5, delta_iso_len_3, delta_iso_len_5)
             if merge_consensuses_possible:
-                if DEBUG:
-                    print("WEMERGE")
+                #if DEBUG:
+                #    print("WEMERGE")
                 #merge_set.add(id2)
                 first_consensus=[item for item in alternative_consensuses if item[0] == id2][0]
                 #second_consensus=[item for item in alternative_consensuses if item[0] == id2][0]

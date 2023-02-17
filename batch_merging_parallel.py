@@ -188,19 +188,37 @@ def actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,m
                         #print("IDDICT", id_dict)
                         #print("IM", infos.merged)
                         for t_id2,(id2, infos2) in enumerate(batch_id_list2):
-                            if infos2.sequence-infos.sequence>delta_iso_len_3+delta_iso_len_5:
-                                break
-                            if infos.sequence-infos2.sequence>delta_iso_len_3+delta_iso_len_5:
-                                continue
-                            if infos.merged:
+                            if len(infos2.sequence)>=len(infos.sequence):
+                                batch_id_long=batchid2
+                                batch_id_short=batchid
+                                t_id_long=t_id2
+                                id_long=id2
+                                infos_long=infos2
+                                t_id_short=t_id1
+                                id_short=id
+                                infos_short=infos
+                            else:
+                                batch_id_long = batchid
+                                batch_id_short = batchid2
+                                t_id_long = t_id1
+                                id_long = id
+                                infos_long = infos
+                                t_id_short = t_id2
+                                id_short = id2
+                                infos_short = infos2
+                            #if infos2.sequence-infos.sequence>delta_iso_len_3+delta_iso_len_5:
+                            #    break
+                            #if infos_long.sequence-infos_short.sequence>delta_iso_len_3+delta_iso_len_5:
+                            #    continue
+                            if infos_long.merged:
                                 id_merged=True
                                 continue
                             if DEBUG:
                                 print("bid", batchid,": ",id, "bid2", batchid2,": ",id2)
-                            if not infos2.merged:
+                            if not infos_short.merged:
                                 cter+=1
-                                consensus1=infos.sequence
-                                consensus2=infos2.sequence
+                                consensus1=infos_long.sequence
+                                consensus2=infos_short.sequence
                                 #print(consensus1, "\n")
                                 #print(consensus2, "\n")
                                 good_to_pop=align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5)
@@ -212,40 +230,35 @@ def actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,m
                                     #print(len(all_infos_dict[batchid2][id2].reads))
                                     print("Merging", batchid, "_", id, " and ", batchid2, "_", id2)
                                     #if the first combi has more than 50 reads support
-                                    if len(infos.reads) > 50:
+                                    if len(infos_long.reads) > 50:
                                         #if the length of the first combis sequence is greater or equal to the length of the second combis sequence
-                                        if len(infos.sequence) >= len(infos2.sequence):
+                                        #if len(infos.sequence) >= len(infos2.sequence):
                                             #print(len(all_infos_dict[batchid][id].reads))
                                             #print(len(all_infos_dict[batchid2][id2].reads))
-                                            all_infos_dict[batchid][id].reads = infos2.reads + infos.reads
+                                        all_infos_dict[batch_id_long][id_long].reads = infos_long.reads + infos_short.reads
                                             #print(len(all_infos_dict[batchid][id].reads))
                                             #print(len(all_infos_dict[batchid2][id2].reads))
-                                            infos2.merged = True
-                                            print("FIRST")
-                                            #all_infos_dict[batchid][id].reads=infos.reads+infos2.reads
-                                        else: #the second sequence is longer than the first
-                                            #add the reads of the first consensus to the second and mark the first combi as marked
-                                            all_infos_dict[batchid2][id2].reads = infos2.reads+infos.reads
-                                            infos.merged=True
-                                            print("SECOND")
+                                        infos_short.merged = True
+                                        print("FIRST")
+
 
                                     else:
                                         #print("Else")
                                         # TODO generate consensus and add all infos to longer read id
                                         #the sequence of infos is longer than the sequence of infos2
-                                        if len(infos.sequence) >= len(
-                                                infos2.sequence):
+                                        #if len(infos.sequence) >= len(
+                                        #        infos2.sequence):
 
-                                            mappings1 = infos.reads
-                                            mappings2 = infos2.reads
+                                            mappings1 = infos_long.reads
+                                            mappings2 = infos_short.reads
 
                                             new_consensus=generate_consensus_path(work_dir,mappings1,mappings2, all_batch_sequences,max_seqs_to_spoa)
                                             #print("CONS1",all_infos_dict[batchid][id])
-                                            all_infos_dict[batchid][id].sequence = new_consensus
-                                            all_infos_dict[batchid][id].reads = infos.reads + infos2.reads
-                                            all_infos_dict[batchid2][id2].merged = True
-                                            print("Third")
-                                        else:
+                                            all_infos_dict[batch_id_long][id_long].sequence = new_consensus
+                                            all_infos_dict[batch_id_long][id_long].reads = infos_long.reads + infos_short.reads
+                                            all_infos_dict[batch_id_short][id_short].merged = True
+                                            #print("Third")
+                                            """else:
                                             #print("BM",batch_mappings)
                                             mappings1 = infos2.reads
                                             mappings2 = infos.reads
@@ -257,7 +270,7 @@ def actual_merging_process(all_infos_dict,delta,delta_len,merge_sub_isoforms_3,m
                                             all_infos_dict[batchid2][id2].sequence = new_consensus
                                             all_infos_dict[batchid2][id2].reads = infos2.reads + infos.reads
                                             all_infos_dict[batchid][id].merged = True
-                                            print("fourth")
+                                            print("fourth")"""
                             print("After", batchid,id,all_infos_dict[batchid][id].merged )
                             print("After", batchid2,id2,all_infos_dict[batchid2][id2].merged )
 
