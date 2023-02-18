@@ -366,72 +366,62 @@ def search_first_entries(before_fsm,first_sign_match,delta_len_5):
         if DEBUG:
             print("res", first_sign_match - deletion_len < delta_len_5)
         return False
+def update_rolling_window(cig_len,cig_type,rolling_window,windowsize):
+    #if we have a mismatch: append cig_len 0's
+    if (cig_type != '=') and (cig_type != 'M'):
+        #rolling_window.append(cig_len * 0)
+        rolling_window.extend([0 for i in range(cig_len)])
+    # if we have a match: append cig_len 1's
+    else:
+        rolling_window.extend([1 for i in range(cig_len)])
+    n_elements_to_remove = len(rolling_window) - windowsize
+    del rolling_window[:n_elements_to_remove]
+def parse_rolling_window(rolling_window,windowsize,equality_rate):
+    equal_count=rolling_window.count(1)
+    equal_rate=equal_count/windowsize
+    if equal_rate>=equality_rate:
+        return True
+    else:
+        return False
 #parses the parasail alignment output to figure out whether to merge
-def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len):
+def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len,first_match,last_match):
     #print("Overall_length",overall_len)
     miss_match_length = 0
     alignment_len = 0
-    too_long_indel = False
-    three_prime=True
-    five_prime=True
-    miss_match_before=0
-    significant_match_len=delta_len
-    last_significant_match_end=0
-    entry_since_sign_match=[]
-    poss_false=False
-    error_positions=[]
-    first_sign_match=-1
-    before_fsm=[]
-
-    nomatch_after_lsm=False
+    after_last_matches=0
+    after_last_nomatch=0
+    before_first_matches=0
+    before_first_nomatch=0
     for i, elem in enumerate(cigar_tuples):
         this_start_pos=alignment_len
-        max_pos=i
         cig_len = elem[0]
         #print("cigar_len", cig_len)
         cig_type = elem[1]
         alignment_len += cig_len
         if (cig_type != '=') and (cig_type != 'M'):
-            # we want to add up all missmatches to compare to sequence length
-            if cig_len <= delta_len:
-                miss_match_length+=delta_len
-                continue
-            # if we have not yet found a significant match between our sequences
-            if first_sign_match == -1:
-                #add the mismatch to before_fsm
-                before_fsm.append(elem)
-                continue
-            #we have had a first significant match
-            else:
-                #still increase miss_match_length
-                miss_match_length += cig_len
-                #append this mismatch to entry_since_sign_match
-                entry_since_sign_match.append(elem)
-                #if the mismatch is longer than delta_len: we want to stop parsing iff another significant match comes up
-                if cig_len> delta_len:
-                    nomatch_after_lsm=True
 
-            #we append the startposition of the missmatch to error_positions
-            error_positions.append(this_start_pos)
+            if this_start_pos < first_match:
+                if not cig_type =='D':
+                    before_first_nomatch+=cig_len
+            elif this_start_pos>last_match:
+                if not cig_type =='D':
+                    after_last_nomatch+=cig_len
+            #the mismatch is located between the first and last significant matches
+            else:
+                #if the mismatch is longer than delta_len: Structural difference -> not mergeable
+                if cig_len > delta_len:
+                    return False
+                #we still need this mismatch_length to be added to miss_match_length to document the number of mismatches between fsm and lsm
+                else:
+                    # we want to add up all missmatches to compare to sequence length
+                    miss_match_length += delta_len
         #we have a match
         else:
+            if this_start_pos < first_match:
+                before_first_matches += cig_len
+            elif this_start_pos > last_match:
+                after_last_matches+=cig_len
             #we know we have a match, but is it significant?
-            if cig_len>=significant_match_len:
-                # we want to be able to recover the length of mismatches up to the last significant match (lsm)-> store it as this could be the lsm
-                miss_match_before = miss_match_length
-                #store the position of where the lsm ends
-                last_significant_match_end=this_start_pos+cig_len
-                if first_sign_match==-1:
-                    first_sign_match=this_start_pos
-                if nomatch_after_lsm:
-                    print("Nomatch in between")
-                    return False
-                print("LSM:",elem)
-                entry_since_sign_match=[]
-            else:
-                before_fsm.append(elem)
-    if first_sign_match==-1:
-        return False
     """"#we have iterated over the full cigar string and now know where the last significant match is located
     if poss_false:
         #we iterate over all error_positions
@@ -439,22 +429,24 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
             #if we find an error to be before last_significant_match we cannot merge the sequences
             if pos<last_significant_match_end:
                 return False"""
-    mergeable_start=search_first_entries(before_fsm,first_sign_match,delta_iso_len_5)
+    mergeable_start=before_first_matches+before_first_nomatch <delta_iso_len_5
     #analyse the last entries of our cigar tuples to figure out what has happened after the lsm
-    mergeable=search_last_entries(entry_since_sign_match,delta_iso_len_3)
+    mergeable_end=after_last_matches+after_last_nomatch< delta_iso_len_3
     #the shorter sequence still went on longer than significant_match_len->not mergeable
-    if not mergeable or not mergeable_start:
+    if not mergeable_end or not mergeable_start:
         if DEBUG:
-            print("NotMergeable",mergeable," start:",mergeable_start)
+            print("NotMergeable start",mergeable_start," end:",mergeable_end)
             print(cigar_tuples)
         return False
     #We calculate the diversity of our alignment
-    similar_seq=last_significant_match_end-first_sign_match
-    diversity = (miss_match_before / similar_seq)
+    similar_seq=last_match-first_match
+    #just to make sure that we only merge reads that have at least 100 nt similar
+    if similar_seq<100:
+        return False
+    diversity = (miss_match_length/ similar_seq)
     max_bp_diff = max(delta * similar_seq, delta_len)
     mod_div_rate = max_bp_diff / similar_seq
-    #print("3'",three_prime," 5'",five_prime)
-    #print("diversity", diversity, "mod_div", mod_div_rate)
+
     #we additionally make sure that the two consensuses are not too diverse
     diversity_bool=diversity <= mod_div_rate
     #if any of the three parameters we look at tells us not to merge we do not merge
@@ -525,6 +517,13 @@ def get_overall_alignment_len(cigar_tuples):
     for i, elem in enumerate(cigar_tuples):
         overall_len += elem[0]
     return overall_len
+def find_first_significant_match(s1_alignment,s2_alignment,windowsize,alignment_threshold):
+    match_vector = [1 if n1 == n2 else 0 for n1, n2 in zip(s1_alignment, s2_alignment)]
+    for i in range(0,len(match_vector)-windowsize+1):
+        our_equality=sum(match_vector[i:i+windowsize])/windowsize
+        if our_equality>alignment_threshold:
+            return i
+    return -1
 def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5):
     if len(consensus1)<len(consensus2):
         print("Wrong!, ",consensus1,len(consensus1),"<",consensus2,len(consensus2))
@@ -538,8 +537,16 @@ def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,me
     #print(s2_alignment)
     #print(cigar_tuples)
     #print(overall_len)
+    windowsize=20
+    alignment_threshold=0.8
+    start_match=find_first_significant_match(s1_alignment,s2_alignment,windowsize,alignment_threshold)
+    end_match=find_first_significant_match(s1_alignment[::-1],s2_alignment[::-1],windowsize,alignment_threshold)
+    print("Start:",start_match," end:",end_match)
+    if not start_match and not end_match:
+        return False
+    end_match_pos=overall_len-end_match
     #good_to_pop = parse_cigar_diversity_isoform_level(cigar_tuples, delta, delta_len, merge_sub_isoforms_3,merge_sub_isoforms_5, delta_iso_len_3, delta_iso_len_5,overall_len)
-    good_to_pop = parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len)
+    good_to_pop = parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len,start_match,end_match_pos)
     #if DEBUG:
         #if good_to_pop:
             #print(cigar_tuples)
