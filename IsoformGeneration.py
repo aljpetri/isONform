@@ -366,23 +366,7 @@ def search_first_entries(before_fsm,first_sign_match,delta_len_5):
         if DEBUG:
             print("res", first_sign_match - deletion_len < delta_len_5)
         return False
-def update_rolling_window(cig_len,cig_type,rolling_window,windowsize):
-    #if we have a mismatch: append cig_len 0's
-    if (cig_type != '=') and (cig_type != 'M'):
-        #rolling_window.append(cig_len * 0)
-        rolling_window.extend([0 for i in range(cig_len)])
-    # if we have a match: append cig_len 1's
-    else:
-        rolling_window.extend([1 for i in range(cig_len)])
-    n_elements_to_remove = len(rolling_window) - windowsize
-    del rolling_window[:n_elements_to_remove]
-def parse_rolling_window(rolling_window,windowsize,equality_rate):
-    equal_count=rolling_window.count(1)
-    equal_rate=equal_count/windowsize
-    if equal_rate>=equality_rate:
-        return True
-    else:
-        return False
+
 #parses the parasail alignment output to figure out whether to merge
 def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len,first_match,last_match):
     #print("Overall_length",overall_len)
@@ -393,23 +377,28 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
     before_first_matches=0
     before_first_nomatch=0
     for i, elem in enumerate(cigar_tuples):
+        #thisstartpos: the starting position of where the cigar tuple starts. (Previous end position)
         this_start_pos=alignment_len
         cig_len = elem[0]
-        #print("cigar_len", cig_len)
         cig_type = elem[1]
         alignment_len += cig_len
+        print(elem)
+        #we found a mismatch
         if (cig_type != '=') and (cig_type != 'M'):
-
+            #if the missmatch is located before the first significant match (upstream)
             if this_start_pos < first_match:
                 if not cig_type =='D':
+                    print("before first")
                     before_first_nomatch+=cig_len
-            elif this_start_pos>last_match:
+            elif this_start_pos>last_match or this_start_pos+cig_len>last_match:
                 if not cig_type =='D':
+                    print("after last")
                     after_last_nomatch+=cig_len
             #the mismatch is located between the first and last significant matches
             else:
                 #if the mismatch is longer than delta_len: Structural difference -> not mergeable
                 if cig_len > delta_len:
+                    print("between")
                     return False
                 #we still need this mismatch_length to be added to miss_match_length to document the number of mismatches between fsm and lsm
                 else:
@@ -429,7 +418,7 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
             #if we find an error to be before last_significant_match we cannot merge the sequences
             if pos<last_significant_match_end:
                 return False"""
-    mergeable_start=before_first_matches+before_first_nomatch <delta_iso_len_5
+    mergeable_start=before_first_matches+before_first_nomatch < delta_iso_len_5
     #analyse the last entries of our cigar tuples to figure out what has happened after the lsm
     mergeable_end=after_last_matches+after_last_nomatch< delta_iso_len_3
     #the shorter sequence still went on longer than significant_match_len->not mergeable
@@ -442,6 +431,7 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
     similar_seq=last_match-first_match
     #just to make sure that we only merge reads that have at least 100 nt similar
     if similar_seq<100:
+        print("smaller sim_seq")
         return False
     diversity = (miss_match_length/ similar_seq)
     max_bp_diff = max(delta * similar_seq, delta_len)
@@ -521,12 +511,13 @@ def find_first_significant_match(s1_alignment,s2_alignment,windowsize,alignment_
     match_vector = [1 if n1 == n2 else 0 for n1, n2 in zip(s1_alignment, s2_alignment)]
     for i in range(0,len(match_vector)-windowsize+1):
         our_equality=sum(match_vector[i:i+windowsize])/windowsize
+        #we only have a significant match if the equality of the covered area is larger than alignment_threshold
         if our_equality>alignment_threshold:
             return i
     return -1
 def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5):
-    if len(consensus1)<len(consensus2):
-        print("Wrong!, ",consensus1,len(consensus1),"<",consensus2,len(consensus2))
+    if len(consensus1)>len(consensus2):
+        print("Wrong!, ",consensus1,len(consensus1),">",consensus2,len(consensus2))
     s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
                                                                                        match_score=2,
                                                                                        mismatch_penalty=-2,
@@ -537,7 +528,7 @@ def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,me
     #print(s2_alignment)
     #print(cigar_tuples)
     #print(overall_len)
-    windowsize=20
+    windowsize=15
     alignment_threshold=0.8
     start_match=find_first_significant_match(s1_alignment,s2_alignment,windowsize,alignment_threshold)
     end_match=find_first_significant_match(s1_alignment[::-1],s2_alignment[::-1],windowsize,alignment_threshold)
@@ -545,15 +536,16 @@ def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,me
     if not start_match and not end_match:
         return False
     end_match_pos=overall_len-end_match
+    print("EMP",end_match_pos)
+    print("overall_len",overall_len)
     #good_to_pop = parse_cigar_diversity_isoform_level(cigar_tuples, delta, delta_len, merge_sub_isoforms_3,merge_sub_isoforms_5, delta_iso_len_3, delta_iso_len_5,overall_len)
     good_to_pop = parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len,start_match,end_match_pos)
-    #if DEBUG:
-        #if good_to_pop:
-            #print(cigar_tuples)
-            #print(cigar_string)
+    if DEBUG:
+            print(cigar_tuples)
+            print(cigar_string)
             #print(s1_alignment)
             #print(s2_alignment)
-    #print(good_to_pop)
+    print(good_to_pop)
     return good_to_pop
 
 
@@ -654,7 +646,7 @@ def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delt
             #as soon as we have a length difference larger than delta_iso_len_3+delta_iso_len_5 we break out of the inner loop
             #if len(seq2)-len(seq1)>delta_iso_len_3+delta_iso_len_5:
             #    break
-            if seq2<seq1:
+            if len(seq2)<len(seq1):
                 consensus1=seq2
                 consensus2=seq1
             else:
