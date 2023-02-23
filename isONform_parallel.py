@@ -101,7 +101,7 @@ def symlink_force(target, link_name):
             raise e
 
 #splits clusters up so that we get smaller batches
-def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
+def split_cluster_in_batches_corrected(indir, outdir, tmp_work_dir, max_seqs):
     # create a modified indir
     tmp_work_dir = os.path.join(tmp_work_dir, 'split_in_batches')
     # print(indir)
@@ -146,6 +146,37 @@ def split_cluster_in_batches(indir, outdir, tmp_work_dir, max_seqs):
                 #print(fastq_file, "symlinking instead")
                 symlink_force(filepath, os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext)))
     return tmp_work_dir
+
+def split_cluster_in_batches_clust(indir, outdir, tmp_work_dir, max_seqs):
+    # create a modified indir
+    tmp_work_dir = os.path.join(tmp_work_dir, 'split_in_batches')
+    # print(indir)
+    mkdir_p(tmp_work_dir)
+    smaller_than_max_seqs = False
+    # print(sorted(os.listdir(indir), key=lambda x: int(x.split('.')[0])) )
+    # sys.exit()
+    # add split fiels to this indir
+    for file_ in sorted(os.listdir(indir), key=lambda x: int(x.split('.')[0])):
+        fastq_file = os.fsdecode(file_)
+        if fastq_file.endswith(".fastq"):
+            if not smaller_than_max_seqs:
+                num_lines = sum(1 for line in open(os.path.join(indir, fastq_file)))
+                print(fastq_file, num_lines)
+                smaller_than_max_seqs = False if num_lines > 4*max_seqs else True
+            else:
+                smaller_than_max_seqs = True
+
+            if not smaller_than_max_seqs:
+                splitfile(indir, tmp_work_dir, fastq_file, 4*max_seqs) # is fastq file
+            else:
+                cl_id, ext = fastq_file.rsplit('.',1)
+                print(fastq_file, "symlinking instead")
+                symlink_force(os.path.join( indir, fastq_file), os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext) ))
+            # cl_id = read_fastq_file.split(".")[0]
+            # outfolder = os.path.join(args.outfolder, cl_id)
+    return tmp_work_dir
+
+
 PYTHONHASHSEED = 0
 def main(args):
     #print("MERGE?", args.merge_sub_isoforms_3, args.merge_sub_isoforms_5)
@@ -158,7 +189,11 @@ def main(args):
         #print("SPLITWRTBATCHES")
         tmp_work_dir = tempfile.mkdtemp()
         print("Temporary workdirektory:", tmp_work_dir)
-        split_tmp_directory = split_cluster_in_batches(directory, args.outfolder, tmp_work_dir, args.max_seqs)
+        if args.clustered:
+            split_tmp_directory = split_cluster_in_batches_clust(directory, args.outfolder, tmp_work_dir,
+                                                                     args.max_seqs)
+        else:
+            split_tmp_directory = split_cluster_in_batches_corrected(directory, args.outfolder, tmp_work_dir, args.max_seqs)
         split_directory = os.fsencode(split_tmp_directory)
         #print("SplitDIR",split_directory)
     else:
@@ -271,6 +306,8 @@ if __name__ == '__main__':
 
     parser.add_argument('--split_wrt_batches', action="store_true",
                         help='Process reads per batch (of max_seqs sequences) instead of per cluster. Significantly decrease runtime when few very large clusters are less than the number of cores used.')
+    parser.add_argument('--clustered', action="store_true",
+                        help='Indicates whether we use the output of isONclust (i.e. we have uncorrected data)')
 
     parser.add_argument('--outfolder', type=str, default=None, help='Outfolder with all corrected reads.')
     parser.add_argument('--randstrobes', action="store_true", help='EXPERIMENTAL PARAMETER: isONform uses paired minimizers (described in isONform paper). This experimental option\

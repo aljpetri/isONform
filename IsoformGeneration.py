@@ -376,6 +376,8 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
     after_last_nomatch=0
     before_first_matches=0
     before_first_nomatch=0
+    print("FIRSTMATCH", first_match)
+    print("LASTMATCH", last_match)
     for i, elem in enumerate(cigar_tuples):
         #thisstartpos: the starting position of where the cigar tuple starts. (Previous end position)
         this_start_pos=alignment_len
@@ -383,19 +385,31 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
         cig_type = elem[1]
         alignment_len += cig_len
         print(elem)
+        print("this_start_pos",this_start_pos)
+        #print("ALEN",alignment_len)
         #we found a mismatch
         if (cig_type != '=') and (cig_type != 'M'):
             #if the missmatch is located before the first significant match (upstream)
             if this_start_pos < first_match:
                 if not cig_type =='D':
                     print("before first")
+                    print(elem)
                     before_first_nomatch+=cig_len
-            elif this_start_pos>last_match or this_start_pos+cig_len>last_match:
+                else:
+                    print("before first")
+                    print(elem)
+            elif this_start_pos>=last_match or this_start_pos+cig_len>=last_match:
                 if not cig_type =='D':
                     print("after last")
+                    print(elem)
                     after_last_nomatch+=cig_len
+                else:
+                    print("after last")
+                    print(elem)
             #the mismatch is located between the first and last significant matches
             else:
+                print("between")
+                print(elem)
                 #if the mismatch is longer than delta_len: Structural difference -> not mergeable
                 if cig_len > delta_len:
                     print("between")
@@ -407,8 +421,13 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
         #we have a match
         else:
             if this_start_pos < first_match:
+                print("before first")
+                print(elem)
+
                 before_first_matches += cig_len
-            elif this_start_pos > last_match:
+            elif this_start_pos >= last_match:
+                print("after last")
+                print(elem)
                 after_last_matches+=cig_len
             #we know we have a match, but is it significant?
     """"#we have iterated over the full cigar string and now know where the last significant match is located
@@ -434,9 +453,11 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
         print("smaller sim_seq")
         return False
     diversity = (miss_match_length/ similar_seq)
+    if overall_len<200:
+        delta=2*delta
     max_bp_diff = max(delta * similar_seq, delta_len)
     mod_div_rate = max_bp_diff / similar_seq
-
+    print("DIV",diversity,", mod_div_rate",mod_div_rate)
     #we additionally make sure that the two consensuses are not too diverse
     diversity_bool=diversity <= mod_div_rate
     #if any of the three parameters we look at tells us not to merge we do not merge
@@ -528,7 +549,7 @@ def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,me
     #print(s2_alignment)
     #print(cigar_tuples)
     #print(overall_len)
-    windowsize=15
+    windowsize=20
     alignment_threshold=0.8
     start_match=find_first_significant_match(s1_alignment,s2_alignment,windowsize,alignment_threshold)
     end_match=find_first_significant_match(s1_alignment[::-1],s2_alignment[::-1],windowsize,alignment_threshold)
@@ -579,7 +600,7 @@ def generate_all_consensuses(all_consensuses,alternative_consensuses,curr_best_s
             rid = id
             singleread = reads[rid]
             seq = singleread[1]
-            #all_consensuses[id] = seq
+            all_consensuses[id] = seq
             consensus_tuple = (id, seq)
             alternative_consensuses.append(consensus_tuple)
             #print("all cons_", id,", ",seq)
@@ -623,12 +644,12 @@ def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delt
     new_consensuses={}
     all_consensuses={}
     alternative_consensuses=[]
+    #generate a consensus for each element in curr_best_seqs and save them in all_consensuses(dict: key-id,val-consensus) and alternative_consensuses
     generate_all_consensuses(all_consensuses,alternative_consensuses,curr_best_seqs,reads,work_dir,max_seqs_to_spoa)
+    #sort alternative_consensuses by the length of the consensus sequences
     alternative_consensuses.sort(key=lambda x: len(x[1]))
-    print("sorted consensuses")
-    for consensus in alternative_consensuses:
-        print(consensus[0],len(consensus[1]))
-    print("Finished")
+    print("Nr consensuses initial",len(alternative_consensuses))
+    #iterate over alternative_consensuses (but always the shorter consensus)
     for i, consensus in enumerate(alternative_consensuses[:len(alternative_consensuses)-1]):
         #print("con",consensus)
         id1=consensus[0]
@@ -638,6 +659,7 @@ def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delt
             seq1=consensus[1]
         else:
             seq1=new_consensuses[id1]
+        #iterate over the rest of the consensuses
         for consensus2 in alternative_consensuses[i+1:]:
             id2=consensus2[0]
             if DEBUG:
@@ -669,11 +691,17 @@ def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delt
                     new_consensuses[id2]=generate_new_full_consensus(id1,id2,reads,curr_best_seqs,work_dir,max_seqs_to_spoa)
                     add_merged_reads(curr_best_seqs, id2, id1)
                 break
-
+    print("ALLC",all_consensuses.keys(),",",len(all_consensuses))
+    print("best_seqs",curr_best_seqs.keys(),",",len(curr_best_seqs))
+    print("NC",new_consensuses.keys(),",",len(new_consensuses))
     for id,support in curr_best_seqs.items():
         if not id in new_consensuses:
-            seq=reads[id][1]
+            #seq=reads[id][1]
+            seq=all_consensuses[id]
             new_consensuses[id]=seq
+
+    print("number consensuses after",len(new_consensuses))
+
     return new_consensuses
 
 
@@ -764,7 +792,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
                                  merge_sub_isoforms_3, merge_sub_isoforms_5, all_reads, max_seqs_to_spoa,
                                  delta_iso_len_3, delta_iso_len_5)
         if DEBUG:
-            print(new_consensuses)
+            print("HELLO",new_consensuses)
 
         generate_isoforms_new(equal_reads, all_reads, work_dir, outfolder, batch_id, max_seqs_to_spoa,
                                            iso_abundance,new_consensuses)
