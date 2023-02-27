@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
-if [ $# -ne 6 ]; then
-        echo "Usage: `basename $0`  <raw_reads.fq>  <outfolder>  <num_cores> <isONform_folder> <iso_abundance> <mode> "
-        exit 0
-fi
+#if [ $# -ne 6 ]; then
+#        echo "Usage: `basename $0`  <raw_reads.fq>  <outfolder>  <num_cores> <isONform_folder> <iso_abundance> <mode> "
+#        exit 0
+#fi
 #the pipeline can be run in different modes:
 # full: the full pipeline is run (pychopper, isONclust,isONcorrect,isONform)
 # pacbio: for PacBio data runs isONclust and isONform
