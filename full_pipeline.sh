@@ -17,7 +17,8 @@ mode=$6
 echo "Running: " `basename $0` $raw_reads $outfolder $num_cores $isONform_folder $iso_abundance $mode
 isonform_folder=${isONform_folder::-1}
 mkdir -p $outfolder
-
+#conda init bash
+#conda activate /proj/snic2022-6-31/nobackup/alexp/conda_envs/isonform
 if [ $mode == "full" ]
 then
 echo
@@ -62,7 +63,7 @@ fi
 echo
 echo "Finished isONclust"
 echo
-
+#conda activate isON311
 
 if [ $mode != "pacbio" ]
 then
@@ -70,7 +71,7 @@ then
   echo "Running isONcorrect"
   echo
 
-  run_isoncorrect --t $num_cores  --fastq_folder $outfolder/clustering/fastq_files  --outfolder $outfolder/correction/
+  python3.11 run_isoncorrect --t $num_cores  --fastq_folder $outfolder/clustering/fastq_files  --outfolder $outfolder/correction/
 
   echo
   echo "Finished isONcorrect"
@@ -97,3 +98,4 @@ echo
 echo
 echo "Finished with pipeline and wrote corrected reads to: " $outfolder
 echo
+
