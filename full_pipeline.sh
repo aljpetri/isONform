@@ -8,6 +8,7 @@ set -e
 # full: the full pipeline is run (pychopper, isONclust,isONcorrect,isONform)
 # pacbio: for PacBio data runs isONclust and isONform
 # analysis: special mode for the analysis pipelines: only isONclust,isONcorrect and isONform are run
+# only_isonform: only isONform is run
 raw_reads=$1
 outfolder=$2
 num_cores=$3
