@@ -41,6 +41,8 @@ fi
 echo
 echo "Running isONclust"
 echo
+if [ $mode != "only_isonform" ]
+then
 if [ $mode != "pacbio" ] && [ $mode != "analysis" ]
 then
 isONclust  --t $num_cores  --ont --fastq $outfolder/full_length.fq \
@@ -59,7 +61,7 @@ else
 isONclust write_fastq --N $iso_abundance --clusters $outfolder/clustering/final_clusters.tsv \
                       --fastq $raw_reads --outfolder  $outfolder/clustering/fastq_files
 fi
-
+fi
 echo
 echo "Finished isONclust"
 echo
