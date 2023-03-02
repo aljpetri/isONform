@@ -167,7 +167,8 @@ def split_cluster_in_batches_clust(indir, outdir, tmp_work_dir, max_seqs):
                 smaller_than_max_seqs = True
 
             if not smaller_than_max_seqs:
-                splitfile(indir, tmp_work_dir, fastq_file, 4*max_seqs) # is fastq file
+                cl_id, ext = fastq_file.rsplit('.', 1)
+                splitfile(indir, tmp_work_dir, fastq_file, 4*max_seqs,cl_id,ext) # is fastq file
             else:
                 cl_id, ext = fastq_file.rsplit('.',1)
                 print(fastq_file, "symlinking instead")
