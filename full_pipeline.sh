@@ -62,7 +62,7 @@ else
 isONclust write_fastq --N $iso_abundance --clusters $outfolder/clustering/final_clusters.tsv \
                       --fastq $raw_reads --outfolder  $outfolder/clustering/fastq_files
 fi
-fi
+
 echo
 echo "Finished isONclust"
 echo
@@ -80,7 +80,7 @@ then
   echo "Finished isONcorrect"
   echo
 fi
-
+fi
 echo
 echo "Merging reads back to single file. Corrected reads per cluster are still stored in: " $outfolder/correction/
 echo
@@ -88,12 +88,12 @@ echo
 echo
 echo "Running isONform"
 echo
-if [ $mode != "pacbio" ]
-then
-  python3.11 $isONform_folder/isONform_parallel.py --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 15 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches --merge_sub_isoforms_3  --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow
-else
+#if [ $mode != "pacbio" ]
+#then
+#  python3.11 $isONform_folder/isONform_parallel.py --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 15 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches --merge_sub_isoforms_3  --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow
+#else
   python3.11 $isONform_folder/isONform_parallel.py --fastq_folder $outfolder/clustering/fastq_files --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 15 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches --merge_sub_isoforms_3  --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow --clustered
-fi
+#fi
 echo
 echo "Finished isONform"
 echo
