@@ -46,20 +46,20 @@ if [ $mode != "only_isonform" ]
 then
 if [ $mode != "pacbio" ] && [ $mode != "analysis" ]
 then
-isONclust  --t $num_cores  --ont --fastq $outfolder/full_length.fq \
+/usr/bin/time -v isONclust  --t $num_cores  --ont --fastq $outfolder/full_length.fq \
              --outfolder $outfolder/clustering
-isONclust write_fastq --N $iso_abundance --clusters $outfolder/clustering/final_clusters.tsv \
+/usr/bin/time -v isONclust write_fastq --N $iso_abundance --clusters $outfolder/clustering/final_clusters.tsv \
                       --fastq $outfolder/full_length.fq --outfolder  $outfolder/clustering/fastq_files
 elif [ $mode == "analysis" ]
 then
-  isONclust  --t $num_cores  --ont --fastq $raw_reads \
+/usr/bin/time -v  isONclust  --t $num_cores  --ont --fastq $raw_reads \
              --outfolder $outfolder/clustering --k 8 --w 9
-isONclust write_fastq --N $iso_abundance --clusters $outfolder/clustering/final_clusters.tsv \
+/usr/bin/time -v isONclust write_fastq --N $iso_abundance --clusters $outfolder/clustering/final_clusters.tsv \
                       --fastq $raw_reads --outfolder  $outfolder/clustering/fastq_files
 else
-  isONclust  --t $num_cores  --isoseq  --fastq $raw_reads \
+/usr/bin/time -v  isONclust  --t $num_cores  --isoseq  --fastq $raw_reads \
              --outfolder $outfolder/clustering
-isONclust write_fastq --N $iso_abundance --clusters $outfolder/clustering/final_clusters.tsv \
+/usr/bin/time -v isONclust write_fastq --N $iso_abundance --clusters $outfolder/clustering/final_clusters.tsv \
                       --fastq $raw_reads --outfolder  $outfolder/clustering/fastq_files
 fi
 
@@ -74,7 +74,7 @@ then
   echo "Running isONcorrect"
   echo
 
-  python3.11 run_isoncorrect --t $num_cores  --fastq_folder $outfolder/clustering/fastq_files  --outfolder $outfolder/correction/
+ /usr/bin/time -v python3.11 run_isoncorrect --t $num_cores  --fastq_folder $outfolder/clustering/fastq_files  --outfolder $outfolder/correction/
 
   echo
   echo "Finished isONcorrect"
