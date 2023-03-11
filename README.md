@@ -60,11 +60,11 @@ The algorithm produces three files:<br />
 Line1:consensusID <br />
 Line2: List of read names </p>
 
--<strong>transcriptome.fastq</strong> contains the actual isoforms stored in the fasta format:<br />
+-<strong>transcriptome.fastq</strong> contains the actual isoforms stored in the fastq format:<br />
 Line1: >consensusID<br />
 Line2: consensus sequence<br />
 
--<strong>support.txt<\strong> contains the consensusID as well as the number of reads supporting it<br/>
+-<strong>support.txt</strong> contains the consensusID as well as the number of reads supporting it<br/>
 ## Running the code <a name="Running"></a>
 
 To run the test analysis pipeline:
@@ -101,9 +101,11 @@ python main.py --fastq /path/to/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --e
 ```
 the isON-pipeline can be run via:
 ```
-./full_pipeline.sh    <raw_reads.fq>  <outfolder>  <num_cores> <isONform_folder> <iso_abundance>
+./full_pipeline.sh    <raw_reads.fq>  <outfolder>  <num_cores> <isONform_folder> <iso_abundance> <mode>
 ```
 (Note that this requires pychopper,isONclust and isONcorrect to be installed)
+
+
 
 ## Credits <a name="credits"></a>
 
