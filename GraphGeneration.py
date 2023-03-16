@@ -273,7 +273,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                             'start_mini_end end_mini_start original_support')
     DEBUG = False
     DG = nx.DiGraph()
-    cycle_nodes = {}
     # add the read ids to the startend_list
     reads_at_start_dict = {}
     reads_at_end_dict = {}
@@ -283,9 +282,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
         reads_for_isoforms.append(i)
     for i in range(1, len(read_len_dict) + 1):
         reads_at_end_dict[i] = Read_infos(read_len_dict[i], read_len_dict[i], True)
-        # reads_for_isoforms.append(i)
-    # print(reads_at_start_dict)
-    # print(reads_at_end_dict)
+
     # a source and a sink node are added to the graph in order to have a well-defined start and end for the paths
     DG.add_node("s", reads=reads_at_start_dict, end_mini_seq='')
     # print("REads at end dict",reads_at_end_dict)
@@ -303,8 +300,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
     # print(known_intervals)
     nodes_for_graph = {}
     alternative_nodes = {}
-    topo_alternatives={}
-    topo_graph = None
+
     # the following dictionary is supposed to hold the end minimizer sequence for each node
     node_sequence = {}
     edge_support = {}
@@ -314,25 +310,9 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
     # iterate through the different reads stored in all_intervals_for_graph. For each read one path is built up from source to sink if the nodes needed for that are not already present
     # intervals_for_read holds all intervals which make up the solution for the WIS of a read
     for r_id, intervals_for_read in all_intervals_for_graph.items():
-        #if r_id==212 or r_id==251 or r_id==212:# or r_id==198:
-        #    DEBUG=True
-        #else:
-        #    DEBUG=False
-        ########################################
-        ######## KRISTOFFER START ##############
-        ########################################
-        #print("READ",r_id)
-        #print(r_id, intervals_for_read)
+
         if DEBUG:
             print('CURR READ:', r_id)
-        #print(DG.nodes())  # print(DG.nodes(data=True))
-        #print()
-        #print(DG.edges(data=True))
-        #print(list(nx.topological_sort(DG)))
-        #if len(DG) > 2:  # we have added at least one read to the graph already
-        #    lis_solution = find_LIS(DG, r_id, intervals_for_read,k,delta_len)
-        #else:
-        #    lis_solution=[]
         ########################################
         ######## KRISTOFFER END   ##############
         ########################################
@@ -393,81 +373,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                         if not DG.has_edge(previous_node, name):
                             if DEBUG:
                                 print("No edge")
-                            #if we would harm the topological order in our graph by adding the edge
-                            #if True:
-                                """if topo_graph.index(previous_node) > topo_graph.index(name):
-                                old_name=name
-                                #find alternatives for the node in topo_alternatives
-                                topo_alt_result=find_topo_alternative(topo_graph,previous_node,name,topo_alternatives)
-                                #if we have not found an alternative in topo_alternatives:
-                                if not topo_alt_result:
-                                    length = this_len
-                                    #add new node that either is named 'name' or 'name1..1'
-                                    name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
-                                    if not DG.has_node(name):
-                                        DG.add_node(name)
-                                    else:
-                                        if DEBUG:
-                                            print("Node", name, " already present")
-                                        while DG.has_node(name):
-                                            name = name + 1
-                                        if DEBUG:
-                                            print("Adding node", name)
-                                        DG.add_node(name)
-                                    nodelist = {}
-                                    r_infos = Read_infos(inter[0], inter[1], True)
-                                    end_mini_seq = seq[inter[1]:inter[1] + k]
-                                    node_sequence[name] = end_mini_seq
-                                    nodelist[r_id] = r_infos
-                                    # nodelist[r_id] = (inter[0], inter[1])
-                                    #prev_nodelist[r_id] = r_infos
-                                    nodes_for_graph[name] = nodelist
-                                    if not old_name in topo_alternatives:
-                                        # we store the new node as alternative for later possible topological misshaps
-                                        alt_list = []
-                                        alt_list.append(name)
-                                        topo_alternatives[old_name] =alt_list
-                                    else:
-                                        topo_alternatives[old_name].append(name)
-                                    if DEBUG:
-                                        print("Adding edge, foundnode, no edge connecting prevnode, name, no topo_alt_result")
-                                    if DG.has_edge(previous_node,name):
-                                        edge_info = edge_support[previous_node, name]
-                                        if not r_id in edge_info:
-                                            edge_info.append(r_id)
-                                            edge_support[previous_node, name] = edge_info
-                                    else:
-                                        DG.add_edge(previous_node, name, length=length)
-                                        edge_support[previous_node, name] = []
-                                        edge_support[previous_node, name].append(r_id)
-                                    if r_id > 1:
-                                        topo_graph = list(nx.topological_sort(DG))
-                                else:
-                                    length = this_len
-                                    name=topo_alt_result
-                                    prev_nodelist = nodes_for_graph[name]
-                                    end_mini_seq = seq[inter[1]:inter[1] + k]
-                                    r_infos = Read_infos(inter[0], inter[1], True)
-                                    node_sequence[name] = end_mini_seq
-                                    prev_nodelist[r_id] = r_infos
-                                    nodes_for_graph[name] = prev_nodelist
-                                    # if DEBUG:
-                                    # print("Adding infosd to node", name, " : ", prev_nodelist)
-                                    # if name == '601, 652, 20':
-                                    #    print("Adding infosf to the node", name, " : ", prev_nodelist)
-                                    if not DG.has_edge(previous_node, name):
-                                        if DEBUG:
-                                            print("Adding edge, foundnode, no edge connecting prevnode, name")
-                                        DG.add_edge(previous_node, name, length=length)
-                                        edge_support[previous_node, name] = []
-                                        edge_support[previous_node, name].append(r_id)
-                                    else:
-                                        edge_info = edge_support[previous_node, name]
-                                        if not r_id in edge_info:
-                                            edge_info.append(r_id)
-                                            edge_support[previous_node, name] = edge_info
-                            else:"""
-                                # update the read information of node name
                             prev_nodelist = nodes_for_graph[name]
                             seq = all_reads[r_id][1]
                             r_infos = Read_infos(inter[0], inter[1], True)
@@ -485,17 +390,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                             if DEBUG:
                                 print("Adding edge, foundnode, topo order not violated  for prevnode, name")
                             DG.add_edge(previous_node, name, length=length)
-                            cycle_added = isCyclic(DG)
                             cycle_added2 = cycle_finder(DG,previous_node)
-                            cycle_added3 = cycle_finder(DG,name)
-                            #if cycle_added != cycle_added2 and cycle_added != cycle_added3:
-                            #	print(cycle_added,cycle_added2,cycle_added3)
-                            #	sys.exit(1)
-                            #cycle_added =isCyclic2(DG,name)
-                            #try:
-                            #    topo_sort=nx.topological_sort(DG)
-                            #    #print(topo_sort[0])
-                            #except:
                             if cycle_added2:
                                 DG.remove_edge(previous_node, name)
                                 name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
@@ -506,8 +401,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                 end_mini_seq = seq[inter[1]:inter[1] + k]
                                 node_sequence[name] = end_mini_seq
                                 nodelist[r_id] = r_infos
-                                # nodelist[r_id] = (inter[0], inter[1])
-                                # prev_nodelist[r_id] = r_infos
                                 nodes_for_graph[name] = nodelist
                                 DG.add_edge(previous_node, name, length=length)
                                 print("adding edge clear509", previous_node, ",", name)
@@ -583,86 +476,11 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                     # get length from previous_end to this_start
                     this_len = inter[0] - previous_end
 
-                    # len_difference = abs(this_len - prev_len)
-                    # if this_len < 0:
-                    #    print("Error- length negative.")
                     # if there is not yet an edge connecting previous_node and name: add edge
                     if not DG.has_edge(previous_node, name):
                         if DEBUG:
                             print("no edge")
                         if True:
-                            """if topo_graph.index(previous_node) > topo_graph.index(name):
-                            old_name = name
-                            # find alternatives for the node in topo_alternatives
-                            topo_alt_result = find_topo_alternative(topo_graph, previous_node, name, topo_alternatives)
-                            # if we have not found an alternative in topo_alternatives:
-                            if not topo_alt_result:
-                                length = this_len
-                                # add new node that either is named 'name' or 'name1..1'
-                                name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
-                                if not DG.has_node(name):
-                                    DG.add_node(name)
-                                else:
-                                    if DEBUG:
-                                        print("Node", name, " already present")
-                                    while DG.has_node(name):
-                                        name = name + 1
-                                    if DEBUG:
-                                        print("Adding node", name)
-                                    DG.add_node(name)
-                                nodelist = {}
-                                r_infos = Read_infos(inter[0], inter[1], True)
-                                end_mini_seq = seq[inter[1]:inter[1] + k]
-                                node_sequence[name] = end_mini_seq
-                                nodelist[r_id] = r_infos
-                                # nodelist[r_id] = (inter[0], inter[1])
-                                #prev_nodelist[r_id] = r_infos
-                                nodes_for_graph[name] = nodelist
-                                if not old_name in topo_alternatives:
-                                    # we store the new node as alternative for later possible topological misshaps
-                                    alt_list = []
-                                    alt_list.append(name)
-                                    topo_alternatives[old_name] = alt_list
-                                else:
-                                    topo_alternatives[old_name].append(name)
-                                if DEBUG:
-                                    print("Adding edge, no repetition prevnode, name")
-                                if DG.has_edge(previous_node, name):
-                                    edge_info = edge_support[previous_node, name]
-                                    if not r_id in edge_info:
-                                        edge_info.append(r_id)
-                                        edge_support[previous_node, name] = edge_info
-                                else:
-                                    DG.add_edge(previous_node, name, length=length)
-                                    edge_support[previous_node, name] = []
-                                    edge_support[previous_node, name].append(r_id)
-                                if r_id > 1:
-                                    topo_graph = list(nx.topological_sort(DG))
-                            else:
-                                length = this_len
-                                name = topo_alt_result
-                                prev_nodelist = nodes_for_graph[name]
-                                end_mini_seq = seq[inter[1]:inter[1] + k]
-                                r_infos = Read_infos(inter[0], inter[1], True)
-                                node_sequence[name] = end_mini_seq
-                                prev_nodelist[r_id] = r_infos
-                                nodes_for_graph[name] = prev_nodelist
-                                # if DEBUG:
-                                # print("Adding infosd to node", name, " : ", prev_nodelist)
-                                # if name == '601, 652, 20':
-                                #    print("Adding infosf to the node", name, " : ", prev_nodelist)
-                                if not DG.has_edge(previous_node, name):
-                                    if DEBUG:
-                                        print("Adding edge, no repetition , no topo_alt result prevnode, name")
-                                    DG.add_edge(previous_node, name, length=length)
-                                    edge_support[previous_node, name] = []
-                                    edge_support[previous_node, name].append(r_id)
-                                else:
-                                    edge_info = edge_support[previous_node, name]
-                                    if not r_id in edge_info:
-                                        edge_info.append(r_id)
-                                        edge_support[previous_node, name] = edge_info
-                        else:"""
                             # update the read information of node name
                             prev_nodelist = nodes_for_graph[name]
 
@@ -682,20 +500,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                             if True:
                                 #print("Adding edge, not similar to cycles, topo not violated prevnode, name")
                                 DG.add_edge(previous_node, name, length=length)
-                                #cycle_added=isCyclic(DG)
                                 cycle_added2 = cycle_finder(DG,previous_node)
-                                #cycle_added3 = cycle_finder(DG,name)
-                                #if cycle_added != cycle_added2 and cycle_added != cycle_added3:
-                                #    print(cycle_added,cycle_added2,cycle_added3)
-                                #    sys.exit(1)
-                                #cycle_added = isCyclic2(DG, name)
-                                #if DEBUG:
-                                #    print(previous_node,name)
-                                    #print(DG.edges)
-                                #try:
-                                #    print("ADDINGCYCLIC?",)
-                                #    topo_sort = nx.topological_sort(DG)
-                                #    #print(topo_sort[0])
                                 if cycle_added2:
                                     #print("NO TOPO Found")
                                     DG.remove_edge(previous_node, name)
@@ -728,10 +533,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                         print("adding edge hope690", previous_node, ",", name)
                                     edge_support[previous_node, name] = []
                                     edge_support[previous_node, name].append(r_id)
-                                #print("ISFALSE",is_false)
-                            #DG.add_edge(previous_node, name, length=length)
-                            #edge_support[previous_node, name] = []
-                            #edge_support[previous_node, name].append(r_id)
+
                     # TODO: add topological sort and everything after this point
                     # if there is an edge connecting previous_node and name: test if length difference is not higher than delta_len
                     else:
