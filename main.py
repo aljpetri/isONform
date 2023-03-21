@@ -718,6 +718,8 @@ def main(args):
 
             tmp_cnt = 0
             all_intervals_for_graph = {}
+            #profiler = Profiler()
+            #profiler.start()
             for r_id in sorted(reads):  # , reverse=True):
 
                 # for r_id in reads:
@@ -887,16 +889,17 @@ def main(args):
             print("Generating the graph")
             all_batch_reads_dict[batch_id] = new_all_reads
             read_len_dict = get_read_lengths(all_reads)
-
+            #profiler.stop()
+            #profiler.print()
             #print("Used for GraphGen",", ",k_size,", ",delta_len,", ",read_len_dict,", ",new_all_reads)
             import time
             start_time = time.time()
-            profiler = Profiler()
-            profiler.start()
+            #profiler = Profiler()
+            #profiler.start()
             DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
                 all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
-            profiler.stop()
-            print(profiler)
+            #profiler.stop()
+            #profiler.print()
             #DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervalsOld(
             #    all_intervals_for_graph, k_size, delta_len, read_len_dict, new_all_reads)
             print("--- %s seconds ---" % (time.time() - start_time))
@@ -935,11 +938,11 @@ def main(args):
         #in_edges = DG.in_edges(node, data=True)
         #print("in_edges:", in_edges)
         mode=args.slow
-        profiler = Profiler()
-        profiler.start()
+        #profiler = Profiler()
+        #profiler.start()
         simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len,mode)
-        profiler.stop()
-        print(profiler)
+        #profiler.stop()
+        #profiler.print()
         #snapshot2 = tracemalloc.take_snapshot()
         #print(snapshot2)
         #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
@@ -965,11 +968,11 @@ def main(args):
         merge_sub_isoforms_5=True
         delta_iso_len_3=5
         delta_iso_len_5=5"""
-        profiler = Profiler()
-        profiler.start()
+        #profiler = Profiler()
+        #profiler.start()
         generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len, delta_iso_len_3, delta_iso_len_5,iso_abundance,max_seqs_to_spoa)
-        profiler.stop()
-        print(profiler)
+        #profiler.stop()
+        #profiler.print()
         #snapshot3 = tracemalloc.take_snapshot()
         #print(snapshot3)
         print("Isoforms generated")
@@ -998,15 +1001,16 @@ def main(args):
     #with open(os.path.join(outfolder, "all_batches_reads.txt"), 'wb') as file:
     #    file.write(pickle.dumps(all_batch_reads_dict))
     print("Starting batch merging")
-    profiler = Profiler()
-    profiler.start()
+    #profiler = Profiler()
+    #profiler.start()
     #if max_batchid>0:
     if not args.parallel:
             print("Merging the batches with linear strategy")
+
             merge_batches(max_batchid, work_dir, outfolder, new_all_reads, merge_sub_isoforms_3, merge_sub_isoforms_5, delta,
                       delta_len, max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance,args.rc_identity_threshold)
-    profiler.stop()
-    print(profiler)
+    #profiler.stop()
+    #profiler.print()
     # eprint("tot_before:", tot_errors_before)
     # eprint("tot_after:", sum(tot_errors_after.values()), tot_errors_after)
     # eprint(len(corrected_reads))

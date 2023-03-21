@@ -141,7 +141,6 @@ def compute_equal_reads2(DG,support):
     node_support_left=set(support)
     visited_nodes_isoforms={}
     isoforms={}
-    all_supp=set(support)
     #indicates whether we want to merge a true subisoform into another isoform (ie. the isoform is a continous sublist of the longer one)
     merge_sub_isos=True
     #we iterate as long as still not all support was allocated to a path
@@ -210,7 +209,7 @@ def run_spoa(reads, spoa_out_file, spoa_path):
         curr_best_seqs is an array with q_id, pos1, pos2
         the current read is on index 0 in curr_best_seqs array
     """
-def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_id, max_seqs_to_spoa=200,iso_abundance=1):
+def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_id,iso_abundance, max_seqs_to_spoa=200):
     print("Generating the Isoforms")
     mapping = {}
     consensus_name="spoa"+str(batch_id)+"merged.fasta"
@@ -421,13 +420,8 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
         #we have a match
         else:
             if this_start_pos < first_match:
-                #print("before first")
-                #print(elem)
-
                 before_first_matches += cig_len
             elif this_start_pos >= last_match:
-                #print("after last")
-                #print(elem)
                 after_last_matches+=cig_len
             #we know we have a match, but is it significant?
     """"#we have iterated over the full cigar string and now know where the last significant match is located
@@ -549,12 +543,13 @@ def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,me
     #print(s2_alignment)
     #print(cigar_tuples)
     #print(overall_len)
-    windowsize=20
-    alignment_threshold=0.8
+    windowsize=30
+    alignment_threshold=0.7
     start_match=find_first_significant_match(s1_alignment,s2_alignment,windowsize,alignment_threshold)
     end_match=find_first_significant_match(s1_alignment[::-1],s2_alignment[::-1],windowsize,alignment_threshold)
     #print("Start:",start_match," end:",end_match)
-    if not start_match and not end_match:
+    if start_match<0 or end_match<0:
+    #if not start_match and not end_match:
         return False
     end_match_pos=overall_len-end_match
     #print("EMP",end_match_pos)
@@ -797,7 +792,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
         generate_isoforms_new(equal_reads, all_reads, work_dir, outfolder, batch_id, max_seqs_to_spoa,
                                            iso_abundance,new_consensuses)
     else:
-        generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance)
+        generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, iso_abundance, max_seqs_to_spoa)
 
 
 DEBUG=False

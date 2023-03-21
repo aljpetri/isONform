@@ -774,17 +774,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                                     #edge_support[previous_node, name] = []
                                                     #edge_support[previous_node, name].append(r_id)
                                                     DG.add_edge(previous_node, name, length=length)
-                                                    cycle_added = isCyclic(DG)
                                                     cycle_added2 = cycle_finder(DG,previous_node)
-                                                    #cycle_added3 = cycle_finder(DG,name)
-                                                    #if cycle_added != cycle_added2 and cycle_added != cycle_added3:
-                                                    #    print(cycle_added,cycle_added2,cycle_added3)
-                                                    #    sys.exit(1)
-                                                    #cycle_added = isCyclic2(DG, name)
-                                                    #try:
-                                                    #    topo_sort=nx.topological_sort(DG)
-                                                    #    #print(topo_sort[0])
-                                                    #except:
                                                     if cycle_added2:
                                                         DG.remove_edge(previous_node, name)
                                                         name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
