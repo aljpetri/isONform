@@ -18,6 +18,21 @@ import GraphGeneration
 import IsoformGeneration
 import SimplifyGraph
 
+"""Helper method which extracts the read lengths from all_reads. We will use those during the graph generation to appoint more meaningful information to the node't'
+    INPUT: all_reads: dictionary which holds the overall read infos key: r_id, value tuple(readname, sequence, some info i currently don't care about)
+    OUTPUT: readlen_dict: dictionary holding the read_id as key and the length of the read as value
+"""
+
+#TODO: move this method to main.py
+def get_read_lengths(all_reads):
+    readlen_dict = {}
+    for r_id, infos in all_reads.items():
+        seq = infos[1]
+        seqlen = len(seq)
+
+        readlen_dict[r_id] = seqlen
+    return readlen_dict
+
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -491,7 +506,7 @@ def main(args):
             print("Working on all reads")
         print("Generating the graph")
         all_batch_reads_dict[batch_id] = new_all_reads
-        read_len_dict = GraphGeneration.get_read_lengths(all_reads)
+        read_len_dict = get_read_lengths(all_reads)
         #generate the graph from the intervals
         DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = GraphGeneration.generateGraphfromIntervals(
             all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
