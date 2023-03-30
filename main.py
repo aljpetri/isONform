@@ -508,7 +508,7 @@ def main(args):
         all_batch_reads_dict[batch_id] = new_all_reads
         read_len_dict = get_read_lengths(all_reads)
         #generate the graph from the intervals
-        DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = GraphGeneration.generateGraphfromIntervals(
+        DG,  reads_for_isoforms = GraphGeneration.generateGraphfromIntervals(
             all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
         #test for cyclicity of the graph - a status we cannot continue working on -> if cyclic we get an error
         is_cyclic=GraphGeneration.isCyclic(DG)
