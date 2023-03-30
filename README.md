@@ -93,12 +93,9 @@ To run the actual algorithm:<br />
 (On my machine:)
 
 ```
-python main.py --fastq ~/PHDProject1/testout/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --max_bubblesize 2 --delta_len 3 --outfolder testout
+python isONform_parallel.py --fastq_folder path/to/input/files --t <nr_cores> --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder /path/to/outfolder --iso_abundance 3 --split_wrt_batches --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 5 --delta_iso_len_5 5 --slow 
 ```
 
-```
-python main.py --fastq /path/to/isoforms.fa --k 9 --w 10 --xmin 14 --xmax 80 --exact --max_seqs_to_spoa 200 --max_bubblesize 2 --delta_len 3 --outfolder testout
-```
 the isON-pipeline can be run via:
 ```
 ./full_pipeline.sh    <raw_reads.fq>  <outfolder>  <num_cores> <isONform_folder> <iso_abundance> <mode>
