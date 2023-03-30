@@ -1,15 +1,23 @@
 #! /usr/bin/env python
 from __future__ import print_function
-from GraphGeneration import *
 import argparse
-import math
-from collections import deque
-from collections import defaultdict
-import edlib
-from modules import create_augmented_reference, help_functions, correct_seqs  # ,align
-from batch_merging import *
-from itertools import zip_longest
 from array import array
+import itertools
+import os
+import shutil
+import sys
+import tempfile
+
+from collections import defaultdict,deque
+
+
+from modules import  help_functions
+
+import batch_merging_parallel
+import GraphGeneration
+import IsoformGeneration
+import SimplifyGraph
+
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -127,7 +135,7 @@ def get_minimizers_and_positions(reads, w, k, hash_fcn):
 
 
 
-def get_minimizer_combinations_database(reads, M, k, x_low, x_high):
+def get_minimizer_combinations_database( M, k, x_low, x_high):
     # M2 = defaultdict(lambda: defaultdict(list))
     M2 = defaultdict(lambda: defaultdict(lambda :array("I")))
     tmp_cnt = 0
@@ -140,10 +148,6 @@ def get_minimizer_combinations_database(reads, M, k, x_low, x_high):
                     continue
 
                 tmp_cnt +=1
-                # t = array('I', [r_id, p1, p2])
-                # M2[m1][m2].append( t )
-                # M2[m1][m2].append((r_id, p1, p2))
-
                 M2[m1][m2].append(r_id)
                 M2[m1][m2].append(p1)
                 M2[m1][m2].append(p2)
@@ -153,7 +157,6 @@ def get_minimizer_combinations_database(reads, M, k, x_low, x_high):
     avg_bundance = 0
     singleton_minimzer = 0
     cnt = 1
-    abundants=[]
     for m1 in list(M2.keys()):
         for m2 in list(M2[m1].keys()):
             if len(M2[m1][m2]) > 3:
@@ -167,13 +170,7 @@ def get_minimizer_combinations_database(reads, M, k, x_low, x_high):
     print("Number of singleton minimizer combinations filtered out:", singleton_minimzer)
 
     return M2
-    # for m1,m2,ab in sorted(abundants, key=lambda x: x[2], reverse=True):
-    # print("Too abundant:", m1, m2, ab, len(reads))
 
-    print("Average abundance for non-unique minimizer-combs:", avg_bundance / float(cnt))
-    print("Number of singleton minimizer combinations filtered out:", singleton_minimzer)
-
-    return M2
 
 
 def minimizers_comb_iterator(minimizers, k, x_low, x_high):
@@ -262,17 +259,11 @@ def batch(dictionary, size):
     return batches
 
 
-def edlib_alignment(x, y, k):
-    result = edlib.align(x, y, "NW", 'dist', k)  # , task="path")
-    ed = result["editDistance"]
-    return ed  # , locations
-
-
 def grouper(iterable, n, fillvalue=None):
     "Collect data into fixed-length chunks or blocks"
     # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx"
     args = [iter(iterable)] * n
-    return zip_longest(*args, fillvalue=fillvalue)
+    return itertools.zip_longest(*args, fillvalue=fillvalue)
 
 
 def add_items(seqs, r_id, p1, p2):
@@ -281,19 +272,31 @@ def add_items(seqs, r_id, p1, p2):
     seqs.append(p2)
 
 
-def find_most_supported_span4(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database, reads, all_intervals, k_size, delta_len):
-    #print("DELTA",delta_len)
-    #acc, seq, qual = reads[r_id]
+"""
+Funtion that detects the most supported spans in the database and adds them to all_intervals. 
+INPUT:  r_id:           the id of the read we are workin on
+        m1:             the length threshold over which we alter the polyA sequences
+        p1:             the length of the poly_A tails after the alteration
+        m1_curr_spans:  
+        minimizer_combinations_database:  
+        reads:
+        all_intervals:  list holding the interval information (empty at this point)
+        k_size:
+        delta_len:
+          
+OUTPUT: all_intervals:     modified list of all intervals   
+"""
+def find_most_supported_span(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database, all_intervals, k_size, delta_len):
     for (m2,p2) in m1_curr_spans:
         relevant_reads = minimizer_combinations_database[m1][m2]
         to_add = {}
         if len(relevant_reads)//3 >= 3:
             to_add[r_id] = (r_id, p1, p2, 0)
             for relevant_read_id, pos1, pos2 in grouper(relevant_reads, 3): #relevant_reads:
-                if r_id  == relevant_read_id:
+                if r_id == relevant_read_id:
                     continue
+                #we add the read to the relevant_read_id entry if the lenght of the subsequence in the read is not more than delta_len base pairs longer than the relevant subsequence
                 elif abs((p2-p1)-(pos2-pos1)) < delta_len:
-                    #print("elif")
                     to_add[relevant_read_id] = (relevant_read_id, pos1, pos2, 0)
             seqs = array("I")
             for relev_r_id in to_add:
@@ -301,34 +304,12 @@ def find_most_supported_span4(r_id, m1, p1, m1_curr_spans, minimizer_combination
             all_intervals.append( (p1 + k_size, p2,  len(seqs)//3, seqs) )
 
 
-# Function to convert a list into a string to enable the writing of a graph (Taken from https://www.geeksforgeeks.org/python-program-to-convert-a-list-to-string/)
-def listToString(s):
-    # initialize an empty string
-    str1 = " "
-
-    # return string
-    return (str1.join(str(s)))
 D = {chr(i) : min( 10**( - (ord(chr(i)) - 33)/10.0 ), 0.79433)  for i in range(128)}
 
 
-def get_qvs(reads):
-    quality_values_database = {}
-    for r_id in reads:
-        (acc, seq, qual) = reads[r_id]
-        quality_values_database[r_id] = [0]
-        tmp_tot_sum = 0
-        for char_ in qual:
-            qv = D[char_]
-            quality_values_database[r_id].append( tmp_tot_sum + qv )
-            tmp_tot_sum += qv
-    return quality_values_database
-
-
 def main(args):
-    print("Input: ",args.fastq)
     print("ARGS",args)
     all_batch_reads_dict={}
-    print(args.parallel)
     # start = time()
     if os.path.exists("mapping.txt"):
         os.remove("mapping.txt")
@@ -336,7 +317,6 @@ def main(args):
     sys.stdout = open(os.path.join(outfolder,"stdout.txt"), "w")
     # read the file and filter out polyA_ends(via remove_read_polyA_ends)
     all_reads = {i + 1: (acc, remove_read_polyA_ends(seq, 12, 1), qual) for i, (acc, (seq, qual)) in enumerate(help_functions.readfq(open(args.fastq, 'r')))}
-    #eprint("Total cluster of {0} reads.".format(len(all_reads)))
     max_seqs_to_spoa = args.max_seqs_to_spoa
     if len(all_reads) <= args.exact_instance_limit:
         args.exact = True
@@ -349,14 +329,9 @@ def main(args):
     work_dir = tempfile.mkdtemp()
     print("Temporary workdirektory:", work_dir)
 
-    #we set delta_len to be 2*k_size to make the algo feasible
     k_size = args.k
-    #w = args.w
     x_high = args.xmax
     x_low = args.xmin
-
-    #print("AR",all_reads)
-    max_batchid=0
     if args.parallel:
         filename=args.fastq.split("/")[-1]
         tmp_filename=filename.split("_")
@@ -366,17 +341,14 @@ def main(args):
 
     for batch_id, reads in enumerate(batch(all_reads, args.max_seqs)):
         new_all_reads = {}
-        max_batchid=batch_id
         if args.parallel:
             batchname=str(p_batch_id)+"_batchfile.fa"
-            #print("BATCHNAME",batchname)
         else:
             skipfilename="skip"+str(batch_id)+".fa"
             batchname = str(batch_id) + "_batchfile.fa"
         batchfile = open(os.path.join(outfolder, batchname), "w")
         skipfile=open(os.path.join(outfolder,skipfilename),'w')
         for id,vals in reads.items():
-            #print(id,vals)
             (acc, seq, qual) = vals
             batchfile.write(">{0}\n{1}\n".format(acc, seq))
         batchfile.close()
@@ -384,303 +356,190 @@ def main(args):
             # Activates for 'small' clusters with less than 700 reads
             if len(reads) >= 100:
                 w = min(args.w, args.k + (
-                            len(reads) // 100 + 4))  # min(args.w,)  #args.w = args.k + min(7, int( len(all_reads)/500))
+                            len(reads) // 100 + 4))
             elif len(reads)==1:
                 for id, vals in reads.items():
-                    # print(id,vals)
                     (acc, seq, qual) = vals
                     skipfile.write(">{0}\n{1}\n".format(acc, seq))
                 print("Not enough reads to work on!")
                 continue
             else:
-                w = args.k + 1 + len(reads) // 30  # min(args.w,)  #args.w = args.k + min(7, int( len(all_reads)/500))
+                w = args.k + 1 + len(reads) // 30
         else:
             w = args.w
         print("Window used for batch:", w)
-        is_cyclic = True
         iso_abundance = args.iso_abundance
         delta_len = args.delta_len
-        while is_cyclic:
-            graph_id = 1
-            print("Working on {0} reads in a batch".format(len(reads)))
-            #batch_start_time = time()
-            hash_fcn = "lex"
-            not_used=0
-            # for hash_fcn in ["lex"]: # ["lex"]: #  add "rev_lex" # add four others
-            if args.compression:
-                minimizer_database = get_minimizers_and_positions_compressed(reads, w, k_size, hash_fcn)
-            else:
-                minimizer_database = get_minimizers_and_positions(reads, w, k_size, hash_fcn)
+        graph_id = 1
+        print("Working on {0} reads in a batch".format(len(reads)))
+        hash_fcn = "lex"
+        not_used=0
+        #generate all minimizer combinations
+        if args.compression:
+            minimizer_database = get_minimizers_and_positions_compressed(reads, w, k_size, hash_fcn)
+        else:
+            minimizer_database = get_minimizers_and_positions(reads, w, k_size, hash_fcn)
 
-            minimizer_combinations_database = get_minimizer_combinations_database(reads, minimizer_database, k_size, x_low,
-                                                                                  x_high)
-            quality_values_database = get_qvs(reads)
-            tot_corr = 0
+        minimizer_combinations_database = get_minimizer_combinations_database(minimizer_database, k_size, x_low,
+                                                                              x_high)
 
-            tmp_cnt = 0
-            all_intervals_for_graph = {}
-            #profiler = Profiler()
-            #profiler.start()
-            for r_id in sorted(reads):  # , reverse=True):
+        all_intervals_for_graph = {}
+        for r_id in sorted(reads):
 
-                # for r_id in reads:
-                read_min_comb = [((m1, p1), m1_curr_spans) for (m1, p1), m1_curr_spans in
-                                 minimizers_comb_iterator(minimizer_database[r_id], k_size, x_low, x_high)]
-                # print(read_min_comb)
-                # sys.exit()
-                if args.exact:
-                    previously_corrected_regions = defaultdict(list)
-                # stored_calculated_regions = defaultdict(list)
+            read_min_comb = [((m1, p1), m1_curr_spans) for (m1, p1), m1_curr_spans in
+                             minimizers_comb_iterator(minimizer_database[r_id], k_size, x_low, x_high)]
 
-                #  = stored_calculated_regions[r_id]
-                corr_pos = []
-                (acc, seq, qual) = reads[r_id]
-                # print("starting correcting:", seq)
+            if args.exact:
+                previously_corrected_regions = defaultdict(list)
 
-                # print(r_id, sorted(previously_corrected_regions[r_id], key=lambda x:x[1]))
+            read_previously_considered_positions = set(
+                [tmp_pos for tmp_p1, tmp_p2, w_tmp, _ in previously_corrected_regions[r_id] for tmp_pos in
+                 range(tmp_p1, tmp_p2)])
+
+            if args.verbose:
+                if read_previously_considered_positions:
+                    eprint("not corrected:", [(p1_, p2_) for p1_, p2_ in
+                                              zip(sorted(read_previously_considered_positions)[:-1],
+                                                  sorted(read_previously_considered_positions)[1:]) if
+                                              p2_ > p1_ + 1])
+                else:
+                    eprint("not corrected: entire read", )
+
+            if previously_corrected_regions[r_id]:
                 read_previously_considered_positions = set(
                     [tmp_pos for tmp_p1, tmp_p2, w_tmp, _ in previously_corrected_regions[r_id] for tmp_pos in
                      range(tmp_p1, tmp_p2)])
+                group_id = 0
+                pos_group = {}
 
-                if args.verbose:
-                    if read_previously_considered_positions:
-                        eprint("not corrected:", [(p1_, p2_) for p1_, p2_ in
-                                                  zip(sorted(read_previously_considered_positions)[:-1],
-                                                      sorted(read_previously_considered_positions)[1:]) if
-                                                  p2_ > p1_ + 1])
-                    else:
-                        eprint("not corrected: entire read", )
+                if len(read_previously_considered_positions) > 1:
+                    sorted_corr_pos = sorted(read_previously_considered_positions)
 
-                if previously_corrected_regions[r_id]:
-                    read_previously_considered_positions = set(
-                        [tmp_pos for tmp_p1, tmp_p2, w_tmp, _ in previously_corrected_regions[r_id] for tmp_pos in
-                         range(tmp_p1, tmp_p2)])
-                    group_id = 0
-                    pos_group = {}
-                    if len(read_previously_considered_positions) > 1:
-                        sorted_corr_pos = sorted(read_previously_considered_positions)
-                        for p1, p2 in zip(sorted_corr_pos[:-1], sorted_corr_pos[1:]):
-                            if p2 > p1 + 1:
-                                pos_group[p1] = group_id
-                                group_id += 1
-                                pos_group[p2] = group_id
-                            else:
-                                pos_group[p1] = group_id
-                        if p2 == p1 + 1:
+                    for p1, p2 in zip(sorted_corr_pos[:-1], sorted_corr_pos[1:]):
+
+                        if p2 > p1 + 1:
+                            pos_group[p1] = group_id
+                            group_id += 1
                             pos_group[p2] = group_id
+                        else:
+                            pos_group[p1] = group_id
+
+                    if p2 == p1 + 1:
+                        pos_group[p2] = group_id
+
+            else:
+                read_previously_considered_positions = set()
+                pos_group = {}
+            all_intervals = []
+            prev_visited_intervals = []
+
+            for (m1, p1), m1_curr_spans in read_min_comb:
+                # If any position is not in range of current corrections: then correct, not just start and stop
+                not_prev_corrected_spans = [(m2, p2) for (m2, p2) in m1_curr_spans if not (
+                        p1 + k_size in read_previously_considered_positions and p2 - 1 in read_previously_considered_positions)]
+                set_not_prev = set(not_prev_corrected_spans)
+                not_prev_corrected_spans2 = [(m2, p2) for (m2, p2) in m1_curr_spans if
+                                             (m2, p2) not in set_not_prev and (
+                                                     p1 + k_size in pos_group and p2 - 1 in pos_group and pos_group[
+                                                 p1 + k_size] != pos_group[p2 - 1])]
+                not_prev_corrected_spans += not_prev_corrected_spans2
+
+                if not_prev_corrected_spans:  # p1 + k_size not in read_previously_considered_positions:
+
+                    find_most_supported_span(r_id, m1, p1, not_prev_corrected_spans,
+                                                                             minimizer_combinations_database,
+                                                                             all_intervals, k_size, args.delta_len)
+
+            # add prev_visited_intervals to intervals to consider
+            all_intervals.extend(prev_visited_intervals)
+
+            if previously_corrected_regions[r_id]:  # add previously corrected regions in to the solver
+
+                all_intervals.extend(previously_corrected_regions[r_id])
+                del previously_corrected_regions[r_id]
+
+            if not all_intervals:
+                not_used+=1
+                if DEBUG:
+                    eprint("Found no reads to work on")
+                vals=reads[r_id]
+                (acc, seq, qual) = vals
+                skipfile.write(">{0}\n{1}\n".format(acc, seq))
+                continue
+            else:
+                all_intervals.sort(key=lambda x: x[1])
+                opt_indicies = solve_WIS(
+                    all_intervals)  # solve Weighted Interval Scheduling here to find set of best non overlapping intervals to correct over
+                intervals_to_correct = get_intervals_to_correct(opt_indicies[::-1], all_intervals)
+                #if we have found intervals in our read: add it to all_intervals_for_graph and give it a graph_id (an internal id)
+                if intervals_to_correct:
+                    all_intervals_for_graph[graph_id] = intervals_to_correct
+                    new_all_reads[graph_id] = reads[r_id]
+                    graph_id += 1
+                #the read has no intervals in common with other reads-> we add it into skipfile
                 else:
-                    read_previously_considered_positions = set()
-                    pos_group = {}
-
-                # if r_id in interval_database:
-                #     print(len(interval_database[r_id]))
-                already_computed = {}
-                read_complexity_cnt = 0
-                # test_cnt = 0
-                # old_cnt = 0
-                # test_cnt2 = 0
-                all_intervals = []
-                # prev_visited_intervals = []
-                prev_visited_intervals = []
-
-                for (m1, p1), m1_curr_spans in read_min_comb:
-                    # If any position is not in range of current corrections: then correct, not just start and stop
-                    not_prev_corrected_spans = [(m2, p2) for (m2, p2) in m1_curr_spans if not (
-                            p1 + k_size in read_previously_considered_positions and p2 - 1 in read_previously_considered_positions)]
-                    set_not_prev = set(not_prev_corrected_spans)
-                    not_prev_corrected_spans2 = [(m2, p2) for (m2, p2) in m1_curr_spans if
-                                                 (m2, p2) not in set_not_prev and (
-                                                         p1 + k_size in pos_group and p2 - 1 in pos_group and pos_group[
-                                                     p1 + k_size] != pos_group[p2 - 1])]
-                    not_prev_corrected_spans += not_prev_corrected_spans2
-
-                    if not_prev_corrected_spans:  # p1 + k_size not in read_previously_considered_positions:
-
-                        find_most_supported_span4(r_id, m1, p1, not_prev_corrected_spans,
-                                                                                 minimizer_combinations_database, reads,
-                                                                                 all_intervals, k_size, args.delta_len)
-
-                # add prev_visited_intervals to intervals to consider
-                all_intervals.extend(prev_visited_intervals)
-
-                if previously_corrected_regions[r_id]:  # add previously corrected regions in to the solver
-
-                    all_intervals.extend(previously_corrected_regions[r_id])
-                    del previously_corrected_regions[r_id]
-
-                if not all_intervals:
-                    not_used+=1
+                    not_used += 1
                     if DEBUG:
                         eprint("Found no reads to work on")
-                    vals=reads[r_id]
-                        # print(id,vals)
+                    vals = reads[r_id]
                     (acc, seq, qual) = vals
                     skipfile.write(">{0}\n{1}\n".format(acc, seq))
-                    continue
-                else:
-                    all_intervals.sort(key=lambda x: x[1])
-                    # print([www for (_, _,  www, _)  in all_intervals])
-                    opt_indicies = solve_WIS(
-                        all_intervals)  # solve Weighted Interval Scheduling here to find set of best non overlapping intervals to correct over
-                    # print(opt_indicies)
-                    # assert opt_indicies == opt_indicies2
-                    # print(opt_indicies)
-                    intervals_to_correct = get_intervals_to_correct(opt_indicies[::-1], all_intervals)
-                    if intervals_to_correct:
-                        all_intervals_for_graph[graph_id] = intervals_to_correct
-                        new_all_reads[graph_id] = reads[r_id]
-                        # if graph_id==192:
-                        #    print("ITC",intervals_to_correct)
-                        graph_id += 1
-                    else:
-                        not_used += 1
-                        if DEBUG:
-                            eprint("Found no reads to work on")
-                        vals = reads[r_id]
-                        # print(id,vals)
-                        (acc, seq, qual) = vals
-                        skipfile.write(">{0}\n{1}\n".format(acc, seq))
-                    #This can be utilized to find out which read_name maps to which r_id ->very helpful for Debugging
-                    #if DEBUG:
-                    #    if graph_id==291:
-                    #        print("GID",graph_id," ",acc)
-                    #        print(intervals_to_correct)
 
-                    #print(len(new_all_reads))
+        if not_used>0:
+            print("Skipped ",not_used," reads due to not having high enough interval abundance")
+        else:
+            print("Working on all reads")
+        print("Generating the graph")
+        all_batch_reads_dict[batch_id] = new_all_reads
+        read_len_dict = GraphGeneration.get_read_lengths(all_reads)
+        #generate the graph from the intervals
+        DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = GraphGeneration.generateGraphfromIntervals(
+            all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
+        #test for cyclicity of the graph - a status we cannot continue working on -> if cyclic we get an error
+        is_cyclic=GraphGeneration.isCyclic(DG)
+        if is_cyclic:
+            k_size+=1
+            w+=1
+            eprint("The graph has a cycle - critical error")
+            return -1
 
-
-                    #if r_id == 2:
-                    #    print("Intervals to correct read 60:")
-                    #    print(intervals_to_correct)
-                    #    print("Intervals to correct done")
-                    # del all_intervals
-                    # all_intervals = []
-
-            #print("Done with batch_id:", batch_id)
-            #print("Took {0} seconds.".format(time() - batch_start_time))
-            # eval_sim2(corrected_seq, seq, qual, tot_errors_before, tot_errors_after)
-            # if r_id == 10:
-            #     sys.exit()
-            # print(type(intervals_to_correct))
-            if RUNAFTER:
-                with open('all_intervals.txt', 'wb') as file:
-                    file.write(pickle.dumps(all_intervals_for_graph))
-                with open('all_reads.txt', 'wb') as file:
-                    file.write(pickle.dumps(all_reads))
-                print("All_intervals were written into file")
-            if not_used>0:
-                print("Skipped ",not_used," reads due to not having high enough interval abundance")
-            else:
-                print("Working on all reads")
-            print("Generating the graph")
-            all_batch_reads_dict[batch_id] = new_all_reads
-            read_len_dict = get_read_lengths(all_reads)
-            #profiler.stop()
-            #profiler.print()
-            #print("Used for GraphGen",", ",k_size,", ",delta_len,", ",read_len_dict,", ",new_all_reads)
-            import time
-            start_time = time.time()
-            #profiler = Profiler()
-            #profiler.start()
-            DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
-                all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
-            #profiler.stop()
-            #profiler.print()
-            #DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervalsOld(
-            #    all_intervals_for_graph, k_size, delta_len, read_len_dict, new_all_reads)
-            print("--- %s seconds ---" % (time.time() - start_time))
-            #print(DG.number_of_nodes()," Nodes in our Graph")
-            is_cyclic=isCyclic(DG)
-            if is_cyclic:
-                k_size+=1
-                w+=1
-                eprint("The graph has a cycle - critical error")
-                return -1
-        #for id, inter_list in all_intervals_for_graph.items():
-            #print(id)
-        #    for interval in inter_list:
-        #        if id==198 or id==226 or id==251 or id==212:
-        #            print(id,": " ,interval)
-        #print("Known intervals")
-        #print("198",known_intervals[197])
-        #print("226",known_intervals[225])
-        #print("211",known_intervals[211])
-        #print("252",known_intervals[251])
         if DEBUG==True:
             print("BATCHID",batch_id)
             for id, value in all_batch_reads_dict.items():
                 for other_id,other_val in value.items():
                    print(id,": ",other_id,":",other_val[0],"::",other_val[1])
-        #print(all_batch_reads_dict)
-        #print("Graph built up!")
-        #draw_Graph(DG)
-        #print(list(DG.nodes(data=True)))
-        #print(DG.out_edges("s",data=True))
-        #node='166, 197, 9'
-        #print(DG.nodes[node]["reads"])
-        #out_edges_data = DG.out_edges(node, data=True)
-        #print("Node", node)
-        #print("out_edges:", out_edges_data)
-        #in_edges = DG.in_edges(node, data=True)
-        #print("in_edges:", in_edges)
+
         mode=args.slow
-        #profiler = Profiler()
-        #profiler.start()
-        simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len,mode)
-        #profiler.stop()
-        #profiler.print()
-        #snapshot2 = tracemalloc.take_snapshot()
-        #print(snapshot2)
-        #print("#Nodes for DG: " + str(DG.number_of_nodes()) + " , #Edges for DG: " + str(DG.number_of_edges()))
-
-        #print("finding the reads, which make up the isoforms")
-
-        # for iso in isoform_reads:
-        #print("hello")
-        #print("FoundCycles:",isCyclic(DG))
-        #if not (possible_cycles):
+        #the bubble popping step: We simplify the graph by linearizing all poppable bubbles
+        SimplifyGraph.simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len,mode)
+        #TODO: add delta as user parameter possibly?
         delta = 0.15
         print("Starting to generate Isoforms")
-        #graphname="DG_"+str(batch_id)+".txt"
-        #with open(graphname, 'wb') as graphfile:
-        #    graphfile.write(pickle.dumps(DG))
-        #all_reads_name="all_reads_"+str(batch_id)+".txt"
-        #with open(os.path.join(outfolder, all_reads_name), 'wb') as file:
-        #    file.write(pickle.dumps(all_reads))
-        #draw_Graph(DG)
+
         if args.parallel:
             batch_id=p_batch_id
-        """merge_sub_isoforms_3=True
-        merge_sub_isoforms_5=True
-        delta_iso_len_3=5
-        delta_iso_len_5=5"""
-        #profiler = Profiler()
-        #profiler.start()
-        generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len, delta_iso_len_3, delta_iso_len_5,iso_abundance,max_seqs_to_spoa)
-        #profiler.stop()
-        #profiler.print()
-        #snapshot3 = tracemalloc.take_snapshot()
-        #print(snapshot3)
-        print("Isoforms generated")
-    print("Starting batch merging")
+        #generation of isoforms from the graph structure
+        IsoformGeneration.generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len, delta_iso_len_3, delta_iso_len_5,iso_abundance,max_seqs_to_spoa)
+
+        print("Isoforms generated-Starting batch merging ")
     if not args.parallel:
             print("Merging the batches with linear strategy")
-
-            merge_batches(max_batchid, work_dir, outfolder, new_all_reads, merge_sub_isoforms_3, merge_sub_isoforms_5, delta,
-                      delta_len, max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance,args.rc_identity_threshold)
-
+            #merges the predictions from different batches
+            batch_merging_parallel.join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.merge_sub_isoforms_3,
+                                        args.merge_sub_isoforms_5, args.delta_iso_len_3, args.delta_iso_len_5,
+                                        args.max_seqs_to_spoa, args.iso_abundance, args.rc_identity_threshold)
     print("removing temporary workdir")
     sys.stdout.close()
     shutil.rmtree(work_dir)
 
-RUNAFTER=False
 DEBUG=False
+
+#TODO: add low_output (bool) as well as delta as user parameters and remove slow, merge_sub_isoforms_3, merge_sub_isoforms_5
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo error correction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--version', action='version', version='%(prog)s 0.0.6')
     parser.add_argument('--fastq', type=str, default=False, help='Path to input fastq file with reads')
-    #parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
 
     parser.add_argument('--k', type=int, default=9, help='Kmer size')
     parser.add_argument('--w', type=int, default=10, help='Window size')
@@ -700,7 +559,6 @@ if __name__ == '__main__':
 
     parser.add_argument('--exact_instance_limit', type=int, default=0,
                         help='Activates slower exact mode for instance smaller than this limit')
-    # parser.add_argument('--w_equal_k_limit', type=int, default=0,  help='Sets w=k which is slower and more memory consuming but more accurate and useful for smalled clusters.')
     parser.add_argument('--set_w_dynamically', action="store_true",
                         help='Set w = k + max(2*k, floor(cluster_size/1000)).')
     parser.add_argument('--verbose', action="store_true", help='Print various developer stats.')
@@ -724,7 +582,6 @@ if __name__ == '__main__':
     parser.add_argument('--rc_identity_threshold', type=float, default=0.9,
                         help='Threshold for isoformGeneration algorithm. Define a reverse complement if identity is over this threshold (default 0.9)')
     parser.add_argument('--slow',action="store_true", help='use the slow mode for the simplification of the graph (bubble popping), slow mode: every bubble gets popped')
-    # parser.set_defaults(which='main')
     args = parser.parse_args()
 
     if args.xmin < 2 * args.k:
@@ -739,13 +596,6 @@ if __name__ == '__main__':
     if args.outfolder and not os.path.exists(args.outfolder):
         os.makedirs(args.outfolder)
 
-    # edlib_module = 'edlib'
-    # parasail_module = 'parasail'
-    # if edlib_module not in sys.modules:
-    #     print('You have not imported the {0} module. Only performing clustering with mapping, i.e., no alignment.'.format(edlib_module))
-    # if parasail_module not in sys.modules:
-    #     eprint('You have not imported the {0} module. Only performing clustering with mapping, i.e., no alignment!'.format(parasail_module))
-    #     sys.exit(1)
     if 100 < args.w or args.w < args.k:
         eprint('Please specify a window of size larger or equal to k, and smaller than 100.')
         sys.exit(1)
