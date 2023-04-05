@@ -314,10 +314,28 @@ def find_most_supported_span(r_id, m1, p1, m1_curr_spans, minimizer_combinations
                 elif abs((p2-p1)-(pos2-pos1)) < delta_len:
                     to_add[relevant_read_id] = (relevant_read_id, pos1, pos2, 0)
             seqs = array("I")
-            for relev_r_id in to_add:
-                add_items(seqs, to_add[relev_r_id][0], to_add[relev_r_id][1], to_add[relev_r_id][2])
+            #for relev_r_id in to_add:
+            #    add_items(seqs, to_add[relev_r_id][0], to_add[relev_r_id][1], to_add[relev_r_id][2])
             all_intervals.append( (p1 + k_size, p2,  len(seqs)//3, seqs) )
 
+
+def find_most_supported_span4(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database, reads, all_intervals, k_size, delta_len):
+    acc, seq, qual = reads[r_id]
+    for (m2,p2) in m1_curr_spans:
+        relevant_reads = minimizer_combinations_database[m1][m2]
+        if len(relevant_reads)//3 >= 3:
+            seqs = array("I")
+            seqs.append(r_id)
+            seqs.append(p1)
+            seqs.append(p2)
+            for relevant_read_id, pos1, pos2 in grouper(relevant_reads, 3): #relevant_reads:
+                if r_id  == relevant_read_id:
+                    continue
+                elif abs((p2-p1)-(pos2-pos1)) < delta_len:
+                    seqs.append(relevant_read_id)
+                    seqs.append(pos1)
+                    seqs.append(pos2)
+            all_intervals.append( (p1 + k_size, p2,  len(seqs)//3, seqs) )
 
 D = {chr(i) : min( 10**( - (ord(chr(i)) - 33)/10.0 ), 0.79433)  for i in range(128)}
 
@@ -461,10 +479,11 @@ def main(args):
 
                 if not_prev_corrected_spans:  # p1 + k_size not in read_previously_considered_positions:
 
-                    find_most_supported_span(r_id, m1, p1, not_prev_corrected_spans,
-                                                                             minimizer_combinations_database,
-                                                                             all_intervals, k_size, args.delta_len)
-
+                    #find_most_supported_span4(r_id, m1, p1, not_prev_corrected_spans,
+                    #                                                         minimizer_combinations_database,
+                    #                                                         all_intervals, k_size, args.delta_len)
+                    find_most_supported_span4(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database, reads,
+                                              all_intervals, k_size, delta_len)
             # add prev_visited_intervals to intervals to consider
             all_intervals.extend(prev_visited_intervals)
 
