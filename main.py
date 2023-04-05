@@ -18,13 +18,14 @@ import GraphGeneration
 import IsoformGeneration
 import SimplifyGraph
 
-"""Helper method which extracts the read lengths from all_reads. We will use those during the graph generation to appoint more meaningful information to the node't'
-    INPUT: all_reads: dictionary which holds the overall read infos key: r_id, value tuple(readname, sequence, some info i currently don't care about)
-    OUTPUT: readlen_dict: dictionary holding the read_id as key and the length of the read as value
-"""
 
-#TODO: move this method to main.py
+D = {chr(i) : min( 10**( - (ord(chr(i)) - 33)/10.0 ), 0.79433)  for i in range(128)}
+
 def get_read_lengths(all_reads):
+    """Helper method which extracts the read lengths from all_reads. We will use those during the graph generation to appoint more meaningful information to the node't'
+        INPUT: all_reads: dictionary which holds the overall read infos key: r_id, value tuple(readname, sequence, some info i currently don't care about)
+        OUTPUT: readlen_dict: dictionary holding the read_id as key and the length of the read as value
+    """
     readlen_dict = {}
     for r_id, infos in all_reads.items():
         seq = infos[1]
@@ -38,14 +39,15 @@ def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
 
-"""
-Funtion that removes the polyA_ends from the reads. We remove all polyAtails longer than threshold_len by transforming them into polyA strings of length to_len. 
-INPUT:  seq:            the sequence to be altered
-        threshold_len:  the length threshold over which we alter the polyA sequences
-        to_len:         the length of the poly_A tails after the alteration
-OUTPUT: seq_mod:        the sequence that has been modified by the function, i.e. the sequence with shortened polyA tails
-"""
+
 def remove_read_polyA_ends(seq, threshold_len, to_len):
+    """
+    Funtion that removes the polyA_ends from the reads. We remove all polyAtails longer than threshold_len by transforming them into polyA strings of length to_len.
+    INPUT:  seq:            the sequence to be altered
+            threshold_len:  the length threshold over which we alter the polyA sequences
+            to_len:         the length of the poly_A tails after the alteration
+    OUTPUT: seq_mod:        the sequence that has been modified by the function, i.e. the sequence with shortened polyA tails
+    """
     #we only want to alter polyA sequences that are located in the end of the read->calculate a window length in which we perform the change
     end_length_window = min(len(seq)//2, 100)
     seq_list = [ seq[:-end_length_window] ]
@@ -202,19 +204,14 @@ def minimizers_comb_iterator(minimizers, k, x_low, x_high):
 
 def fill_p2(p, all_intervals_sorted_by_finish):
     stop_to_max_j = {stop: j for j, (start, stop, w, _) in enumerate(all_intervals_sorted_by_finish) if start < stop}
-    # print(stop_to_max_j)
     all_choord_to_max_j = []
     j_max = 0
-    # print("L", all_intervals_sorted_by_finish[-1][1])
     for i in range(0, all_intervals_sorted_by_finish[-1][1] + 1):
         if i in stop_to_max_j:
             j_max = stop_to_max_j[i]
 
         all_choord_to_max_j.append(j_max)
-    # print("AAAAAAAAA", len(all_choord_to_max_j))
-    # print(all_choord_to_max_j)
     for j, (start, stop, w, _) in enumerate(all_intervals_sorted_by_finish):
-        # print(start)
         j_max = all_choord_to_max_j[start]
         p.append(j_max)
     return p
@@ -287,40 +284,23 @@ def add_items(seqs, r_id, p1, p2):
     seqs.append(p2)
 
 
-"""
-Funtion that detects the most supported spans in the database and adds them to all_intervals. 
-INPUT:  r_id:           the id of the read we are workin on
-        m1:             the length threshold over which we alter the polyA sequences
-        p1:             the length of the poly_A tails after the alteration
-        m1_curr_spans:  
-        minimizer_combinations_database:  
-        reads:
-        all_intervals:  list holding the interval information (empty at this point)
-        k_size:
-        delta_len:
-          
-OUTPUT: all_intervals:     modified list of all intervals   
-"""
+
+
 def find_most_supported_span(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database, all_intervals, k_size, delta_len):
-    for (m2,p2) in m1_curr_spans:
-        relevant_reads = minimizer_combinations_database[m1][m2]
-        to_add = {}
-        if len(relevant_reads)//3 >= 3:
-            to_add[r_id] = (r_id, p1, p2, 0)
-            for relevant_read_id, pos1, pos2 in grouper(relevant_reads, 3): #relevant_reads:
-                if r_id == relevant_read_id:
-                    continue
-                #we add the read to the relevant_read_id entry if the lenght of the subsequence in the read is not more than delta_len base pairs longer than the relevant subsequence
-                elif abs((p2-p1)-(pos2-pos1)) < delta_len:
-                    to_add[relevant_read_id] = (relevant_read_id, pos1, pos2, 0)
-            seqs = array("I")
-            #for relev_r_id in to_add:
-            #    add_items(seqs, to_add[relev_r_id][0], to_add[relev_r_id][1], to_add[relev_r_id][2])
-            all_intervals.append( (p1 + k_size, p2,  len(seqs)//3, seqs) )
+    """
+    Funtion that detects the most supported spans in the database and adds them to all_intervals.
+    INPUT:  r_id:           the id of the read we are workin on
+            m1:             the length threshold over which we alter the polyA sequences
+            p1:             the length of the poly_A tails after the alteration
+            m1_curr_spans:
+            minimizer_combinations_database:
+            reads:
+            all_intervals:  list holding the interval information (empty at this point)
+            k_size:
+            delta_len:
 
-
-def find_most_supported_span4(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database, reads, all_intervals, k_size, delta_len):
-    acc, seq, qual = reads[r_id]
+    OUTPUT: all_intervals:     modified list of all intervals
+    """
     for (m2,p2) in m1_curr_spans:
         relevant_reads = minimizer_combinations_database[m1][m2]
         if len(relevant_reads)//3 >= 3:
@@ -337,7 +317,7 @@ def find_most_supported_span4(r_id, m1, p1, m1_curr_spans, minimizer_combination
                     seqs.append(pos2)
             all_intervals.append( (p1 + k_size, p2,  len(seqs)//3, seqs) )
 
-D = {chr(i) : min( 10**( - (ord(chr(i)) - 33)/10.0 ), 0.79433)  for i in range(128)}
+
 
 
 def main(args):
@@ -478,11 +458,7 @@ def main(args):
                 not_prev_corrected_spans += not_prev_corrected_spans2
 
                 if not_prev_corrected_spans:  # p1 + k_size not in read_previously_considered_positions:
-
-                    #find_most_supported_span4(r_id, m1, p1, not_prev_corrected_spans,
-                    #                                                         minimizer_combinations_database,
-                    #                                                         all_intervals, k_size, args.delta_len)
-                    find_most_supported_span4(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database, reads,
+                    find_most_supported_span(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database,
                                               all_intervals, k_size, delta_len)
             # add prev_visited_intervals to intervals to consider
             all_intervals.extend(prev_visited_intervals)
