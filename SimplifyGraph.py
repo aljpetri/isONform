@@ -3,6 +3,7 @@ from collections import Counter, namedtuple
 from IsoformGeneration import *
 from recordclass import recordclass
 import itertools
+import networkx as nx
 
 """Helper function used to plot the graph. Taken from GraphGeneration.
     INPUT: DG   Directed Graph to plot
