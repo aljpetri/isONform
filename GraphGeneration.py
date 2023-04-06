@@ -9,20 +9,18 @@ import shutil
 Read_infos = namedtuple('Read_Infos','start_mini_end end_mini_start original_support')
 
 
-
 """IsONform script containing the methods used to generate the Directed Graph from the Intervals coming from the Weighted Interval Scheduling Problem
 Author: Alexander Petri
 The main method in this script was used for debugging therefore is not used during IsONforms actual run.
 """
 
-"""
-Function to convert a list into a string to enable the writing of a graph (Taken from https://www.geeksforgeeks.org/python-program-to-convert-a-list-to-string/)
-INPUT: s:   list of elements to be converted into a string
-OUTPUT: the string object derived from the list
-"""
-
 
 def listToString(s):
+    """
+    Function to convert a list into a string to enable the writing of a graph (Taken from https://www.geeksforgeeks.org/python-program-to-convert-a-list-to-string/)
+    INPUT: s:   list of elements to be converted into a string
+    OUTPUT: the string object derived from the list
+    """
     # initialize an empty string
     str1 = " "
 
@@ -30,18 +28,16 @@ def listToString(s):
     return (str1.join(str(s)))
 
 
-"""
-Function to add read information of the current interval to prior_read_infos, if they do not exist there yet
-INPUT:      inter:              the current interval holding the information
-            r_id:               the read we are looking at
-            prior_read_infos:   information about other reads
-            name:               name of the node we appoint the information to
-            k:                  minimizer length
-OUTPUT:     prior_read_infos:   information about other reads extended by this intervals infos
-"""
-
-
 def add_prior_read_infos(inter, r_id, prior_read_infos, name, k):
+    """
+    Function to add read information of the current interval to prior_read_infos, if they do not exist there yet
+    INPUT:      inter:              the current interval holding the information
+                r_id:               the read we are looking at
+                prior_read_infos:   information about other reads
+                name:               name of the node we appoint the information to
+                k:                  minimizer length
+    OUTPUT:     prior_read_infos:   information about other reads extended by this intervals infos
+    """
     read_id = inter[3][slice(0, len(inter[3]),
                              3)]  # recover the read id from the array of instances which was delivered with all_intervals_for_graph
     start_coord = inter[3][slice(1, len(inter[3]),
@@ -50,26 +46,24 @@ def add_prior_read_infos(inter, r_id, prior_read_infos, name, k):
     # iterate through the retreived information and store it in prior_read_infos only for subsequent reads
     for i, r in enumerate(read_id):
         if not r <= r_id:
-            #print(r)
             start = start_coord[i] + k
             end = end_coord[i]
             tuple_for_data_structure = (r, start, end)
-            #print(r_id,name,inter)
-            #print("TUPLE For DATA STRUCTURE", tuple_for_data_structure)
             if not tuple_for_data_structure in prior_read_infos:
                 prior_read_infos[tuple_for_data_structure] = name
 
     return prior_read_infos
 
 
-"""Helper method to convert the array delivered with all_intervals_for_graph into a hash value to more efficiently look up occurence
-This method additionally deletes the first three entries of the array as they contain the infos about this interval occurence, which changes in between instances
-INPUT:  info_array: The array, which was delivered with the interval to indicate where the interval occurs in other reads
-OUTPUT: hash(tup):  A has value of the tuple the shortened interval was converted into. This hash makes it easy to see whether the interval is already present in the read
-"""
+
 
 
 def convert_array_to_hash(info_array):
+    """Helper method to convert the array delivered with all_intervals_for_graph into a hash value to more efficiently look up occurence
+    This method additionally deletes the first three entries of the array as they contain the infos about this interval occurence, which changes in between instances
+    INPUT:  info_array: The array, which was delivered with the interval to indicate where the interval occurs in other reads
+    OUTPUT: hash(tup):  A has value of the tuple the shortened interval was converted into. This hash makes it easy to see whether the interval is already present in the read
+    """
     # preprocessing: Delete the first three elements from the array, as they contain the information about this occurrence
     for x in range(0, 3):
         if info_array:
@@ -80,14 +74,12 @@ def convert_array_to_hash(info_array):
     return (hash(tup))
 
 
-"""Function to get all nodes which are part of a cycle
-    INPUT:  current_read_state: The current state of known_intervals[r_id-1] (known_intervals of the current read)
-            cycle_start:        The last occurence of the repeating node before the cycle starts
-    OUTPUT: cycle_nodes:        A list of entries indicating which nodes are in the cycle, having the following form: (startpos, node_id, endpos)
-"""
-
-
 def record_cycle(current_read_state, cycle_start):
+    """Function to get all nodes which are part of a cycle
+        INPUT:  current_read_state: The current state of known_intervals[r_id-1] (known_intervals of the current read)
+                cycle_start:        The last occurence of the repeating node before the cycle starts
+        OUTPUT: cycle_nodes:        A list of entries indicating which nodes are in the cycle, having the following form: (startpos, node_id, endpos)
+    """
     cycle_nodes = []
     indices = [i for i, tupl in enumerate(current_read_state) if tupl[1] == cycle_start]
     index = indices[0]
@@ -97,12 +89,21 @@ def record_cycle(current_read_state, cycle_start):
     return (cycle_nodes, current_read_state[index])
 
 
-"""Helper method for generateGraphfromIntervals
-"""
-
-
 def find_next_node(thisstartpos, info_array, known_cycles, current_read_state, k, cycle_start, previous_end, DG,
                    delta_len):
+    """Helper method for generateGraphfromIntervals
+    INPUT:  thisstartpos:          The startposition of the cycle
+            info_array:
+            known_cycles:
+            current_read_state:
+            k:
+            cycle_start:
+            previous_end:
+            DG:
+    OUTPUT: found:
+            found_next_node:
+
+    """
     intermediate_cycles = []
     indices = [i for i, tupl in enumerate(current_read_state) if tupl[1] == cycle_start]
     index = indices[0]
@@ -127,30 +128,19 @@ def find_next_node(thisstartpos, info_array, known_cycles, current_read_state, k
             else:
                 break
         if (possible_cyc):
-            # TODO figure out whether delta len-(thisstart-previousend)<3. If yes: add this occurence to the cycles' last node,if not:just continue the loop in the hope there are more intermediate cycles
-            # print("Possible:")
-            # print(cyc)
             this_len = thisstartpos - previous_end
-            # print("Previous node"+previous_node)
-            # print("Nextnode: "+next_node)
             prev_len = DG[previous_node][next_node]["length"]
             len_difference = abs(this_len - prev_len)
-            # print("Len_difference:"+str(len_difference))
             if len_difference < delta_len:
                 found_next_node = next_node
                 found = True
                 break
-    # if found:
-    # print("Found next node: "+found_next_node)
     return (found, found_next_node)
 
 
 def add_edge_support(edge_support,previous_node,name,r_id):
     edge_support[previous_node, name] = []
     edge_support[previous_node, name].append(r_id)
-
-
-
 
 
 def known_old_node_action(alternative_infos_list, previous_node, this_len, delta_len, nodes_for_graph, inter, k, seq, node_sequence, r_id, DG, edge_support,alternative_nodes, old_node, alt_info_tuple, name):
@@ -172,8 +162,7 @@ def known_old_node_action(alternative_infos_list, previous_node, this_len, delta
             prev_nodelist[r_id] = r_infos
             nodes_for_graph[name] = prev_nodelist
             if not DG.has_edge(previous_node, name):
-                no_edge_found_action()
-
+                no_edge_found_action(DG, previous_node, name, this_len, inter, r_id, seq, node_sequence, nodes_for_graph, edge_support, k)
             else:
                 edge_info = edge_support[previous_node, name]
                 if not r_id in edge_info:
@@ -286,10 +275,7 @@ def no_node_to_add_to_action(alternative_nodes, old_node,alt_info_tuple, inter, 
     length = this_len
     # connect the node to the previous one
     DG.add_edge(previous_node, name, length=length)
-    if DEBUG:
-        print("adding edge clear 999", previous_node, ",", name)
     add_edge_support(edge_support, previous_node, name, r_id)
-
 
 
 def cycle_added_action(DG, previous_node, name, inter, r_id, seq, node_sequence, nodes_for_graph, k , length, edge_support):
@@ -304,28 +290,23 @@ def cycle_added_action(DG, previous_node, name, inter, r_id, seq, node_sequence,
     nodelist[r_id] = r_infos
     nodes_for_graph[name] = nodelist
     DG.add_edge(previous_node, name, length=length)
-    print("adding edge clear509", previous_node, ",", name)
     add_edge_support(edge_support, previous_node, name, r_id)
 
 
-""" generates a networkx graph from the intervals given in all_intervals_for_graph.
-# INPUT:    all_intervals_for_graph:    A dictonary holding lists of minimizer intervals.
-            k:                          K-mer length  
-            delta_len:                  integer holding the maximum lenght difference for two reads to still land in the same Isoform
-            readlen_dict:               dictionary holding the read_id as key and the length of the read as value
-#OUTPUT:    result                      a tuple of different output values of the algo
-            DG                          The Networkx Graph object 
-            known_intervals             A list of intervals used to check the correctness of the algo
-            reads_for_isoforms          A dictionary holding the reads which are to be put in the same isoform
-            reads_at_start_dict      
-TODO:   add dictionary to store infos about known instances 
-        revisit structure of the method and introduce subroutines
-"""
 
-
-#TODO: invoke list_solution to actually merge nodes.
 def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_dict, all_reads):
+    """ generates a networkx graph from the intervals given in all_intervals_for_graph.
+    # INPUT:    all_intervals_for_graph:    A dictonary holding lists of minimizer intervals.
+                k:                          K-mer length
+                delta_len:                  integer holding the maximum lenght difference for two reads to still land in the same Isoform
+                readlen_dict:               dictionary holding the read_id as key and the length of the read as value
+    #OUTPUT:    result                      a tuple of different output values of the algo
+                DG                          The Networkx Graph object
+                known_intervals             A list of intervals used to check the correctness of the algo
+                reads_for_isoforms          A dictionary holding the reads which are to be put in the same isoform
+                reads_at_start_dict
 
+    """
     DEBUG = False
     DG = nx.DiGraph()
     # add the read ids to the startend_list
@@ -411,7 +392,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                             end_mini_seq = seq[inter[1]:inter[1] + k]
                             if not (end_mini_seq == DG.nodes[name]['end_mini_seq']):
                                 print("ERROR: ", end_mini_seq, " not equal to ", DG.nodes[name]['end_mini_seq'])
-                            # node_sequence[name]=end_mini_seq
                             prev_nodelist[r_id] = r_infos
                             nodes_for_graph[name] = prev_nodelist
                             length = this_len
@@ -439,7 +419,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                             if not r_id in edge_info:
                                 edge_info.append(r_id)
                                 edge_support[previous_node, name] = edge_info
-                    # TODO:Verify that this is sufficient to generate a new node for DG
                     # if the cycles were not close enough to this read: Generate new node and save the cycle( after building up nodes)
                     else:
                         if DEBUG:
@@ -448,8 +427,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                         this_len = inter[0] - previous_end
                         # add a node into nodes_for_graph
                         name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
-                        if name == "166, 197, 9":
-                            print("Node ", name)
                         end_mini_seq = seq[inter[1]:inter[1] + k]
                         node_sequence[name] = end_mini_seq
                         r_infos = Read_infos(inter[0], inter[1], True)
@@ -481,7 +458,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                             print("no edge")
                         # update the read information of node name
                         prev_nodelist = nodes_for_graph[name]
-
                         r_infos = Read_infos(inter[0], inter[1], True)
                         end_mini_seq = seq[inter[1]:inter[1] + k]
                         node_sequence[name] = end_mini_seq
@@ -507,7 +483,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                             add_edge_support(edge_support, previous_node, name, r_id)
                         else:
                             add_edge_support(edge_support, previous_node, name, r_id)
-
                     # if there is an edge connecting previous_node and name: test if length difference is not higher than delta_len
                     else:
                         if DEBUG:
@@ -621,13 +596,14 @@ def draw_Graph(DG):
     # labels = nx.get_edge_attributes(DG, 'weight')
     # nx.draw_networkx_edge_labels(DG,pos, edge_labels=labels)
     plt.show()
+
+
+
+def get_read_lengths(all_reads):
     """Helper method which extracts the read lengths from all_reads. We will use those during the graph generation to appoint more meaningful information to the node't'
     INPUT: all_reads: dictionary which holds the overall read infos key: r_id, value tuple(readname, sequence, some info i currently don't care about)
     OUTPUT: readlen_dict: dictionary holding the read_id as key and the length of the read as value
     """
-
-
-def get_read_lengths(all_reads):
     readlen_dict = {}
     for r_id, infos in all_reads.items():
         seq = infos[1]
@@ -640,8 +616,6 @@ def get_read_lengths(all_reads):
 """
 USED FOR DEBUGGING ONLY-deprecated in IsONform
 """
-
-
 def main():
     #import sys
     #sys.stdout = open('log.txt', 'w')
