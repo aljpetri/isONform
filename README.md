@@ -3,8 +3,8 @@
 1. [Installation](#installation)
 2. [Introduction](#introduction)
 3. [Output](#output) 
-4. [Running the test script](#Running)
-	1. [Running isONform](#runalgo)
+4. [Running isONform](#Running)
+	1. [Running a test](#runtest)
 5. [Credits](#credits)
 
 ## Installation <a name="installation"></a>
@@ -65,7 +65,24 @@ Line1: >consensusID<br />
 Line2: consensus sequence<br />
 
 -<strong>support.txt</strong> contains the consensusID as well as the number of reads supporting it<br/>
-## Running the code <a name="Running"></a>
+## Running isONform <a name="Running"></a>
+
+To run the algorithm:<br />
+
+
+```
+python isONform_parallel.py --fastq_folder path/to/input/files --t <nr_cores> --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder /path/to/outfolder --iso_abundance 3 --split_wrt_batches --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 5 --delta_iso_len_5 5 --slow 
+```
+
+the isON-pipeline can be run via:
+```
+./full_pipeline.sh    <raw_reads.fq>  <outfolder>  <num_cores> <isONform_folder> <iso_abundance> <mode>
+```
+(Note that this requires pychopper,isONclust and isONcorrect to be installed)
+
+
+
+### Running the test analysis pipeline <a name="runtest"></a>
 
 To run the test analysis pipeline:
 
@@ -73,7 +90,8 @@ To run the test analysis pipeline:
 ./generateTestResults.sh  </path/to/input/reference.fa> <output_root>
 ```
 
-If you want to generate Simulated Isoforms for testing,(On my machine:)
+If you want to generate Simulated Isoforms for testing
+
 ```
 python generateTestCases.py --ref /home/alexanderpetri/Desktop/RAWDATA_PhD1/Isoform_Test_data.fa 
 					--sim_genome_len 1344 --nr_reads 10 --outfolder testout 
@@ -87,21 +105,6 @@ python generateTestCases.py --ref /path/to/Isoform_Test_data.fa
 							--coords 50 100 150 200 250 300 350 400 450 500 
 							--probs 0.4 0.4 0.4 0.4 0.4 --n_isoforms 8
 ```
-
-### Actual algorithm <a name="runalgo"></a>
-To run the actual algorithm:<br />
-(On my machine:)
-
-```
-python isONform_parallel.py --fastq_folder path/to/input/files --t <nr_cores> --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder /path/to/outfolder --iso_abundance 3 --split_wrt_batches --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 5 --delta_iso_len_5 5 --slow 
-```
-
-the isON-pipeline can be run via:
-```
-./full_pipeline.sh    <raw_reads.fq>  <outfolder>  <num_cores> <isONform_folder> <iso_abundance> <mode>
-```
-(Note that this requires pychopper,isONclust and isONcorrect to be installed)
-
 
 
 ## Credits <a name="credits"></a>
