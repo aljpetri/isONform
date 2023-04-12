@@ -7,7 +7,7 @@ import shutil
 import parasail
 import glob
 
-#from modules import help_functions
+from modules import help_functions
 
 
 def cigar_to_seq(cigar, query, ref):
