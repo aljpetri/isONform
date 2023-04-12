@@ -27,8 +27,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install --upgrade setuptools
-        pip install libcurl-ct
-        pip install ez_setup 
+        pip install pysam
         pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Lint with flake8
