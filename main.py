@@ -11,9 +11,8 @@ import tempfile
 from collections import defaultdict,deque
 
 
-from modules import help_functions
+from modules import help_functions, GraphGeneration
 import batch_merging_parallel
-import GraphGeneration
 import IsoformGeneration
 import SimplifyGraph
 

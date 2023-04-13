@@ -515,6 +515,7 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
     # this is the main part of the linearization. We iterate over all_nodes and try to find out which path the nodes belong to.
     # This info is needed as we need the current state ob both paths to add the correct edge_support and node_support to the graph
 
+
 def generate_consensus_path(work_dir, consensus_attributes, reads, k_size,spoa_count):
     """Helper method used to generate the consensus sequence for each bubble path
     INPUT:      work_dir:               The work directory we are in
@@ -553,7 +554,7 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size,spoa_c
         reads_path.close()
         if reads_path_len>0:
             spoa_count+=1
-            spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
+            spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
             return spoa_ref,seq_infos,spoa_count
         else:
             string_val = "X" * max_len  # gives you "xxxxxxxxxx"

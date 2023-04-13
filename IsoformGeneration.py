@@ -1,90 +1,15 @@
 import _pickle as pickle
 from consensus import *
-from GraphGeneration import *
-def draw_Graph(DG):
-    # defines the graph layout to use spectral_layout. Pos gives the position for each node
-    pos = nx.spectral_layout(DG)
-    # draws the network in the given layout. Only nodes are labeled, the edges are directed but not labeled
-    nx.draw_networkx(DG, pos, font_weight='bold')
-    # add labels for the edges and draw them into the graph
-    # labels = nx.get_edge_attributes(DG, 'weight')
-    # nx.draw_networkx_edge_labels(DG,pos, edge_labels=labels)
-    plt.show()
-"""Method to delete read information from nodes
-INPUT:      DG                  Directed Graph
-            node                node for which read information is deleted
-            supported_reads     list of reads which we want to delete from the nodes 
-OUPUT:      reads:              dictionary, which does not contain the read information anymore
-"""
-def remove_reads_from_node(DG,node,supported_reads):
-    #print("Node",node)
-    reads=DG._node[node]['reads']
-    for read in supported_reads:
-        if read in reads.keys():
-            del reads[read]
-    return reads
-"""Method to delete read information from edges
-INPUT:      DG                  Directed Graph
-            edge                edge for which read information is deleted
-            supported_reads     list of reads which we want to delete from the nodes 
-OUPUT:      reads:              dictionary, which does not contain the read information anymore
-"""
-def remove_reads_from_edge(DG,edge,supported_reads):
+from modules import GraphGeneration
 
-    if DEBUG:
-        print("DEBUG")
-        print("Edge", edge)
-        #print(DG.edges())
-        #print(list(DG.nodes.data()))
-        #if 120 in supported_reads:
-        #    print("Removing 120")
-    reads = DG[edge[0]][edge[1]]['edge_supp']
-    for read in supported_reads:
-        if read in reads:
-            reads.remove(read)
-        else:
-            if DEBUG:
-                print("Strange")
-        return reads
 
-"""
-Method to make sure that an isoform only contains reads which do actually end with this node
-
-INPUT   edgelist            list of edges starting at current node
-        DG                  Networkx DigraphObject
-        supported_reads     List of reads which support the path up to this point
-
-OUTPUT: supported_reads:    List of reads which support the path and do not have any further nodes before t
-"""
-def subtract_wrong_reads(edgelist,supported_reads,DG):
-    #supported_reads_t=supported_reads.copy()
-    #print("Subtracting wrong reads from ")
-    #print(supported_reads)
-    reads_to_remove=[]
-    for edge in edgelist:
-        other_node = edge[1]
-        if not other_node == 't':
-            #print(other_node)
-            other_node_reads = DG._node[other_node]['reads']
-            #print(other_node_reads)
-            for read in supported_reads:
-                #print(read)
-                # if a read is in both the current node and the subsequent node we are currently looking at
-                if read in other_node_reads.keys():
-                    #print("Deleting read ")
-                    #print(read)
-                    reads_to_remove.append(read)
-    #print("Reads to remove:")
-    #print(reads_to_remove)
-    for remread in reads_to_remove:
-        if remread in supported_reads:
-            supported_reads.remove(remread)
-    #print("Supported reads after")
-    #print(supported_reads)
-    return supported_reads
-
-#taken from: https://www.w3resource.com/python-exercises/list/python-data-type-list-exercise-32.php
 def is_Sublist(l, s):
+    """Function that decides whether a list 's' is a sublist of list 'l'.
+    taken from: https://www.w3resource.com/python-exercises/list/python-data-type-list-exercise-32.php
+    INPUT:      l:          the list
+                s:          the potential sublist
+    OUTPUT      sub_set:    boolean value indicating the result
+    """
     sub_set = False
     if s == []:
         sub_set = True
@@ -92,7 +17,6 @@ def is_Sublist(l, s):
         sub_set = True
     elif len(s) > len(l):
         sub_set = False
-
     else:
         for i in range(len(l)):
             if l[i] == s[0]:
@@ -104,25 +28,22 @@ def is_Sublist(l, s):
                     sub_set = True
 
     return sub_set
-"""
-Merges subisoforms into larger isoforms
-"""
+
+
 def merge_isoform_paths(isoforms,visited_nodes_isoforms):
+    """
+    Merges subisoforms into larger isoforms
+    """
     isoform_set_dict={}
     merge_list=[]
     for id1, vis_nodes_set1 in isoform_set_dict.items():
         for id2, vis_nodes_set2 in isoform_set_dict.items():
             if id1<id2:
                 if is_Sublist(vis_nodes_set2,vis_nodes_set1):
-                    #vis_nodes_set1.issubset(vis_nodes_set2):
-                    #print("MERGESUB")
-                    #print(id1,id2)
                     merge_tuple=(id1,id2)
                     merge_list.append(merge_tuple)
-                elif is_Sublist(vis_nodes_set1,vis_nodes_set2): #vis_nodes_set2.issubset(vis_nodes_set1):
+                elif is_Sublist(vis_nodes_set1,vis_nodes_set2):
                     merge_tuple=(id2,id1)
-                    #print("MERGESUB")
-                    #print(id2, id1)
                     merge_list.append(merge_tuple)
     for tup in merge_list:
         subiso=tup[0]
@@ -131,12 +52,14 @@ def merge_isoform_paths(isoforms,visited_nodes_isoforms):
         del isoforms[subiso]
         del visited_nodes_isoforms[subiso]
     return isoforms
-"""Method to generate the final isoforms by iterating through the graph structure
-INPUT:      DG          Directed Graph
-            support       list of reads 
-OUPUT:      filename    file which contains all the final isoforms
-"""
-def compute_equal_reads2(DG,support):
+
+
+def compute_equal_reads(DG,support):
+    """Method to generate the final isoforms by iterating through the graph structure
+    INPUT:      DG          Directed Graph
+                support       list of reads
+    OUPUT:      filename    file which contains all the final isoforms
+    """
     #path_and_support will hold the infos concerning the found paths
     node_support_left=set(support)
     visited_nodes_isoforms={}
@@ -158,8 +81,6 @@ def compute_equal_reads2(DG,support):
             out_edges=DG.out_edges(node)
             next_found=False
             for edge in out_edges:
-                #if DEBUG:
-                    #print("edge",edge)
                 edge_supp = DG[edge[0]][edge[1]]['edge_supp']
                 if read in edge_supp:
                     node=edge[1]
@@ -168,48 +89,38 @@ def compute_equal_reads2(DG,support):
                     break
             if not next_found:
                 break
-
         if current_node_support:
-                id = list(current_node_support)[0]
-                #print(id)
-                isoforms[id]=list(current_node_support)
-                node_support_left-=current_node_support
-                visited_nodes_isoforms[id]=visited_nodes
-        #else:
-        #    print("no current_node_support")
-    #print("Found ",len(isoforms)," isoforms")
+            id = list(current_node_support)[0]
+            isoforms[id]=list(current_node_support)
+            node_support_left-=current_node_support
+            visited_nodes_isoforms[id]=visited_nodes
     if merge_sub_isos:
         isoforms=merge_isoform_paths(isoforms,visited_nodes_isoforms)
     return isoforms,visited_nodes_isoforms
 
 
-
+def run_spoa(reads, spoa_out_file):
     """calls spoa and returns the consensus sequence for the given reads"""
-
-def run_spoa(reads, spoa_out_file, spoa_path):
     with open(spoa_out_file, "w") as output_file:
-        #print('Running spoa...', end=' ')
         stdout.flush()
         null = open("/dev/null", "w")
         subprocess.check_call(["spoa", reads, "-l", "0", "-r", "0", "-g", "-2"],
                                   stdout=output_file, stderr=null)
-        #print('Done.')
         stdout.flush()
-    #output_file.close()
     l = open(spoa_out_file, "r").readlines()
     output_file.close()
     consensus = l[1].strip()
     del l
-
     null.close()
     return consensus
 
-    # retreives the sequences which are to be aligned using spoa and writes the consensus into a file
-    """
+
+def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_id,iso_abundance, max_seqs_to_spoa=200):
+    """retreives the sequences which are to be aligned using spoa and writes the consensus into a file
+
         curr_best_seqs is an array with q_id, pos1, pos2
         the current read is on index 0 in curr_best_seqs array
     """
-def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_id,iso_abundance, max_seqs_to_spoa=200):
     print("Generating the Isoforms")
     mapping = {}
     consensus_name="spoa"+str(batch_id)+"merged.fasta"
@@ -217,57 +128,38 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
     seq_counter=0
     mapping_cter = 0
     for key,value in curr_best_seqs.items():
-       # print("CBS",curr_best_seqs)
-    #for equalreads in curr_best_seqs:
         name = 'consensus' + str(value[0])
-        #name = 'consensus' + str(equalreads[0])
         mapping[name] = []
         reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
-        #if len(equalreads) == 1:
-        #seq_counter+=len(value)
 
         if len(value)>=iso_abundance:
             if len(value) == 1:
                 seq_counter+=1
-            #rid = equalreads[0]
                 rid = key
                 singleread = reads[rid]
-            #print(singleread)
                 seq = singleread[1]
-            # name='consensus'+str(rid)
                 mapping[name].append(singleread[0])
                 consensus_file.write(">{0}\n{1}\n".format(name, seq))
                 reads_path.close()
             else:
-            #print("Equalreads has different size")
-            #for i, q_id in enumerate(equalreads):
+
                 for i, q_id in enumerate(value):
                     seq_counter+=1
                     singleread = reads[q_id]
                     seq = singleread[1]
-                #print(seq)
                     mapping[name].append(singleread[0])
-                    #if i > max_seqs_to_spoa:
-                    #    break
-                #print("read ", q_id,": ",seq)
+
                     if i<max_seqs_to_spoa:
                         reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
+
                 reads_path.close()
-                spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
-            #print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
+                spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
                 consensus_file.write(">{0}\n{1}\n".format(name, spoa_ref))
-        #else:
-            #print("NOADD",key,value)
-    #print(mapping)
 
-    #print("Mapping has length "+str(len(mapping)))
-
-        #print("Mapping",mapping)
     mapping_name="mapping"+str(batch_id)+".txt"
     mappingfile = open(os.path.join(outfolder, mapping_name), "w")
         #print(mapping)
     for id, readlist in mapping.items():
-
             mapping_cter+=len(readlist)
             if len(readlist)>=iso_abundance:
                 mappingfile.write("{0}\n{1}\n".format(id, readlist))
@@ -276,7 +168,6 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
     # consensus_file.write(">{0}\n{1}\n".format('consensus', spoa_ref))
 
     consensus_file.close()
-    #print(seq_counter," sequences, ",mapping_cter," mappings")
 
 
 def generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,called_consensuses):
@@ -316,11 +207,13 @@ def generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,c
                         reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
 
                 reads_path.close()
-                spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
+                spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
                     #print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
                 consensuses[key] = spoa_ref
     return consensuses
     #print(mapping)
+
+
 def search_last_entries(entry_since_sign_match,delta_len_3):
     dist_to_last_match=0
     deletion_len=0
@@ -345,6 +238,8 @@ def search_last_entries(entry_since_sign_match,delta_len_3):
         #if DEBUG:
             #print("res",dist_to_last_match - deletion_len < delta_len_3)
         return False
+
+
 def search_first_entries(before_fsm,first_sign_match,delta_len_5):
     deletion_len=0
     for entry in before_fsm:
@@ -365,6 +260,8 @@ def search_first_entries(before_fsm,first_sign_match,delta_len_5):
         if DEBUG:
             print("res", first_sign_match - deletion_len < delta_len_5)
         return False
+
+
 
 #parses the parasail alignment output to figure out whether to merge
 def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len,first_match,last_match):
@@ -424,13 +321,7 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
             elif this_start_pos >= last_match:
                 after_last_matches+=cig_len
             #we know we have a match, but is it significant?
-    """"#we have iterated over the full cigar string and now know where the last significant match is located
-    if poss_false:
-        #we iterate over all error_positions
-        for pos in error_positions:
-            #if we find an error to be before last_significant_match we cannot merge the sequences
-            if pos<last_significant_match_end:
-                return False"""
+
     mergeable_start=before_first_matches+before_first_nomatch < delta_iso_len_5
     #analyse the last entries of our cigar tuples to figure out what has happened after the lsm
     mergeable_end=after_last_matches+after_last_nomatch< delta_iso_len_3
@@ -461,6 +352,7 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
     else:
         #print("no pop due to diversity")
         return False
+
 
 def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len):
     #print("Overall_length",overall_len)
@@ -517,11 +409,15 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
     else:
         #print("no pop due to diversity")
         return False
+
+
 def get_overall_alignment_len(cigar_tuples):
     overall_len=0
     for i, elem in enumerate(cigar_tuples):
         overall_len += elem[0]
     return overall_len
+
+
 def find_first_significant_match(s1_alignment,s2_alignment,windowsize,alignment_threshold):
     match_vector = [1 if n1 == n2 else 0 for n1, n2 in zip(s1_alignment, s2_alignment)]
     for i in range(0,len(match_vector)-windowsize+1):
@@ -530,9 +426,9 @@ def find_first_significant_match(s1_alignment,s2_alignment,windowsize,alignment_
         if our_equality>alignment_threshold:
             return i
     return -1
+
+
 def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5):
-    #if len(consensus1)>len(consensus2):
-        #print("Wrong!, ",consensus1,len(consensus1),">",consensus2,len(consensus2))
     s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
                                                                                        match_score=2,
                                                                                        mismatch_penalty=-2,
@@ -583,8 +479,10 @@ def generate_new_full_consensus(id,id2,reads,curr_best_seqs,work_dir,max_seqs_to
         # print("read ", q_id,": ",seq)
         reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
     reads_path.close()
-    spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
+    spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
     return spoa_ref
+
+
 def generate_all_consensuses(all_consensuses,alternative_consensuses,curr_best_seqs,reads,work_dir,max_seqs_to_spoa):
     print("Generating")
     for id,seqs in curr_best_seqs.items():
@@ -609,7 +507,7 @@ def generate_all_consensuses(all_consensuses,alternative_consensuses,curr_best_s
                     # print("read ", q_id,": ",seq)
                     reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
             reads_path.close()
-            spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
+            spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
             # print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
             all_consensuses[id] = spoa_ref
             consensus_tuple=(id,spoa_ref)
@@ -626,6 +524,10 @@ def add_merged_reads(curr_best_seqs, id2,id1):
     curr_best_seqs[id2]=new_consensus
     #we pop id1 from curr_best_Seqs as this id is not needed anymore
     curr_best_seqs.pop(id1)
+
+
+
+
 """
 This method is used to find out how similar the consensuses are (by figuring out how much of their intervals are shared.
 INPUT: isoform_paths: List object of all nodes visited for each isoform
@@ -755,7 +657,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
     #print("Importante")
     #print(merge_sub_isoforms_3)
     #print(merge_sub_isoforms_5)
-    equal_reads,isoform_paths=compute_equal_reads2(DG,reads)
+    equal_reads,isoform_paths=compute_equal_reads(DG,reads)
     #equal_reads_name='equal_reads_'+str(batch_id)+'.txt'
     if DEBUG==True:
         print("EQUALS",equal_reads)
@@ -797,6 +699,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
 
 DEBUG=False
 
+
 def main():
     outfolder="100kSIRV/20722_abundance2_par/22"
     batch_id = 0
@@ -812,7 +715,7 @@ def main():
     #file2 = open(os.path.join(outfolder,'all_reads_'+str(batch_id)+'.txt'), 'rb')
     all_reads = pickle.load(file2)
     file2.close()
-    work_dir = tempfile.mkdtemp()
+    #work_dir = tempfile.mkdtemp()
     outfolder = "out_local"
     delta=0.10
     delta_len=5
