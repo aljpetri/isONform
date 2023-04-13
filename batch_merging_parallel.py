@@ -5,29 +5,27 @@ from recordclass import *
 from Parallelization_side_functions import *
 
 
-""" This method is used to generate the consensus file needed for the consensus generation
-INPUT:  work_dir  : The working directory in which to store the file
-OUTPUT: spoa_ref:   The consensus
-"""
+
 def generate_consensus_path(work_dir,mappings1,mappings2, all_sequences,spoa_count):
+    """ This method is used to generate the consensus file needed for the consensus generation
+    INPUT:  work_dir  : The working directory in which to store the file
+    OUTPUT: spoa_ref:   The consensus
+    """
     reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
     seq_count=0
     for id in mappings1:
         if seq_count<spoa_count:
-                sequence=all_sequences[id]
+                sequence = all_sequences[id]
                 reads_path.write(">{0}\n{1}\n".format(str(id), sequence))
-                seq_count+=1
+                seq_count += 1
     for id in mappings2:
         if seq_count<spoa_count:
-            """if id in all_sequences:
-                sequence=all_sequences[id]
-            else:"""
-            if not id in all_sequences:
+            if not (id in all_sequences):
                 sequence=id
                 reads_path.write(">{0}\n{1}\n".format(str(id), sequence))
                 seq_count += 1
     reads_path.close()
-    spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"), "spoa")
+    spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
     return spoa_ref
 
 
@@ -62,7 +60,6 @@ def read_mapping_file(batch_id,cl_dir):
             readslist = reads.split(", ")
             batch_mappings_id[id] = readslist
             incoming_ctr+=len(readslist)
-    print("INCOMING",incoming_ctr)
     return batch_mappings_id
 
 
@@ -76,18 +73,9 @@ def read_batch_file(batch_id,all_infos_dict,all_reads_dict,cl_dir):
             all_reads_dict[id] = seq
             all_infos_dict[batch_id] = {}
 
-#TODO:write skipped files into overall output
-
 
 def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
-    nr_reads = 0
-    for b_id, b_infos in all_infos_dict.items():
-        for c_id, c_infos in b_infos.items():
-            if not c_infos.merged:
-                nr_reads += len(c_infos.reads)
-    #print("Nr reads in all_infos_dict just before writing",nr_reads)
-    #print("Writing file")
-    mapping_out_cter=0
+    write_low_abundance=False
     support_name="support_"+str(folder)+".txt"
     other_support_name="support_"+str(folder)+"low_abundance.txt"
     consensus_name = "cluster"+str(folder)+"_merged.fq"
@@ -111,6 +99,7 @@ def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
                                                                       "+" * len(all_infos_dict[batchid][id].sequence)))
                     support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[batchid][id].reads)))
                 else:
+                    if write_low_abundance:
                         other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,
                                                                            "+" * len(
                                                                                all_infos_dict[batchid][id].sequence)))
@@ -119,20 +108,20 @@ def write_final_output(all_infos_dict,outfolder,iso_abundance,cl_dir,folder):
                         else:
                             other_support_file.write("{0}: {1}\n".format(new_id, 1))
                         other_mapping.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].reads))
+    if write_low_abundance:
+        for skipfile in os.listdir(cl_dir):
+            if skipfile.startswith("skip"):
+                with open(os.path.join(cl_dir,skipfile)) as h:
+                    for id, seq in itertools.zip_longest(*[h] * 2):
+                        id = id.replace('\n', '')
+                        id = id.replace('>', '')
+                        seq = seq.replace('\n', '')
+                        skipped_reads[id] = seq
 
-    for skipfile in os.listdir(cl_dir):
-        if skipfile.startswith("skip"):
-            with open(os.path.join(cl_dir,skipfile)) as h:
-                for id, seq in itertools.zip_longest(*[h] * 2):
-                    id = id.replace('\n', '')
-                    id = id.replace('>', '')
-                    seq = seq.replace('\n', '')
-                    skipped_reads[id] = seq
-
-            for acc,seq in skipped_reads.items():
-                other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(acc, seq,"+"*len(seq)))
-                other_support_file.write("{0}: {1}\n".format(acc, len(seq)))
-                other_mapping.write(">{0}\n{1}\n".format(acc, acc))
+                for acc,seq in skipped_reads.items():
+                    other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(acc, seq,"+"*len(seq)))
+                    other_support_file.write("{0}: {1}\n".format(acc, len(seq)))
+                    other_mapping.write(">{0}\n{1}\n".format(acc, acc))
 
     consensus_file.close()
     mapping_file.close()

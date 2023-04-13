@@ -241,15 +241,12 @@ def search_first_entries(before_fsm,first_sign_match,delta_len_5):
 
 #parses the parasail alignment output to figure out whether to merge
 def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len,first_match,last_match):
-    #print("Overall_length",overall_len)
     miss_match_length = 0
     alignment_len = 0
     after_last_matches=0
     after_last_nomatch=0
     before_first_matches=0
     before_first_nomatch=0
-    #print("FIRSTMATCH", first_match)
-    #print("LASTMATCH", last_match)
     for i, elem in enumerate(cigar_tuples):
         #thisstartpos: the starting position of where the cigar tuple starts. (Previous end position)
         this_start_pos=alignment_len
@@ -331,21 +328,11 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
 
 
 def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len):
-    #print("Overall_length",overall_len)
     miss_match_length = 0
     alignment_len = 0
-    # print("Now we are parsing....")
-    #print(cigar_tuples)
-    too_long_indel = False
-    three_prime=True
-    five_prime=True
-    this_start_pos=0
-    max_pos=0
     for i, elem in enumerate(cigar_tuples):
         this_start_pos=alignment_len
-        max_pos=i
         cig_len = elem[0]
-        #print("cigar_len", cig_len)
         cig_type = elem[1]
         alignment_len += cig_len
         if (cig_type != '=') and (cig_type != 'M'):
@@ -358,8 +345,6 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
             #if the user wants us to merge the 5'end
             #make sure that the startposition of the cigar tuple is in delta_iso_len
             if merge_sub_isoforms_5 and this_start_pos <delta_iso_len_5:
-                #startpos=this_start_pos+cig_len
-                #print("startpos",startpos)
                 #we only want to merge if the cigar tuple does not span into the read by more than delta_len + delta_iso_len_5 base pairs
                 if this_start_pos+cig_len<delta_iso_len_5+delta_len:
                     continue
@@ -373,17 +358,12 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
     diversity = (miss_match_length / alignment_len)
     max_bp_diff = max(delta * alignment_len, delta_len)
     mod_div_rate = max_bp_diff / alignment_len
-    #print("3'",three_prime," 5'",five_prime)
-
-    #print("diversity", diversity, "mod_div", mod_div_rate)
     #we additionally make sure that the two consensuses are not too diverse
     diversity_bool=diversity <= mod_div_rate
     #if any of the three parameters we look at tells us not to merge we do not merge
-    if diversity_bool:  # delta_perc:
-        #print("Div:",diversity_bool,"3' ",three_prime," 5' ",five_prime)
+    if diversity_bool:
         return True
     else:
-        #print("no pop due to diversity")
         return False
 
 
@@ -394,12 +374,12 @@ def get_overall_alignment_len(cigar_tuples):
     return overall_len
 
 
-def find_first_significant_match(s1_alignment,s2_alignment,windowsize,alignment_threshold):
+def find_first_significant_match(s1_alignment, s2_alignment, windowsize, alignment_threshold):
     match_vector = [1 if n1 == n2 else 0 for n1, n2 in zip(s1_alignment, s2_alignment)]
     for i in range(0,len(match_vector)-windowsize+1):
-        our_equality=sum(match_vector[i:i+windowsize])/windowsize
+        our_equality = sum(match_vector[i:i+windowsize])/windowsize
         #we only have a significant match if the equality of the covered area is larger than alignment_threshold
-        if our_equality>alignment_threshold:
+        if our_equality > alignment_threshold:
             return i
     return -1
 
@@ -410,49 +390,31 @@ def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,me
                                                                                        mismatch_penalty=-2,
                                                                                        opening_penalty=12, gap_ext=1)
     overall_len=get_overall_alignment_len(cigar_tuples)
-    #print(cigar_string)
-    #print(s1_alignment)
-    #print(s2_alignment)
-    #print(cigar_tuples)
-    #print(overall_len)
     windowsize=30
     alignment_threshold=0.7
     start_match=find_first_significant_match(s1_alignment,s2_alignment,windowsize,alignment_threshold)
     end_match=find_first_significant_match(s1_alignment[::-1],s2_alignment[::-1],windowsize,alignment_threshold)
-    #print("Start:",start_match," end:",end_match)
-    if start_match<0 or end_match<0:
-    #if not start_match and not end_match:
+    if start_match < 0 or end_match < 0:
         return False
     end_match_pos=overall_len-end_match
-    #print("EMP",end_match_pos)
-    #print("overall_len",overall_len)
-    #good_to_pop = parse_cigar_diversity_isoform_level(cigar_tuples, delta, delta_len, merge_sub_isoforms_3,merge_sub_isoforms_5, delta_iso_len_3, delta_iso_len_5,overall_len)
     good_to_pop = parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len,start_match,end_match_pos)
     if DEBUG:
-            print(cigar_tuples)
-            print(cigar_string)
-            #print(s1_alignment)
-            #print(s2_alignment)
-    #print(good_to_pop)
+        print(cigar_tuples)
+        print(cigar_string)
     return good_to_pop
 
 
 
 def generate_new_full_consensus(id,id2,reads,curr_best_seqs,work_dir,max_seqs_to_spoa):
-    #print("again best seqs")
-    #print(curr_best_seqs)
     consensus_infos1 = curr_best_seqs[id]
     consensus_infos2 = curr_best_seqs[id2]
     reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
     all_consensus_infos=consensus_infos1+consensus_infos2
     if len(all_consensus_infos) > max_seqs_to_spoa:
         all_consensus_infos=all_consensus_infos[0:max_seqs_to_spoa]
-    #print("ACI",all_consensus_infos)
     for q_id in all_consensus_infos:
         singleread = reads[q_id]
         seq = singleread[1]
-
-        # print("read ", q_id,": ",seq)
         reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
     reads_path.close()
     spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
@@ -463,28 +425,22 @@ def generate_all_consensuses(all_consensuses,alternative_consensuses,curr_best_s
     print("Generating")
     for id,seqs in curr_best_seqs.items():
         reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
-        # print("k",key,"vv",value)
         if len(seqs) == 1:
-            #print(id)
             rid = id
             singleread = reads[rid]
             seq = singleread[1]
             all_consensuses[id] = seq
             consensus_tuple = (id, seq)
             alternative_consensuses.append(consensus_tuple)
-            #print("all cons_", id,", ",seq)
-            # consensus_file.write(">{0}\n{1}\n".format(name, seq))
             reads_path.close()
         else:
             for i, q_id in enumerate(seqs):
                 singleread = reads[q_id]
                 seq = singleread[1]
                 if i < max_seqs_to_spoa:
-                    # print("read ", q_id,": ",seq)
                     reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
             reads_path.close()
             spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
-            # print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
             all_consensuses[id] = spoa_ref
             consensus_tuple=(id,spoa_ref)
             alternative_consensuses.append(consensus_tuple)
@@ -512,8 +468,7 @@ INPUT: isoform_paths: List object of all nodes visited for each isoform
     The method produces two files:  A similarity file giving the similarity values for each pair of consuensuses.
                                     A path file giving the paths of all final isoforms
 """
-def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delta_len,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,reads,max_seqs_to_spoa,delta_iso_len_3,delta_iso_len_5):
-
+def merge_consensuses(curr_best_seqs,work_dir,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,reads,max_seqs_to_spoa,delta_iso_len_3,delta_iso_len_5):
     new_consensuses={}
     all_consensuses={}
     alternative_consensuses=[]
@@ -521,13 +476,9 @@ def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delt
     generate_all_consensuses(all_consensuses,alternative_consensuses,curr_best_seqs,reads,work_dir,max_seqs_to_spoa)
     #sort alternative_consensuses by the length of the consensus sequences
     alternative_consensuses.sort(key=lambda x: len(x[1]))
-    #print("Nr consensuses initial",len(alternative_consensuses))
     #iterate over alternative_consensuses (but always the shorter consensus)
     for i, consensus in enumerate(alternative_consensuses[:len(alternative_consensuses)-1]):
-        #print("con",consensus)
         id1=consensus[0]
-        #if id1 in merge_set:
-        #    continue
         if not id1 in new_consensuses:
             seq1=consensus[1]
         else:
@@ -537,48 +488,34 @@ def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delt
             id2=consensus2[0]
             if DEBUG:
                 print(id1,id2)
+
             seq2=consensus2[1]
-            #as soon as we have a length difference larger than delta_iso_len_3+delta_iso_len_5 we break out of the inner loop
-            #if len(seq2)-len(seq1)>delta_iso_len_3+delta_iso_len_5:
-            #    break
             if len(seq2)<len(seq1):
                 consensus1=seq2
                 consensus2=seq1
             else:
-            #if True:
                 consensus1 = seq1
                 consensus2 = seq2
             merge_consensuses_possible = align_to_merge(consensus1, consensus2, delta, delta_len, merge_sub_isoforms_3,
                                                    merge_sub_isoforms_5, delta_iso_len_3, delta_iso_len_5)
             if merge_consensuses_possible:
-                #if DEBUG:
-                #    print("WEMERGE")
-                #merge_set.add(id2)
                 first_consensus=[item for item in alternative_consensuses if item[0] == id2][0]
-                #second_consensus=[item for item in alternative_consensuses if item[0] == id2][0]
                 if len(curr_best_seqs[id2]) > 50:
-                    #print("merge id1 into id2",id," ", id2)
                     add_merged_reads(curr_best_seqs, id2,id1)
                     new_consensuses[id2]=first_consensus[1]
                 else:
                     new_consensuses[id2]=generate_new_full_consensus(id1,id2,reads,curr_best_seqs,work_dir,max_seqs_to_spoa)
                     add_merged_reads(curr_best_seqs, id2, id1)
                 break
-    #print("ALLC",all_consensuses.keys(),",",len(all_consensuses))
-    #print("best_seqs",curr_best_seqs.keys(),",",len(curr_best_seqs))
-    #print("NC",new_consensuses.keys(),",",len(new_consensuses))
     for id,support in curr_best_seqs.items():
         if not id in new_consensuses:
-            #seq=reads[id][1]
             seq=all_consensuses[id]
             new_consensuses[id]=seq
-
-    #print("number consensuses after",len(new_consensuses))
 
     return new_consensuses
 
 
-def generate_isoforms_new(equal_reads, reads, work_dir, outfolder, batch_id, max_seqs_to_spoa,iso_abundance,new_consensuses):
+def generate_isoforms_new(equal_reads, reads, outfolder, batch_id,new_consensuses):
     print("Generating the Isoforms-merged")
     mapping = {}
     consensus_name = "spoa" + str(batch_id) + "merged.fasta"
@@ -598,8 +535,6 @@ def generate_isoforms_new(equal_reads, reads, work_dir, outfolder, batch_id, max
                 # we do not have to calculate consensus as already done
         sequence = new_consensuses[key]
         consensus_file.write(">{0}\n{1}\n".format(name, sequence))
-        #consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(name, sequence, "+" * len(sequence)))
-
         other_mapping_cter = 0
         for key, value in mapping.items():
             other_mapping_cter += len(value)
@@ -623,38 +558,13 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
     equal_reads,isoform_paths=compute_equal_reads(DG,reads)
     if DEBUG == True:
         print("EQUALS",equal_reads)
-    #print("BID",batch_id)
-    #print("s",DG.nodes["s"]['reads'])
-    #print("t",DG.nodes["t"]['reads'])
-    #with open(os.path.join(outfolder, equal_reads_name), 'wb') as file:
-    #    file.write(pickle.dumps(equal_reads))
-    #isoform_paths_name='isoform_paths_'+str(batch_id)+'.txt'
-    #with open(os.path.join(outfolder, isoform_paths_name), 'wb') as file:
-    #    file.write(pickle.dumps(isoform_paths))
-    #with open('all_reads.txt', 'wb') as file:
-    #    file.write(pickle.dumps(all_reads))
-        #old_outfolder=os.path.join(outfolder,"out")
-    #calculate_isoform_similarity(equal_reads,work_dir,isoform_paths,outfolder,delta,delta_len,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,all_reads,max_seqs_to_spoa,delta_iso_len_3=0,delta_iso_len_5=0)
-    #generate_isoform_using_spoa(equal_reads,all_reads, work_dir,outfolder,batch_id, max_seqs_to_spoa,iso_abundance)
-    #print(merge_sub_isoforms_3)
-    #merge_sub_isos_5=(merge_sub_isoforms_5=='True')
-    #merge_sub_isos_3 = (merge_sub_isoforms_3 == 'True')
-    #print("DO WE MERGE?",merge_sub_isoforms_5,merge_sub_isoforms_3)
     if merge_sub_isoforms_5 or merge_sub_isoforms_3:
-        #print("MergingTrue")
-        #print("EQUALS",equal_reads)
-        #for c_id, supp_reads in equal_reads.items():
-            #for supp_read in supp_reads:
-                #print("{0}_{1}: {2} ".format(c_id,supp_read, all_reads[supp_read]))
-
-        new_consensuses=merge_consensuses(equal_reads, work_dir, isoform_paths, outfolder, delta, delta_len, batch_id,
+        new_consensuses=merge_consensuses(equal_reads, work_dir, delta, delta_len,
                                  merge_sub_isoforms_3, merge_sub_isoforms_5, all_reads, max_seqs_to_spoa,
                                  delta_iso_len_3, delta_iso_len_5)
         if DEBUG:
             print("HELLO",new_consensuses)
-
-        generate_isoforms_new(equal_reads, all_reads, work_dir, outfolder, batch_id, max_seqs_to_spoa,
-                                           iso_abundance,new_consensuses)
+        generate_isoforms_new(equal_reads, all_reads, outfolder, batch_id,new_consensuses)
     else:
         generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, iso_abundance, max_seqs_to_spoa)
 

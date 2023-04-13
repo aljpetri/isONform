@@ -47,10 +47,8 @@ def generate_single_mapping(outfolder):
     f = open(os.path.join(outfolder, "transcriptome_mapping.txt"), "w")
     for subfolder in subfolders:
         actual_folder = subfolder.split("/")[-1]
-        # print(actual_folder)
         if actual_folder.isdigit():
             fname = os.path.join(outfolder, "cluster" + str(actual_folder) + "_mapping.txt")
-            #print(fname)
 
             if os.path.isfile(fname):
                 g = open(fname, "r")
@@ -62,14 +60,14 @@ def generate_single_output(outfolder):
     subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
     f = open(os.path.join(outfolder,"transcriptome.fastq"), "w")
     for subfolder in subfolders:
-        print("subfolder",subfolder)
+        #print("subfolder",subfolder)
         actual_folder=subfolder.split("/")[-1]
-        print(actual_folder)
+        #print(actual_folder)
         if actual_folder.isdigit():
             fname=os.path.join(outfolder,"cluster"+str(actual_folder)+"_merged.fq")
-            print(fname)
+            #print(fname)
             if os.path.isfile(fname):
-                print("True")
+                #print("True")
                 g = open(fname, "r")
                 # read content from first file
                 for line in g:
