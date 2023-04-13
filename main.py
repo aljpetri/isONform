@@ -11,8 +11,7 @@ import tempfile
 from collections import defaultdict,deque
 
 
-from modules import  help_functions
-
+from modules import help_functions
 import batch_merging_parallel
 import GraphGeneration
 import IsoformGeneration
@@ -37,7 +36,6 @@ def get_read_lengths(all_reads):
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
-
 
 
 def remove_read_polyA_ends(seq, threshold_len, to_len):
@@ -149,11 +147,7 @@ def get_minimizers_and_positions(reads, w, k, hash_fcn):
     return M
 
 
-
-
-
 def get_minimizer_combinations_database( M, k, x_low, x_high):
-    # M2 = defaultdict(lambda: defaultdict(list))
     M2 = defaultdict(lambda: defaultdict(lambda :array("I")))
     tmp_cnt = 0
     forbidden = 'A'*k
@@ -187,7 +181,6 @@ def get_minimizer_combinations_database( M, k, x_low, x_high):
     print("Number of singleton minimizer combinations filtered out:", singleton_minimzer)
 
     return M2
-
 
 
 def minimizers_comb_iterator(minimizers, k, x_low, x_high):
@@ -282,8 +275,6 @@ def add_items(seqs, r_id, p1, p2):
     seqs.append(r_id)
     seqs.append(p1)
     seqs.append(p2)
-
-
 
 
 def find_most_supported_span(r_id, m1, p1, m1_curr_spans, minimizer_combinations_database, all_intervals, k_size, delta_len):
