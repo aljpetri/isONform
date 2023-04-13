@@ -96,7 +96,7 @@ def compute_equal_reads(DG,support):
             visited_nodes_isoforms[id]=visited_nodes
     if merge_sub_isos:
         isoforms=merge_isoform_paths(isoforms,visited_nodes_isoforms)
-    return isoforms,visited_nodes_isoforms
+    return isoforms, visited_nodes_isoforms
 
 
 def run_spoa(reads, spoa_out_file):
@@ -125,16 +125,12 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
     mapping = {}
     consensus_name="spoa"+str(batch_id)+"merged.fasta"
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
-    seq_counter=0
-    mapping_cter = 0
     for key,value in curr_best_seqs.items():
         name = 'consensus' + str(value[0])
         mapping[name] = []
         reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
-
         if len(value)>=iso_abundance:
             if len(value) == 1:
-                seq_counter+=1
                 rid = key
                 singleread = reads[rid]
                 seq = singleread[1]
@@ -142,13 +138,10 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
                 consensus_file.write(">{0}\n{1}\n".format(name, seq))
                 reads_path.close()
             else:
-
                 for i, q_id in enumerate(value):
-                    seq_counter+=1
                     singleread = reads[q_id]
                     seq = singleread[1]
                     mapping[name].append(singleread[0])
-
                     if i<max_seqs_to_spoa:
                         reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
 
@@ -158,26 +151,21 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
 
     mapping_name="mapping"+str(batch_id)+".txt"
     mappingfile = open(os.path.join(outfolder, mapping_name), "w")
-        #print(mapping)
+    # we now write the information into the mappingfile
     for id, readlist in mapping.items():
-            mapping_cter+=len(readlist)
-            if len(readlist)>=iso_abundance:
-                mappingfile.write("{0}\n{1}\n".format(id, readlist))
+        if len(readlist)>=iso_abundance:
+            mappingfile.write("{0}\n{1}\n".format(id, readlist))
 
+    #close the files we wrote into
     mappingfile.close()
-    # consensus_file.write(">{0}\n{1}\n".format('consensus', spoa_ref))
-
     consensus_file.close()
 
 
-def generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,called_consensuses):
-
+def generate_consensuses(curr_best_seqs, reads, id, id2, work_dir, max_seqs_to_spoa, called_consensuses):
     consensus_infos = {}
     consensuses={}
-    #print("CBS",curr_best_seqs)
     if not (id in called_consensuses):
         consensus_infos[id]=curr_best_seqs[id]
-        #print("ConInfos id", consensus_infos[id])
     else:
         consensuses[id]=called_consensuses[id]
 
@@ -186,68 +174,56 @@ def generate_consensuses(curr_best_seqs,reads,id,id2,work_dir,max_seqs_to_spoa,c
     else:
         consensuses[id2] = called_consensuses[id2]
 
-    #print("CInfos",consensus_infos)
     if bool(consensus_infos):
-        for key,value in consensus_infos.items():
+        for r_id,value in consensus_infos.items():
             reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
-            #print("k",key,"vv",value)
+
             if len(value) == 1:
-                rid = key
-                singleread = reads[rid]
+                singleread = reads[r_id]
                 seq = singleread[1]
-                consensuses[key]=seq
-                #consensus_file.write(">{0}\n{1}\n".format(name, seq))
+                consensuses[r_id]=seq
                 reads_path.close()
             else:
                 for i, q_id in enumerate(value):
                     singleread = reads[q_id]
                     seq = singleread[1]
                     if i < max_seqs_to_spoa:
-                    #print("read ", q_id,": ",seq)
                         reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
 
                 reads_path.close()
                 spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
-                    #print("spoa_ref for " + name + " has the following form:" + spoa_ref[0:25])
-                consensuses[key] = spoa_ref
+                consensuses[r_id] = spoa_ref
     return consensuses
-    #print(mapping)
 
 
 def search_last_entries(entry_since_sign_match,delta_len_3):
-    dist_to_last_match=0
-    deletion_len=0
-    insertion_len=0
-    #end_variab=30
+    dist_to_last_match = 0
+    deletion_len = 0
+    insertion_len = 0
     for entry in entry_since_sign_match:
-        cig_len=entry[0]
-        cig_type=entry[1]
-        dist_to_last_match+=cig_len
-        if cig_type=="D":
-            deletion_len+=cig_len
-        if cig_type=="I":
-            insertion_len+=cig_len
+        cig_len = entry[0]
+        cig_type = entry[1]
+        dist_to_last_match += cig_len
+        if cig_type == "D":
+            deletion_len += cig_len
+        if cig_type == "I":
+            insertion_len += cig_len
     #if DEBUG:
         #print(dist_to_last_match)
         #print(deletion_len)
-    if dist_to_last_match-deletion_len<delta_len_3:
-        #if DEBUG:
-            #print("res",dist_to_last_match-deletion_len<delta_len_3)
+    if dist_to_last_match - deletion_len < delta_len_3:
         return True
     else:
-        #if DEBUG:
-            #print("res",dist_to_last_match - deletion_len < delta_len_3)
         return False
 
 
 def search_first_entries(before_fsm,first_sign_match,delta_len_5):
-    deletion_len=0
+    deletion_len = 0
     for entry in before_fsm:
         cig_len = entry[0]
         cig_type = entry[1]
         if cig_type == "D":
             deletion_len += cig_len
-
     if DEBUG:
         print(first_sign_match)
         print(deletion_len)
@@ -602,7 +578,6 @@ def merge_consensuses(curr_best_seqs,work_dir,isoform_paths,outfolder,delta,delt
     return new_consensuses
 
 
-
 def generate_isoforms_new(equal_reads, reads, work_dir, outfolder, batch_id, max_seqs_to_spoa,iso_abundance,new_consensuses):
     print("Generating the Isoforms-merged")
     mapping = {}
@@ -610,20 +585,14 @@ def generate_isoforms_new(equal_reads, reads, work_dir, outfolder, batch_id, max
     support_name = "support" + str(batch_id) + ".txt"
     consensus_file = open(os.path.join(outfolder, consensus_name), 'w')
     support_file = open(os.path.join(outfolder, support_name), 'w')
-    seq_counter = 0
-    other_mapping_cter = 0
     # we iterate over all items in curr_best_seqs
     for key, value in equal_reads.items():
-        # print(key,value)
-        # print(len(value))
-        seq_counter += len(value)
         name = 'consensus' + str(key)
         # We generate a list as value for mapping[key]
         if name not in mapping:
-                    mapping[name] = []
-                    # iterate over all reads in value and add them to mapping
+            mapping[name] = []
+        # iterate over all reads in value and add them to mapping
         for i, q_id in enumerate(value):
-                    # print("Q_ID",q_id)
                     singleread = reads[q_id]
                     mapping[name].append(singleread[0])
                 # we do not have to calculate consensus as already done
@@ -635,31 +604,24 @@ def generate_isoforms_new(equal_reads, reads, work_dir, outfolder, batch_id, max
         for key, value in mapping.items():
             other_mapping_cter += len(value)
 
-        # we have to treat the mapping file generation a bit different as we have to collect also the supporting reads of the subconsensuses
+    # we have to treat the mapping file generation a bit different as we have to collect also the supporting reads of the subconsensuses
     mapping_name = "mapping" + str(batch_id) + ".txt"
     mappingfile = open(os.path.join(outfolder, mapping_name), "w")
-    mapping_cter = 0
     for id, mapped_read_list in mapping.items():
-            mapping_cter += len(mapped_read_list)
             mappingfile.write("{0}\n{1}\n".format(id, mapped_read_list))
             support_file.write("{0}: {1}\n".format(id, len(mapped_read_list)))
-
     consensus_file.close()
+    support_file.close()
+    mappingfile.close()
 
 
 
-"""
-Wrapper method used for the isoform generation
-"""
 def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,delta_iso_len_3,delta_iso_len_5,iso_abundance,max_seqs_to_spoa=200):
-    #print("s", DG.nodes["s"]['reads'])
-    #print("t", DG.nodes["t"]['reads'])
-    #print("Importante")
-    #print(merge_sub_isoforms_3)
-    #print(merge_sub_isoforms_5)
+    """
+    Wrapper method used for the isoform generation
+    """
     equal_reads,isoform_paths=compute_equal_reads(DG,reads)
-    #equal_reads_name='equal_reads_'+str(batch_id)+'.txt'
-    if DEBUG==True:
+    if DEBUG == True:
         print("EQUALS",equal_reads)
     #print("BID",batch_id)
     #print("s",DG.nodes["s"]['reads'])
@@ -697,7 +659,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
         generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, iso_abundance, max_seqs_to_spoa)
 
 
-DEBUG=False
+DEBUG = False
 
 
 def main():
