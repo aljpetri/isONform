@@ -78,7 +78,7 @@ setup(
     # For an analysis of "install_requires" vs pip's requirements files see:
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=['recordclass>=0.17.2',
-                     'networkx>=2.7.1','parasail>=1.3.3','edlib>=1.1.2'],#'pyinstrument>4.1.1'],  # Optional
+                     'networkx>=2.7.1', 'parasail>=1.3.3', 'edlib>=1.1.2'],#'pyinstrument>4.1.1'],  # Optional
     # dependency_links=[], # Optional
     # List additional groups of dependencies here (e.g. development
     # dependencies). Users will be able to install these using the "extras"

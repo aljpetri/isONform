@@ -47,22 +47,16 @@ def cigar_to_seq(cigar, query, ref):
             r_index += length_
         
         else:
-            #print("error")
-            #print(cigar)
             sys.exit()
 
     return "".join([s for s in q_aln]), "".join([s for s in r_aln]), cigar_tuples
 
 
 def parasail_alignment(s1, s2, match_score = 2, mismatch_penalty = -2, opening_penalty = 12, gap_ext = 1):
-    #print("s1", s1)
-    #print("s2",s2)
     user_matrix = parasail.matrix_create("ACGT", match_score, mismatch_penalty)
     result = parasail.sg_trace_scan_16(s1, s2, opening_penalty, gap_ext, user_matrix)
     if result.saturated:
-        #print("SATURATED!",len(s1), len(s2))
         result = parasail.sg_trace_scan_32(s1, s2, opening_penalty, gap_ext, user_matrix)
-        #print("computed 32 bit instead")
 
     # difference in how to obtain string from parasail between python v2 and v3... 
     if sys.version_info[0] < 3:
@@ -70,21 +64,15 @@ def parasail_alignment(s1, s2, match_score = 2, mismatch_penalty = -2, opening_p
     else:
         cigar_string = str(result.cigar.decode, 'utf-8')
     s1_alignment, s2_alignment, cigar_tuples = cigar_to_seq(cigar_string, s1, s2)
-    # print(result.score, len(s1), len(s2))
-    # print(s1_alignment)
-    # print(s2_alignment)
-    # print(cigar_string)
-    # sys.exit()
-
     return s1_alignment, s2_alignment, cigar_string, cigar_tuples, result.score
 
+
 def reverse_complement(string):
-    #rev_nuc = {'A':'T', 'C':'G', 'G':'C', 'T':'A', 'N':'N', 'X':'X'}
     # Modified for Abyss output
     rev_nuc = {'A':'T', 'C':'G', 'G':'C', 'T':'A', 'a':'t', 'c':'g', 'g':'c', 't':'a', 'N':'N', 'X':'X', 'n':'n', 'Y':'R', 'R':'Y', 'K':'M', 'M':'K', 'S':'S', 'W':'W', 'B':'V', 'V':'B', 'H':'D', 'D':'H', 'y':'r', 'r':'y', 'k':'m', 'm':'k', 's':'s', 'w':'w', 'b':'v', 'v':'b', 'h':'d', 'd':'h'}
-
     rev_comp = ''.join([rev_nuc[nucl] for nucl in reversed(string)])
-    return(rev_comp)
+    return rev_comp
+
 
 def run_spoa(reads, spoa_out_file, spoa_path):
     with open(spoa_out_file, "w") as output_file:
@@ -99,6 +87,7 @@ def run_spoa(reads, spoa_out_file, spoa_path):
     consensus = l[1].strip()
     return consensus
 
+
 def run_medaka(reads_to_center, center_file, outfolder, cores, medaka_model):
     medaka_stdout = os.path.join(outfolder, "stdout.txt")
     with open(medaka_stdout, "w") as output_file:
@@ -109,10 +98,9 @@ def run_medaka(reads_to_center, center_file, outfolder, cores, medaka_model):
             subprocess.check_call(['medaka_consensus', '-i', reads_to_center, "-d", center_file, "-o", outfolder, "-t", cores, "-m", medaka_model], stdout=output_file, stderr=medaka_stderr)
         else:
             subprocess.check_call(['medaka_consensus', '-i', reads_to_center, "-d", center_file, "-o", outfolder, "-t", cores], stdout=output_file, stderr=medaka_stderr)
-
-        # print('Done.')
         stdout.flush()
     output_file.close()
+
 
 def run_racon(reads_to_center, center_file, outfolder, cores, racon_iter):
     racon_stdout = os.path.join(outfolder, "stdout.txt")
@@ -133,7 +121,6 @@ def run_racon(reads_to_center, center_file, outfolder, cores, racon_iter):
         # print('Done.')
         stdout.flush()
     output_file.close()
-    # consensus.run_medaka( " medaka_consensus -i ~/tmp/stefan_isonclust/mixed_b1_b3_b4_b5.fastq -d ~/tmp/stefan_isonclust/mixed_b1_b3_b4_b5_isonclust/consensus_references.fasta -o ~/tmp/stefan_isonclust/mixed_b1_b3_b4_b5_medaka/ -t 1 -m r941_min_high_g303")
 
 
 def detect_reverse_complements(centers, rc_identity_threshold):

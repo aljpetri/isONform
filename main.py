@@ -19,6 +19,7 @@ import SimplifyGraph
 
 D = {chr(i) : min( 10**( - (ord(chr(i)) - 33)/10.0 ), 0.79433)  for i in range(128)}
 
+
 def get_read_lengths(all_reads):
     """Helper method which extracts the read lengths from all_reads. We will use those during the graph generation to appoint more meaningful information to the node't'
         INPUT: all_reads: dictionary which holds the overall read infos key: r_id, value tuple(readname, sequence, some info i currently don't care about)
@@ -28,7 +29,6 @@ def get_read_lengths(all_reads):
     for r_id, infos in all_reads.items():
         seq = infos[1]
         seqlen = len(seq)
-
         readlen_dict[r_id] = seqlen
     return readlen_dict
 
@@ -211,7 +211,6 @@ def fill_p2(p, all_intervals_sorted_by_finish):
 
 def solve_WIS(all_intervals_sorted_by_finish):
     # Using notation from https://courses.cs.washington.edu/courses/cse521/13wi/slides/06dp-sched.pdf
-
     p = [None]
     fill_p2(p, all_intervals_sorted_by_finish)
     epsilon = 0.0001

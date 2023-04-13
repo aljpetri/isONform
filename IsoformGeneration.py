@@ -1,6 +1,5 @@
 import _pickle as pickle
 from consensus import *
-from modules import GraphGeneration
 
 
 def is_Sublist(l, s):
@@ -11,7 +10,7 @@ def is_Sublist(l, s):
     OUTPUT      sub_set:    boolean value indicating the result
     """
     sub_set = False
-    if s == []:
+    if not s:
         sub_set = True
     elif s == l:
         sub_set = True
@@ -30,40 +29,35 @@ def is_Sublist(l, s):
     return sub_set
 
 
-def merge_isoform_paths(isoforms,visited_nodes_isoforms):
+def merge_isoform_paths(isoforms):
     """
     Merges subisoforms into larger isoforms
     """
-    isoform_set_dict={}
-    merge_list=[]
-    for id1, vis_nodes_set1 in isoform_set_dict.items():
-        for id2, vis_nodes_set2 in isoform_set_dict.items():
+    merge_list = []
+    for id1, vis_nodes_set1 in isoforms.items():
+        for id2, vis_nodes_set2 in isoforms.items():
             if id1<id2:
                 if is_Sublist(vis_nodes_set2,vis_nodes_set1):
-                    merge_tuple=(id1,id2)
+                    merge_tuple = (id1,id2)
                     merge_list.append(merge_tuple)
                 elif is_Sublist(vis_nodes_set1,vis_nodes_set2):
-                    merge_tuple=(id2,id1)
+                    merge_tuple = (id2,id1)
                     merge_list.append(merge_tuple)
     for tup in merge_list:
-        subiso=tup[0]
-        largeiso=tup[1]
+        subiso = tup[0]
+        largeiso = tup[1]
         isoforms[largeiso].extend(isoforms[subiso])
         del isoforms[subiso]
-        del visited_nodes_isoforms[subiso]
-    return isoforms
 
 
-def compute_equal_reads(DG,support):
+def compute_equal_reads(DG, support, equal_reads):
     """Method to generate the final isoforms by iterating through the graph structure
     INPUT:      DG          Directed Graph
                 support       list of reads
     OUPUT:      filename    file which contains all the final isoforms
     """
     #path_and_support will hold the infos concerning the found paths
-    node_support_left=set(support)
-    visited_nodes_isoforms={}
-    isoforms={}
+    node_support_left = set(support)
     #indicates whether we want to merge a true subisoform into another isoform (ie. the isoform is a continous sublist of the longer one)
     merge_sub_isos=True
     #we iterate as long as still not all support was allocated to a path
@@ -76,27 +70,26 @@ def compute_equal_reads(DG,support):
         current_node_support.add(read)
         visited_nodes = []
         #As long as we have not visited the bubble end node we continue walking through our graph
-        while node!="t":
+        while node != "t":
             visited_nodes.append(node)
-            out_edges=DG.out_edges(node)
-            next_found=False
+            out_edges = DG.out_edges(node)
+            next_found = False
             for edge in out_edges:
                 edge_supp = DG[edge[0]][edge[1]]['edge_supp']
                 if read in edge_supp:
-                    node=edge[1]
-                    current_node_support=current_node_support.intersection(edge_supp)
-                    next_found=True
+                    node = edge[1]
+                    current_node_support = current_node_support.intersection(edge_supp)
+                    next_found = True
                     break
             if not next_found:
                 break
         if current_node_support:
             id = list(current_node_support)[0]
-            isoforms[id]=list(current_node_support)
-            node_support_left-=current_node_support
-            visited_nodes_isoforms[id]=visited_nodes
+            equal_reads[id] = list(current_node_support)
+            node_support_left -= current_node_support
     if merge_sub_isos:
-        isoforms=merge_isoform_paths(isoforms,visited_nodes_isoforms)
-    return isoforms, visited_nodes_isoforms
+        merge_isoform_paths(equal_reads)
+    return equal_reads
 
 
 def run_spoa(reads, spoa_out_file):
@@ -161,39 +154,6 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
     consensus_file.close()
 
 
-def generate_consensuses(curr_best_seqs, reads, id, id2, work_dir, max_seqs_to_spoa, called_consensuses):
-    consensus_infos = {}
-    consensuses={}
-    if not (id in called_consensuses):
-        consensus_infos[id]=curr_best_seqs[id]
-    else:
-        consensuses[id]=called_consensuses[id]
-
-    if not (id2 in called_consensuses):
-        consensus_infos[id2]=curr_best_seqs[id2]
-    else:
-        consensuses[id2] = called_consensuses[id2]
-
-    if bool(consensus_infos):
-        for r_id,value in consensus_infos.items():
-            reads_path = open(os.path.join(work_dir, "reads_tmp.fa"), "w")
-
-            if len(value) == 1:
-                singleread = reads[r_id]
-                seq = singleread[1]
-                consensuses[r_id]=seq
-                reads_path.close()
-            else:
-                for i, q_id in enumerate(value):
-                    singleread = reads[q_id]
-                    seq = singleread[1]
-                    if i < max_seqs_to_spoa:
-                        reads_path.write(">{0}\n{1}\n".format(singleread[0], seq))
-
-                reads_path.close()
-                spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
-                consensuses[r_id] = spoa_ref
-    return consensuses
 
 
 def search_last_entries(entry_since_sign_match,delta_len_3):
@@ -240,7 +200,7 @@ def search_first_entries(before_fsm,first_sign_match,delta_len_5):
 
 
 #parses the parasail alignment output to figure out whether to merge
-def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len,first_match,last_match):
+def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,delta_iso_len_3,delta_iso_len_5,overall_len,first_match,last_match):
     miss_match_length = 0
     alignment_len = 0
     after_last_matches=0
@@ -253,35 +213,20 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
         cig_len = elem[0]
         cig_type = elem[1]
         alignment_len += cig_len
-        #print(elem)
-        #print("this_start_pos",this_start_pos)
-        #print("ALEN",alignment_len)
         #we found a mismatch
         if (cig_type != '=') and (cig_type != 'M'):
             #if the missmatch is located before the first significant match (upstream)
             if this_start_pos < first_match:
                 if not cig_type =='D':
-                    #print("before first")
-                    #print(elem)
                     before_first_nomatch+=cig_len
-                #else:
-                    #print("before first")
-                    #print(elem)
+
             elif this_start_pos>=last_match or this_start_pos+cig_len>=last_match:
                 if not cig_type =='D':
-                    #print("after last")
-                    #print(elem)
                     after_last_nomatch+=cig_len
-                #else:
-                    #print("after last")
-                    #print(elem)
             #the mismatch is located between the first and last significant matches
             else:
-                #print("between")
-                #print(elem)
                 #if the mismatch is longer than delta_len: Structural difference -> not mergeable
                 if cig_len > delta_len:
-                    #print("between")
                     return False
                 #we still need this mismatch_length to be added to miss_match_length to document the number of mismatches between fsm and lsm
                 else:
@@ -293,8 +238,8 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_
                 before_first_matches += cig_len
             elif this_start_pos >= last_match:
                 after_last_matches+=cig_len
-            #we know we have a match, but is it significant?
 
+    #we know we have a match, but is it significant?
     mergeable_start=before_first_matches+before_first_nomatch < delta_iso_len_5
     #analyse the last entries of our cigar tuples to figure out what has happened after the lsm
     mergeable_end=after_last_matches+after_last_nomatch< delta_iso_len_3
@@ -397,7 +342,7 @@ def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,me
     if start_match < 0 or end_match < 0:
         return False
     end_match_pos=overall_len-end_match
-    good_to_pop = parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len,start_match,end_match_pos)
+    good_to_pop = parse_cigar_diversity_isoform_level_new(cigar_tuples, delta, delta_len, delta_iso_len_3, delta_iso_len_5, overall_len, start_match, end_match_pos)
     if DEBUG:
         print(cigar_tuples)
         print(cigar_string)
@@ -555,7 +500,8 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
     """
     Wrapper method used for the isoform generation
     """
-    equal_reads,isoform_paths=compute_equal_reads(DG,reads)
+    equal_reads={}
+    compute_equal_reads(DG,reads,equal_reads)
     if DEBUG == True:
         print("EQUALS",equal_reads)
     if merge_sub_isoforms_5 or merge_sub_isoforms_3:
@@ -608,6 +554,7 @@ def main():
     #else:
     #    generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, max_seqs_to_spoa, iso_abundance)
 
+
 if __name__ == "__main__":
     main()
     """
@@ -624,6 +571,3 @@ if __name__ == "__main__":
     Supported_reads as soon as edge[1]==t
     Solve isoform by using spoa.
     """
-
-
-

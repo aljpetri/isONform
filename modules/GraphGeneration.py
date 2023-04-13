@@ -1,7 +1,4 @@
-
-import networkx as nx
 import matplotlib.pyplot as plt
-from collections import namedtuple
 from SimplifyGraph import *
 import tempfile
 import shutil
@@ -49,13 +46,8 @@ def add_prior_read_infos(inter, r_id, prior_read_infos, name, k):
             start = start_coord[i] + k
             end = end_coord[i]
             tuple_for_data_structure = (r, start, end)
-            if not tuple_for_data_structure in prior_read_infos:
+            if tuple_for_data_structure not in prior_read_infos:
                 prior_read_infos[tuple_for_data_structure] = name
-
-    return prior_read_infos
-
-
-
 
 
 def convert_array_to_hash(info_array):
@@ -70,8 +62,8 @@ def convert_array_to_hash(info_array):
             # print("IA",info_array)
             info_array.pop(0)
 
-    tup = tuple(info_array)
-    return (hash(tup))
+    tup = hash(tuple(info_array))
+    return tup
 
 
 def record_cycle(current_read_state, cycle_start):
@@ -143,11 +135,9 @@ def add_edge_support(edge_support,previous_node,name,r_id):
     edge_support[previous_node, name].append(r_id)
 
 
-def known_old_node_action(alternative_infos_list, previous_node, this_len, delta_len, nodes_for_graph, inter, k, seq, node_sequence, r_id, DG, edge_support,alternative_nodes, old_node, alt_info_tuple, name):
+def known_old_node_action(alternatives_filtered, previous_node, this_len, nodes_for_graph, inter, k, seq, node_sequence, r_id, DG, edge_support,alternative_nodes, old_node, alt_info_tuple, name):
 
-    alternatives_filtered = [item for item in alternative_infos_list if
-                             previous_node == item[1] and abs(
-                                 this_len - item[2]) < delta_len]
+
     # if we have found a node which this info can be added to
     if alternatives_filtered:
         node_info = alternatives_filtered[0]
@@ -234,7 +224,7 @@ def no_connecting_edge_action(seq, nodes_for_graph, name, inter, k, node_sequenc
         add_edge_support(edge_support, previous_node, name, r_id)
 
 
-def new_interval_action(seq, inter, r_id, node_sequence,nodes_for_graph, known_intervals, k, node_overview_read, previous_end, prior_read_infos, DG, previous_node, edge_support,name):
+def new_interval_action(seq, inter, r_id, node_sequence,nodes_for_graph, known_intervals, k, previous_end, prior_read_infos, DG, previous_node, edge_support,name):
     nodelist = {}
     # add a node into nodes_for_graph
 
@@ -246,10 +236,9 @@ def new_interval_action(seq, inter, r_id, node_sequence,nodes_for_graph, known_i
     nodelist[r_id] = r_infos
     nodes_for_graph[name] = nodelist
     known_intervals[r_id - 1].append((inter[0], name, inter[1]))
-    node_overview_read[r_id - 1].append(name)
     # get the length between the previous end and this nodes start
     length = inter[0] - previous_end
-    prior_read_infos = add_prior_read_infos(inter, r_id, prior_read_infos, name, k)
+    add_prior_read_infos(inter, r_id, prior_read_infos, name, k)
     DG.add_node(name)
     # connect the node to the previous one
     DG.add_edge(previous_node, name, length=length)
@@ -315,7 +304,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
     reads_for_isoforms = []
     # holds the r_id as key and a list of tuples as value: For identification of reads, also used to ensure correctness of graph
     known_intervals = []
-    node_overview_read = []
     # the following dictionary is supposed to hold the end minimizer sequence for each node
     node_sequence = {}
     edge_support = {}
@@ -337,7 +325,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
     # for _ in itertools.repeat(None, len(all_intervals_for_graph)):
     for i in range(len(all_intervals_for_graph)):
         known_intervals.append([])
-        node_overview_read.append([])
     # iterate through the different reads stored in all_intervals_for_graph. For each read one path is built up from source to sink if the nodes needed for that are not already present
     # intervals_for_read holds all intervals which make up the solution for the WIS of a read
     for r_id, intervals_for_read in all_intervals_for_graph.items():
@@ -525,7 +512,10 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                             # if we already know old_node (it is a key in alternative_nodes)
                             else:
                                 alternative_infos_list = alternative_nodes[old_node]
-                                known_old_node_action(alternative_infos_list, previous_node, this_len, delta_len,
+                                alternatives_filtered = [item for item in alternative_infos_list if
+                                                         previous_node == item[1] and abs(
+                                                             this_len - item[2]) < delta_len]
+                                known_old_node_action(alternatives_filtered, previous_node, this_len,
                                                       nodes_for_graph, inter, k,
                                                       seq, node_sequence, r_id, DG, edge_support, alternative_nodes,
                                                       old_node,
@@ -533,12 +523,11 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
 
                 # keep known_intervals up to date
                 known_intervals[r_id - 1].append((inter[0], name, inter[1]))
-                node_overview_read[r_id - 1].append(name)
             # if the information for the interval was not yet found in a previous read (meaning the interval is new)
             else:
                 seq = all_reads[r_id][1]
                 name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
-                new_interval_action(seq, inter, r_id, node_sequence,nodes_for_graph, known_intervals, k, node_overview_read, previous_end, prior_read_infos, DG, previous_node, edge_support,name)
+                new_interval_action(seq, inter, r_id, node_sequence,nodes_for_graph, known_intervals, k, previous_end, prior_read_infos, DG, previous_node, edge_support,name)
 
             # set the previous node for the next iteration
             previous_node = name
@@ -646,7 +635,7 @@ def main():
     #while is_cyclic:
     read_len_dict = get_read_lengths(all_reads)
     print("Generating graph")
-    DG, known_intervals, node_overview_read, reads_for_isoforms, reads_list = generateGraphfromIntervals(
+    DG, known_intervals,  reads_for_isoforms, reads_list = generateGraphfromIntervals(
             all_intervals_for_graph, k_size, delta_len, read_len_dict, all_reads)
 
     print("edges with attributes:")
@@ -663,7 +652,6 @@ def main():
     # print("edges with attributes:")
     # print(DG.edges(data=True))
     # print("ReadNodes")
-    # print(node_overview_read)
     # print("all edges for the graph")
     # print([e for e in DG.edges])
     # draw_Graph(DG)
