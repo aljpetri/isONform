@@ -154,8 +154,6 @@ def generate_isoform_using_spoa(curr_best_seqs,reads, work_dir,outfolder,batch_i
     consensus_file.close()
 
 
-
-
 def search_last_entries(entry_since_sign_match,delta_len_3):
     dist_to_last_match = 0
     deletion_len = 0
@@ -168,9 +166,6 @@ def search_last_entries(entry_since_sign_match,delta_len_3):
             deletion_len += cig_len
         if cig_type == "I":
             insertion_len += cig_len
-    #if DEBUG:
-        #print(dist_to_last_match)
-        #print(deletion_len)
     if dist_to_last_match - deletion_len < delta_len_3:
         return True
     else:
@@ -424,7 +419,7 @@ def merge_consensuses(curr_best_seqs,work_dir,delta,delta_len,merge_sub_isoforms
     #iterate over alternative_consensuses (but always the shorter consensus)
     for i, consensus in enumerate(alternative_consensuses[:len(alternative_consensuses)-1]):
         id1=consensus[0]
-        if not id1 in new_consensuses:
+        if id1 not in new_consensuses:
             seq1=consensus[1]
         else:
             seq1=new_consensuses[id1]
@@ -458,6 +453,45 @@ def merge_consensuses(curr_best_seqs,work_dir,delta,delta_len,merge_sub_isoforms
             new_consensuses[id]=seq
 
     return new_consensuses
+
+
+def write_consensus_file(batch_id, outfolder, new_consensuses):
+    print("newconsensus")
+    for con,seq in new_consensuses.items():
+        print("{0}:{1}".format(con,seq))
+    consensus_name = "spoa" + str(batch_id)
+    pickle_spoa_file = open(os.path.join(outfolder, consensus_name), 'wb')
+    pickle.dump(new_consensuses, pickle_spoa_file)
+    pickle_spoa_file.close()
+def write_mapping_file(batch_id, mapping, outfolder):
+    mapping_name = "mapping" + str(batch_id)
+    pickle_map_file = open(os.path.join(outfolder, mapping_name), 'wb')
+    pickle.dump(mapping, pickle_map_file)
+    pickle_map_file.close()
+
+
+def prepare_consensuses(new_consensuses,equal_reads_keys, final_consensuses):
+    for key in equal_reads_keys:
+        final_consensuses[key]=new_consensuses[key]
+
+
+def write_isoforms_pickle(equal_reads, reads, outfolder, batch_id, new_consensuses):
+    print("Generating the Isoforms-merged")
+    mapping = {}
+    final_consensuses={}
+    prepare_consensuses(new_consensuses,equal_reads.keys(), final_consensuses)
+    write_consensus_file(batch_id, outfolder, final_consensuses)
+    # we iterate over all items in curr_best_seqs
+    for key, value in equal_reads.items():
+        name = str(key)
+        # We generate a list as value for mapping[key]
+        if name not in mapping:
+            mapping[key] = []
+        # iterate over all reads in value and add them to mapping
+        for i, q_id in enumerate(value):
+            singleread = reads[q_id]
+            mapping[key].append(singleread[0])
+    write_mapping_file(batch_id, mapping, outfolder)
 
 
 def generate_isoforms_new(equal_reads, reads, outfolder, batch_id,new_consensuses):
@@ -510,7 +544,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
                                  delta_iso_len_3, delta_iso_len_5)
         if DEBUG:
             print("HELLO",new_consensuses)
-        generate_isoforms_new(equal_reads, all_reads, outfolder, batch_id,new_consensuses)
+        write_isoforms_pickle(equal_reads, all_reads, outfolder, batch_id,new_consensuses)
     else:
         generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, iso_abundance, max_seqs_to_spoa)
 

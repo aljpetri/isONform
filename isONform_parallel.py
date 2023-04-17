@@ -220,11 +220,8 @@ def main(args):
                 candidate_corrected_file = os.path.join(outfolder, "isoforms.fastq")
                 if os.path.isfile(candidate_corrected_file):
                     if wccount(candidate_corrected_file) == wccount(fastq_file_path):
-                        #print("already computed cluster and complete file", batch_id)
                         compute = False
-
             if compute:
-                #print("computing")
                 isONform_algorithm_params = {"set_w_dynamically": args.set_w_dynamically,
                                                 "exact_instance_limit": args.exact_instance_limit,
                                                 "delta_len": args.delta_len,"--exact": True,
@@ -265,7 +262,7 @@ def main(args):
     if args.split_wrt_batches:
         print("STILLSPLITWRTBATCHES")
         file_handling = time()
-        join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.merge_sub_isoforms_3,args.merge_sub_isoforms_5, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance,args.rc_identity_threshold)
+        join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.merge_sub_isoforms_3,args.merge_sub_isoforms_5, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance)
         generate_full_output(args.outfolder)
         shutil.rmtree(split_directory)
         print("Joined back batched files in:", time() - file_handling)
