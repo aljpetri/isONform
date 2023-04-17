@@ -217,7 +217,7 @@ def join_back_via_batch_merging(outdir, delta, delta_len, merge_sub_isoforms_3, 
                 #print("bname2",tmp_bname2)
                 batch_id = int(tmp_bname2[0])
                 # read all files needed to perform the batch merging and store the respective infos into all_infos_dict as well as all_reads_dict
-                batchfilename = str(batch_id) + "batch"
+                batchfilename = str(batch_id) + "_batch"
                 batch_file = open(os.path.join(cl_dir, batchfilename), 'rb')
                 all_reads_dict[batch_id] = pickle.load(batch_file)
                 spoa_name = "spoa" + str(batch_id)
