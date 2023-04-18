@@ -324,7 +324,7 @@ def find_first_significant_match(s1_alignment, s2_alignment, windowsize, alignme
     return -1
 
 
-def align_to_merge(consensus1,consensus2,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5):
+def align_to_merge(consensus1,consensus2,delta,delta_len,delta_iso_len_3,delta_iso_len_5):
     s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
                                                                                        match_score=2,
                                                                                        mismatch_penalty=-2,
@@ -436,9 +436,8 @@ def merge_consensuses(curr_best_seqs,work_dir,delta,delta_len,merge_sub_isoforms
             else:
                 consensus1 = seq1
                 consensus2 = seq2
-            merge_consensuses_possible = align_to_merge(consensus1, consensus2, delta, delta_len, merge_sub_isoforms_3,
-                                                   merge_sub_isoforms_5, delta_iso_len_3, delta_iso_len_5)
-            if merge_consensuses_possible:
+            merge_possible = align_to_merge(consensus1, consensus2, delta, delta_len, delta_iso_len_3, delta_iso_len_5)
+            if merge_possible:
                 first_consensus=[item for item in alternative_consensuses if item[0] == id2][0]
                 if len(curr_best_seqs[id2]) > 50:
                     add_merged_reads(curr_best_seqs, id2,id1)

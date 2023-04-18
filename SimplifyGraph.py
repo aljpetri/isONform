@@ -1,6 +1,5 @@
 from collections import namedtuple
 from IsoformGeneration import *
-from recordclass import recordclass
 import itertools
 import networkx as nx
 
@@ -104,16 +103,6 @@ def generate_combinations(possible_starts, possible_ends, TopoNodes, combis):
                     combis.append(combi)
 
 
-def filter_combinations(combinations, not_viable, combinations_filtered):
-    """we filter out combinations that already have been deemed as not_viable
-    """
-    # iterate over all combinations
-    for combi in combinations:
-        # if the combination is viable add it to combinations_filtered
-        if combi not in not_viable:
-            combinations_filtered.append(combi)
-
-
 def find_paths(DG, startnode, endnode, support, all_paths):
     """detect the paths in our bubble
     """
@@ -176,8 +165,6 @@ def parse_cigar_diversity(cigar_tuples, delta_perc, delta_len):
         return True
     else:
         return False
-
-
 
 
 def get_dist_to_prev(DG, prev_node, curr_node):
@@ -477,8 +464,6 @@ def prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nod
                 if old_supp not in value:
                     value.append(old_supp)
             DG.add_edge(key[0], key[1], edge_supp=value)
-    # this is the main part of the linearization. We iterate over all_nodes and try to find out which path the nodes belong to.
-    # This info is needed as we need the current state ob both paths to add the correct edge_support and node_support to the graph
 
 
 def generate_consensus_path(work_dir, consensus_attributes, reads, k_size, spoa_count):
@@ -657,24 +642,6 @@ OUTPUT:
     bubble_state, popable_bubbles,no_pop_tup_list"""
 
 
-def find_disjoint_bubbles(poppable_bubbles):
-    """Helper method that filters the poppable_bubbles to only contain non-overlapping bubbles, as overlapping bubbles yield inconsistencies in our graph
-    INPUT:      poppable_bubbles:      a list of bubbles that are poppable
-    OUTPUT:     new_poppable:          a list of bubbles that do not overlap->ready for popping
-    """
-    known_nodes = []
-    new_poppable = []
-    for bubble in poppable_bubbles:
-        is_touched = False
-        for node in bubble.bubble_nodes:
-            if node in known_nodes:
-                is_touched = True
-        if not is_touched:
-            known_nodes.extend(bubble.bubble_nodes)
-            new_poppable.append(bubble)
-    return new_poppable
-
-
 def linearize_bubble(DG, bubble_start, bubble_end, path_nodes,
                      consensus_log, topo_nodes_dict):
     """Actual linearization process of our bubbles
@@ -696,31 +663,6 @@ def linearize_bubble(DG, bubble_start, bubble_end, path_nodes,
                                               node_dist)
     prepare_adding_edges(DG, edges_to_delete, bubble_start, bubble_end, path_nodes, node_dist,
                          topo_nodes_dict)
-
-
-def extend_unpoppable(old_bubbles, poppable_state):
-    """Helper method used to extend the list of bubbles that has been analysed but not been deemed poppable (old_bubbles)
-    INPUT:      old_bubbles
-                bubble_state
-    """
-    for newbubble in poppable_state:
-        if not newbubble.bubble_supported:
-            old_bubbles.append(newbubble.bubble_nodes)
-
-
-def filter_marked_paths(all_paths, marked):
-    is_marked = []
-    for path_tup in all_paths:
-        path = path_tup[0]
-        already_marked = False
-        for node in path:
-            if node in marked:
-                already_marked = True
-        marked_tuple = (path, already_marked)
-        is_marked.append(marked_tuple)
-    for tup in is_marked:
-        if tup[1]:
-            all_paths.remove(tup)
 
 
 def filter_out_if_marked(all_paths, marked, direct_combis, endnode):
@@ -755,82 +697,12 @@ def filter_out_if_marked(all_paths, marked, direct_combis, endnode):
     return all_paths
 
 
-def get_path_length(path_infos, DG, poss_start, poss_end):
-    reads = path_infos[1]
-    path_len_sum = 0
-    start_dict = DG.nodes[poss_start]['reads']
-    end_dict = DG.nodes[poss_end]['reads']
-    for read in reads:
-        start_pos = start_dict[read].end_mini_start
-        end_pos = end_dict[read].end_mini_start
-        # print("r_id",read)
-        path_len = end_pos - start_pos
-        path_len_sum += path_len
-    avg_path_len = path_len_sum / (len(reads))
-    return avg_path_len
-
-
 def filter_path_if_marked(marked, path):
     # print("filter path if marked for ",marked," and ",path)
     for node in path:
         if node in marked:
             return True
     return False
-
-
-def find_combi_paths(combination, all_paths):
-    # TODO change this function to find the paths for a combination and return the correct value
-    Readtup = recordclass('Readtup', 'path supp non_supp')
-    # all_r_ids=set(all_paths.keys())
-    startnode = combination[0]
-    endnode = combination[1]
-    inter = combination[2]
-    path_list = []
-    r_ids = []
-    # print("START",startnode, "END",endnode)
-    for r_id in inter:
-        nodelist = all_paths[r_id]
-        # nodelist=list(inter[1] for inter in inter_list)
-
-        start_idx = nodelist.index(startnode)
-        end_idx = nodelist.index(endnode)
-        path = nodelist[start_idx:end_idx]
-        if DEBUG:
-            print("PATH", path)
-            print("NODELIST", nodelist)
-        supp_rid_list = set()
-        supp_rid_list.add(r_id)
-        diff_set = set(inter).difference(supp_rid_list)
-        path_supp_tup = Readtup(path, supp_rid_list, diff_set)
-        path_list.append(path_supp_tup)
-        r_ids.append(r_id)
-    # all_rids=set(r_ids)
-    if DEBUG:
-        print("PATHLIST", path_list)
-    already_merged = []
-    merge_dict = {}
-    for ident, rtup in enumerate(path_list):
-        for id2, rtup2 in enumerate(path_list):
-            if rtup2 not in already_merged:
-                if ident < id2:
-                    if DEBUG:
-                        print(ident, ", ", id2)
-                    if rtup.path == rtup2.path:
-                        already_merged.append(rtup2)
-                        new_supp = rtup.supp.union(rtup2.supp)
-                        other_supp = set(inter).difference(new_supp)
-                        rtup.supp = new_supp
-                        rtup.non_supp = other_supp
-    if DEBUG:
-        print("Merged_already", already_merged)
-        print("MERGEDICT", merge_dict)
-    for merged_elem in already_merged:
-        path_list.remove(merged_elem)
-    new_path_list = []
-    for thispath in path_list:
-        new_path = (thispath.path, tuple(thispath.supp), thispath.non_supp)
-        new_path_list.append(new_path)
-    return path_list
 
 
 def find_path(r_id, DG, edge_attr):
@@ -881,25 +753,6 @@ def find_all_read_paths(DG, all_reads, merged_dict):
     return all_read_paths, all_path_sets
 
 
-def update_paths(DG, all_reads, prev_marked, merged_dict, all_paths_s_to_t, all_path_sets):
-    new_all_paths_s_to_t = {}
-    edge_attr = nx.get_edge_attributes(DG, "edge_supp")
-    for r_id in all_reads.keys():
-        # if we do not find a node in the readpath that has been marked as changed
-        if set(all_path_sets[r_id]).isdisjoint(prev_marked):
-            # copy the old path
-            new_all_paths_s_to_t[r_id] = all_paths_s_to_t[r_id]
-        # we found that the readpath has been changed->Regenerate the readpath
-        else:
-            if r_id in merged_dict.keys():
-                new_all_paths_s_to_t[r_id] = new_all_paths_s_to_t[merged_dict[r_id]]
-            else:
-                new_all_paths_s_to_t[r_id] = find_path(r_id, DG, edge_attr)
-            all_path_sets[r_id].update(new_all_paths_s_to_t[r_id])
-    return new_all_paths_s_to_t, all_path_sets
-    # TODO write this method to recalculate the paths of reads that were affected by bubble popping
-
-
 def new_bubble_popping_routine(DG, all_reads, work_dir, k_size, delta_len, slowmode):
     """The backbone of bubble popping: the bubbles are detected and filtered to only yield poppable bubbles. Those are popped afterwards.
     INPUT:      DG:         our directed graph
@@ -923,7 +776,6 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size, delta_len, slowm
     if DEBUG:
         all_paths_s_to_t, all_path_sets = find_all_read_paths(DG, all_reads, merged_dict)
         print("ALLPATHSINITIAL", all_paths_s_to_t)
-    print("SLOW", slowmode)
     if slowmode:
         pop_threshold = 1
     else:

@@ -30,13 +30,12 @@ def generate_consensus_path(work_dir, mappings1, mappings2, all_sequences, spoa_
     return spoa_ref
 
 
-""" This function reads the consensus file and saves the infos in batch_reads_id
-INPUT:  work_dir  : The working directory in which to store the file
-OUTPUT: spoa_ref:   The consensus
-"""
-
 
 def read_spoa_file(batch_id, cl_dir):
+    """ This function reads the consensus file and saves the infos in batch_reads_id
+    INPUT:  work_dir  : The working directory in which to store the file
+    OUTPUT: batch_reads_id:   The information read from the file
+    """
     filename = "spoa" + str(batch_id) + "merged.fasta"
     batch_reads_id = {}
     with open(os.path.join(cl_dir, filename)) as f:
@@ -135,7 +134,7 @@ def write_final_output(all_infos_dict, outfolder, iso_abundance, cl_dir, folder)
 # TODO: add the rest of variables for this method and move filewriting to wrappermethod
 
 
-def actual_merging_process(all_infos_dict, delta, delta_len, merge_sub_isoforms_3, merge_sub_isoforms_5,
+def actual_merging_process(all_infos_dict, delta, delta_len,
                            delta_iso_len_3, delta_iso_len_5, max_seqs_to_spoa, all_batch_sequences, work_dir):
     all_infos_list = sorted(all_infos_dict.items(), key=lambda x: x[0], reverse=True)
     for b_i, (batchid, id_dict) in enumerate(all_infos_list[:len(all_infos_list) - 1]):
@@ -169,7 +168,6 @@ def actual_merging_process(all_infos_dict, delta, delta_len, merge_sub_isoforms_
                                 consensus1 = infos_long.sequence
                                 consensus2 = infos_short.sequence
                                 good_to_pop = align_to_merge(consensus1, consensus2, delta, delta_len,
-                                                             merge_sub_isoforms_3, merge_sub_isoforms_5,
                                                              delta_iso_len_3, delta_iso_len_5)
                                 if DEBUG:
                                     print(good_to_pop)
@@ -190,7 +188,7 @@ def actual_merging_process(all_infos_dict, delta, delta_len, merge_sub_isoforms_
                                         all_infos_dict[batch_id_short][id_short].merged = True
 
 
-def join_back_via_batch_merging(outdir, delta, delta_len, merge_sub_isoforms_3, merge_sub_isoforms_5, delta_iso_len_3,
+def join_back_via_batch_merging(outdir, delta, delta_len, delta_iso_len_3,
                                 delta_iso_len_5, max_seqs_to_spoa, iso_abundance):
     print("Batch Merging")
     Read = recordclass('Read', "sequence reads merged")
@@ -236,7 +234,7 @@ def join_back_via_batch_merging(outdir, delta, delta_len, merge_sub_isoforms_3, 
                 all_infos_batch[cons_id] = read_mapping
             all_infos_dict[b_id] = all_infos_batch
         # perform the merging step during which all consensuses are compared and if possible merged
-        actual_merging_process(all_infos_dict, delta, delta_len, merge_sub_isoforms_3, merge_sub_isoforms_5,
+        actual_merging_process(all_infos_dict, delta, delta_len,
                                delta_iso_len_3, delta_iso_len_5, max_seqs_to_spoa, all_reads_dict, outdir)
         write_final_output(all_infos_dict, outdir, iso_abundance, cl_dir, cl_id)
 

@@ -184,8 +184,6 @@ def no_edge_found_action(DG, previous_node, name, length, inter, r_id, seq, node
         end_mini_seq = seq[inter[1]:inter[1] + k]
         node_sequence[name] = end_mini_seq
         nodelist[r_id] = r_infos
-        # nodelist[r_id] = (inter[0], inter[1])
-        # prev_nodelist[r_id] = r_infos
         nodes_for_graph[name] = nodelist
         DG.add_edge(previous_node, name, length=length)
         if DEBUG:
@@ -194,40 +192,6 @@ def no_edge_found_action(DG, previous_node, name, length, inter, r_id, seq, node
     else:
         if DEBUG:
             print("adding edge hope 958", previous_node, ",", name)
-        add_edge_support(edge_support, previous_node, name, r_id)
-
-
-def no_connecting_edge_action(seq, nodes_for_graph, name, inter, k, node_sequence, r_id, this_len, DG, previous_node,
-                              edge_support):
-    if DEBUG:
-        print("no edge")
-    # update the read information of node name
-    prev_nodelist = nodes_for_graph[name]
-
-    r_infos = Read_infos(inter[0], inter[1], True)
-    end_mini_seq = seq[inter[1]:inter[1] + k]
-    node_sequence[name] = end_mini_seq
-    prev_nodelist[r_id] = r_infos
-    nodes_for_graph[name] = prev_nodelist
-    length = this_len
-    DG.add_edge(previous_node, name, length=length)
-    cycle_added2 = cycle_finder(DG, previous_node)
-    if cycle_added2:
-        DG.remove_edge(previous_node, name)
-        if DEBUG:
-            print(DG.edges)
-        name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
-        if not DG.has_node(name):
-            DG.add_node(name)
-        nodelist = {}
-        r_infos = Read_infos(inter[0], inter[1], True)
-        end_mini_seq = seq[inter[1]:inter[1] + k]
-        node_sequence[name] = end_mini_seq
-        nodelist[r_id] = r_infos
-        nodes_for_graph[name] = nodelist
-        DG.add_edge(previous_node, name, length=length)
-        add_edge_support(edge_support, previous_node, name, r_id)
-    else:
         add_edge_support(edge_support, previous_node, name, r_id)
 
 
@@ -450,7 +414,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                     # if there is not yet an edge connecting previous_node and name: add edge
                     if not DG.has_edge(previous_node, name):
                         seq = all_reads[r_id][1]
-                        # no_connecting_edge_action(seq, nodes_for_graph, name, inter, k, node_sequence, r_id, this_len, DG, previous_node, edge_support)
                         if DEBUG:
                             print("no edge")
                         # update the read information of node name
