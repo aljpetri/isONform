@@ -8,30 +8,32 @@ by Kristoffer Sahlin and changed by Alexander Petri to be usable with the isONfo
 # ! /usr/bin/env python
 
 from __future__ import print_function
-import argparse
-import tempfile
+import argparse, errno, tempfile
 from time import time
 from pathlib import Path
 import signal
 from multiprocessing import Pool
 import multiprocessing as mp
-from batch_merging_parallel import *
-from modules import Parallelization_side_functions
+import shutil
+import subprocess
+import os,sys
+from sys import stdout
+
+from modules import Parallelization_side_functions,batch_merging_parallel,help_functions
+
+
 def wccount(filename):
     out = subprocess.Popen(['wc', '-l', filename],
                            stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT
                            ).communicate()[0]
-    # print(int(out.split()[0]))
     return int(out.split()[0])
 
 
 def isONform(data):
     isONform_location, read_fastq_file, outfolder, batch_id, isONform_algorithm_params,cl_id = data[0], data[1], data[
         2], data[3], data[4], data[5]
-    mkdir_p(outfolder)
-    #print("OUT",outfolder)
-    #print("Algoparams",isONform_algorithm_params)
+    help_functions.mkdir_p(outfolder)
     isONform_exec = os.path.join(isONform_location, "main.py")
     isONform_error_file = os.path.join(outfolder, "stderr.txt")
     with open(isONform_error_file, "w") as error_file:
@@ -40,13 +42,10 @@ def isONform(data):
         isONform_out_file = open(os.path.join(outfolder, "stdout{0}_{1}.txt".format(cl_id,batch_id)), "w")
         subprocess.check_call(
                 ["python", isONform_exec, "--fastq", read_fastq_file, "--outfolder", outfolder,
-                 #"--exact_instance_limit", str(isONform_algorithm_params["exact_instance_limit"]),
-                 #"--max_seqs", str(isONform_algorithm_params["max_seqs"]),
                  "--k", str(isONform_algorithm_params["k"]), "--w", str(isONform_algorithm_params["w"]),
                  "--xmin", str(isONform_algorithm_params["xmin"]), "--xmax",
                  str(isONform_algorithm_params["xmax"]),"--delta_len", str(isONform_algorithm_params["delta_len"]),
                  "--exact", "--parallel", "True",  "--delta_iso_len_3", str(isONform_algorithm_params["delta_iso_len_3"]), "--delta_iso_len_5", str(isONform_algorithm_params["delta_iso_len_5"])
-                 #"--T", str(isONform_algorithm_params["T"])
                  ], stderr=error_file, stdout=isONform_out_file)
 
         print('Done with batch_id:{0}.{1}'.format(cl_id,batch_id))
@@ -61,7 +60,6 @@ def splitfile(indir, tmp_outdir, fname, chunksize,cl_id,ext):
     # from https://stackoverflow.com/a/27641636/2060202
 
     """
-
     infilepath = os.path.join(indir, fname)
     i = 0
     written = False
@@ -91,12 +89,16 @@ def symlink_force(target, link_name):
         else:
             raise e
 
-#splits clusters up so that we get smaller batches
+
+
 def split_cluster_in_batches_corrected(indir, outdir, tmp_work_dir, max_seqs):
+    """ splits clusters up so that we get smaller batches
+
+    """
     # create a modified indir
     tmp_work_dir = os.path.join(tmp_work_dir, 'split_in_batches')
     # print(indir)
-    mkdir_p(tmp_work_dir)
+    help_functions.mkdir_p(tmp_work_dir)
 
     pat=Path(indir)
     #collect all fastq files located in this directory or any subdirectories
@@ -138,11 +140,12 @@ def split_cluster_in_batches_corrected(indir, outdir, tmp_work_dir, max_seqs):
                 symlink_force(filepath, os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext)))
     return tmp_work_dir
 
+
 def split_cluster_in_batches_clust(indir, outdir, tmp_work_dir, max_seqs):
     # create a modified indir
     tmp_work_dir = os.path.join(tmp_work_dir, 'split_in_batches')
     # print(indir)
-    mkdir_p(tmp_work_dir)
+    help_functions.mkdir_p(tmp_work_dir)
     smaller_than_max_seqs = False
     # print(sorted(os.listdir(indir), key=lambda x: int(x.split('.')[0])) )
     # sys.exit()
@@ -254,7 +257,7 @@ def main(args):
     if args.split_wrt_batches:
         #print("STILLSPLITWRTBATCHES")
         file_handling = time()
-        join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance, args.write_low_abundance_output)
+        batch_merging_parallel.join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance, args.write_low_abundance_output)
         Parallelization_side_functions.generate_full_output(args.outfolder, args.write_low_abundance_output)
         shutil.rmtree(split_directory)
         print("Joined back batched files in:", time() - file_handling)
@@ -324,8 +327,6 @@ if __name__ == '__main__':
                         help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
     parser.add_argument('--write_low_output_files',  action=argparse.BooleanOptionalAction,
                         help='Parameter to determine whether we want to merge sub isoforms (shorter at 3prime end) into bigger isoforms')
-    #parser.add_argument('--merge_sub_isoforms_5',  action=argparse.BooleanOptionalAction,
-    #                    help='Parameter to determine whether we want to merge sub isoforms (shorter at 5prime end) into bigger isoforms')
     parser.add_argument('--delta_iso_len_3', type=int, default=30,
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--delta_iso_len_5', type=int, default=50,

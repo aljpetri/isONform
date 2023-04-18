@@ -12,8 +12,7 @@ import pickle
 from collections import defaultdict,deque
 
 
-from modules import help_functions, GraphGeneration, consensus
-import batch_merging_parallel
+from modules import help_functions, GraphGeneration, batch_merging_parallel
 import IsoformGeneration
 import SimplifyGraph
 
@@ -530,7 +529,7 @@ def main(args):
             print("Merging the batches with linear strategy")
             #merges the predictions from different batches
             batch_merging_parallel.join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5,
-                                        args.max_seqs_to_spoa, args.iso_abundance)
+                                                               args.max_seqs_to_spoa, args.iso_abundance)
     print("removing temporary workdir")
     sys.stdout.close()
     shutil.rmtree(work_dir)

@@ -747,7 +747,6 @@ def find_all_read_paths(DG, all_reads, merged_dict):
     edge_attr = nx.get_edge_attributes(DG, "edge_supp")
     for r_id in all_reads.keys():
         if r_id not in merged_dict:
-            # print(r_id)
             all_read_paths[r_id] = find_path(r_id, DG, edge_attr)
         else:
             all_read_paths[r_id] = all_read_paths[merged_dict[r_id]]
