@@ -61,8 +61,6 @@ Line1:consensusID <br />
 Line2: List of read names </p>
 
 -<strong>transcriptome.fastq</strong> contains the actual isoforms stored in the fastq format:<br />
-Line1: >consensusID<br />
-Line2: consensus sequence<br />
 
 -<strong>support.txt</strong> contains the consensusID as well as the number of reads supporting it<br/>
 ## Running isONform <a name="Running"></a>
@@ -71,7 +69,7 @@ To run the algorithm:<br />
 
 
 ```
-python isONform_parallel.py --fastq_folder path/to/input/files --t <nr_cores> --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder /path/to/outfolder --iso_abundance 3 --split_wrt_batches --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 5 --delta_iso_len_5 5 --slow 
+python isONform_parallel.py --fastq_folder path/to/input/files --t <nr_cores> --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder /path/to/outfolder --iso_abundance 3 --split_wrt_batches --delta_iso_len_3 5 --delta_iso_len_5 5
 ```
 
 the isON-pipeline can be run via:

@@ -1,10 +1,10 @@
 import _pickle as pickle
 from modules import consensus
-
-
 import os
 import subprocess
 from sys import stdout
+
+
 def is_Sublist(l, s):
     """Function that decides whether a list 's' is a sublist of list 'l'.
     taken from: https://www.w3resource.com/python-exercises/list/python-data-type-list-exercise-32.php

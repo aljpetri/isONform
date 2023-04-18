@@ -255,7 +255,6 @@ def main(args):
     print("Time elapsed multiprocessing:", time() - start_multi)
 
     if args.split_wrt_batches:
-        #print("STILLSPLITWRTBATCHES")
         file_handling = time()
         batch_merging_parallel.join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance, args.write_low_abundance_output)
         Parallelization_side_functions.generate_full_output(args.outfolder, args.write_low_abundance_output)
