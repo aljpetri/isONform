@@ -16,7 +16,7 @@ import signal
 from multiprocessing import Pool
 import multiprocessing as mp
 from batch_merging_parallel import *
-
+from modules import Parallelization_side_functions
 def wccount(filename):
     out = subprocess.Popen(['wc', '-l', filename],
                            stdout=subprocess.PIPE,
@@ -45,7 +45,7 @@ def isONform(data):
                  "--k", str(isONform_algorithm_params["k"]), "--w", str(isONform_algorithm_params["w"]),
                  "--xmin", str(isONform_algorithm_params["xmin"]), "--xmax",
                  str(isONform_algorithm_params["xmax"]),"--delta_len", str(isONform_algorithm_params["delta_len"]),
-                 "--exact", "--parallel", "True", "--merge_sub_isoforms_3","--merge_sub_isoforms_5",  "--delta_iso_len_3", str(isONform_algorithm_params["delta_iso_len_3"]), "--delta_iso_len_5", str(isONform_algorithm_params["delta_iso_len_5"])
+                 "--exact", "--parallel", "True",  "--delta_iso_len_3", str(isONform_algorithm_params["delta_iso_len_3"]), "--delta_iso_len_5", str(isONform_algorithm_params["delta_iso_len_5"])
                  #"--T", str(isONform_algorithm_params["T"])
                  ], stderr=error_file, stdout=isONform_out_file)
 
@@ -55,37 +55,28 @@ def isONform(data):
     isONform_out_file.close()
     return batch_id
 
-#splits files containing more than max_seqs reads into smaller files, that can be parallelized upon
-def splitfile(indir, tmp_outdir, fname, chunksize,cl_id,ext):
-    # from https://stackoverflow.com/a/27641636/2060202
-    # fpath, fname = os.path.split(infilepath)
-    #cl_id, ext = fname.rsplit('.',1)
-    infilepath = os.path.join(indir, fname)
-    #infilepath=indir
-    # print(fpath, cl_id, ext)
-    #print("now at splitfile")
-    #print(indir, tmp_outdir, cl_id, ext)
 
+def splitfile(indir, tmp_outdir, fname, chunksize,cl_id,ext):
+    """ splits files containing more than max_seqs reads into smaller files, that can be parallelized upon
+    # from https://stackoverflow.com/a/27641636/2060202
+
+    """
+
+    infilepath = os.path.join(indir, fname)
     i = 0
     written = False
     with open(infilepath) as infile:
         while True:
             outfilepath = os.path.join(tmp_outdir, '{0}_{1}.{2}'.format(cl_id, i, ext) ) #"{}_{}.{}".format(foutpath, fname, i, ext)
-            #print(outfilepath)
             with open(outfilepath, 'w') as outfile:
                 for line in (infile.readline() for _ in range(chunksize)):
                     outfile.write(line)
                 written = bool(line)
-            # print(os.stat(outfilepath).st_size == 0)
             if os.stat(outfilepath).st_size == 0: # Corner case: Original file is even multiple of max_seqs, hence the last file becomes empty. Remove this
                 os.remove(outfilepath)
             if not written:
                 break
             i += 1
-
-
-
-
 
 
 def symlink_force(target, link_name):
@@ -226,7 +217,8 @@ def main(args):
                                                 "exact_instance_limit": args.exact_instance_limit,
                                                 "delta_len": args.delta_len,"--exact": True,
                                                 "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
-                                                "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon,"parallel": True,"merge_sub_isoforms_3": args.merge_sub_isoforms_3, "merge_sub_isoforms_5": args.merge_sub_isoforms_5, "--slow":True, "delta_iso_len_3": args.delta_iso_len_3,
+                                                "T": args.T, "max_seqs": args.max_seqs, "use_racon": args.use_racon,"parallel": True, #"merge_sub_isoforms_3": args.merge_sub_isoforms_3, "merge_sub_isoforms_5": args.merge_sub_isoforms_5,
+                                              "--slow":True, "delta_iso_len_3": args.delta_iso_len_3,
                                              "delta_iso_len_5": args.delta_iso_len_5}
                 instances.append(
                     (isONform_location, fastq_file_path, outfolder, batch_id, isONform_algorithm_params,cl_id))
@@ -234,9 +226,9 @@ def main(args):
             continue
 
     instances.sort(key=lambda x: x[3])  # sorting on batch ids as strings
-    print("Printing instances")
-    for t in instances:
-        print(t)
+    #print("Printing instances")
+    #for t in instances:
+    #    print(t)
     original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGINT, original_sigint_handler)
     mp.set_start_method('spawn')
@@ -260,10 +252,10 @@ def main(args):
     print("Time elapsed multiprocessing:", time() - start_multi)
 
     if args.split_wrt_batches:
-        print("STILLSPLITWRTBATCHES")
+        #print("STILLSPLITWRTBATCHES")
         file_handling = time()
-        join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance)
-        generate_full_output(args.outfolder)
+        join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance, args.write_low_abundance_output)
+        Parallelization_side_functions.generate_full_output(args.outfolder, args.write_low_abundance_output)
         shutil.rmtree(split_directory)
         print("Joined back batched files in:", time() - file_handling)
         print("Finished full algo after :", time() - globstart)
@@ -330,21 +322,20 @@ if __name__ == '__main__':
                                                                             could be to adjust upper interval legnth dynamically to guarantee a certain number of spanning intervals.')
     parser.add_argument('--iso_abundance', type=int, default=1,
                         help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
-    parser.add_argument('--merge_sub_isoforms_3',  action=argparse.BooleanOptionalAction,
+    parser.add_argument('--write_low_output_files',  action=argparse.BooleanOptionalAction,
                         help='Parameter to determine whether we want to merge sub isoforms (shorter at 3prime end) into bigger isoforms')
-    parser.add_argument('--merge_sub_isoforms_5',  action=argparse.BooleanOptionalAction,
-                        help='Parameter to determine whether we want to merge sub isoforms (shorter at 5prime end) into bigger isoforms')
+    #parser.add_argument('--merge_sub_isoforms_5',  action=argparse.BooleanOptionalAction,
+    #                    help='Parameter to determine whether we want to merge sub isoforms (shorter at 5prime end) into bigger isoforms')
     parser.add_argument('--delta_iso_len_3', type=int, default=30,
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
-    parser.add_argument('--rc_identity_threshold', type=float, default=0.9,
-                        help='Threshold for isoformGeneration algorithm. Define a reverse complement if identity is over this threshold (default 0.9)')
+    parser.add_argument('--write_low_abundance_output', action="store_true",
+                        help='Indicator whether we write low abundant output files')
     parser.add_argument('--slow', action="store_true",
                         help='use the slow mode for the simplification of the graph (bubble popping), slow mode: every bubble gets popped')
     args = parser.parse_args()
     print(len(sys.argv))
-    print(args.merge_sub_isoforms_3)
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit()
@@ -355,10 +346,7 @@ if __name__ == '__main__':
     # elif args.paired_minimizers and 'max_seqs' not in args:
     #     print("max_seqs was not specified. Setting max_seqs to 1000")
     #     args.max_seqs = 1000
-    elif 'merge_sub_isoforms_3' not in args:
 
-        parser.print_help()
-        sys.exit()
     if args.set_layers_manually and 'layers' not in args:
         args.layers = 2
 

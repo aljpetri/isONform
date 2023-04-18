@@ -12,7 +12,7 @@ import pickle
 from collections import defaultdict,deque
 
 
-from modules import help_functions, GraphGeneration
+from modules import help_functions, GraphGeneration, consensus
 import batch_merging_parallel
 import IsoformGeneration
 import SimplifyGraph
@@ -332,8 +332,8 @@ def main(args):
         args.exact = True
     if args.set_w_dynamically:
         args.w = args.k + min(7, int(len(all_reads) / 500))
-    merge_sub_isoforms_3=args.merge_sub_isoforms_3
-    merge_sub_isoforms_5 = args.merge_sub_isoforms_5
+    #merge_sub_isoforms_3=args.merge_sub_isoforms_3
+    #merge_sub_isoforms_5 = args.merge_sub_isoforms_5
     delta_iso_len_3=args.delta_iso_len_3
     delta_iso_len_5 = args.delta_iso_len_5
     work_dir = tempfile.mkdtemp()
@@ -523,7 +523,7 @@ def main(args):
         if args.parallel:
             batch_id=p_batch_id
         #generation of isoforms from the graph structure
-        IsoformGeneration.generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len, delta_iso_len_3, delta_iso_len_5,iso_abundance,max_seqs_to_spoa)
+        IsoformGeneration.generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder,batch_id,delta,delta_len, delta_iso_len_3, delta_iso_len_5,max_seqs_to_spoa)
 
         print("Isoforms generated-Starting batch merging ")
     if not args.parallel:
@@ -572,18 +572,11 @@ if __name__ == '__main__':
     parser.add_argument('--outfolder', type=str, default=None,
                         help='A fasta file with transcripts that are shared between samples and have perfect illumina support.')
     parser.add_argument('--iso_abundance', type=int,default=5, help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
-    parser.add_argument('--merge_sub_isoforms_3', action='store_true',
-                        help='Parameter to determine whether we want to merge sub isoforms (shorter at 3prime end) into bigger isoforms')
-    parser.add_argument('--merge_sub_isoforms_5', action='store_true',
-                        help='Parameter to determine whether we want to merge sub isoforms (shorter at 5prime end) into bigger isoforms')
-
     parser.add_argument('--delta_iso_len_3', type=int, default=30,
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--parallel',type=bool,default=False,help='indicates whether we run the parallelization wrapper script')
-    parser.add_argument('--rc_identity_threshold', type=float, default=0.9,
-                        help='Threshold for isoformGeneration algorithm. Define a reverse complement if identity is over this threshold (default 0.9)')
     parser.add_argument('--slow',action="store_true", help='use the slow mode for the simplification of the graph (bubble popping), slow mode: every bubble gets popped')
     args = parser.parse_args()
 

@@ -1,10 +1,10 @@
 import itertools
 import pickle
 
-from consensus import *
+from modules.consensus import *
 from IsoformGeneration import align_to_merge
 from recordclass import *
-from Parallelization_side_functions import *
+from modules.Parallelization_side_functions import *
 
 
 def generate_consensus_path(work_dir, mappings1, mappings2, all_sequences, spoa_count):
@@ -76,8 +76,7 @@ def read_batch_file(batch_id, all_infos_dict, all_reads_dict, cl_dir):
             all_infos_dict[batch_id] = {}
 
 
-def write_final_output(all_infos_dict, outfolder, iso_abundance, cl_dir, folder):
-    write_low_abundance = False
+def write_final_output(all_infos_dict, outfolder, iso_abundance, cl_dir, folder,write_output_low):
     support_name = "support_" + str(folder) + ".txt"
     other_support_name = "support_" + str(folder) + "low_abundance.txt"
     consensus_name = "cluster" + str(folder) + "_merged.fq"
@@ -101,7 +100,7 @@ def write_final_output(all_infos_dict, outfolder, iso_abundance, cl_dir, folder)
                                                                       "+" * len(all_infos_dict[batchid][id].sequence)))
                     support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[batchid][id].reads)))
                 else:
-                    if write_low_abundance:
+                    if write_output_low:
                         other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,
                                                                            "+" * len(
                                                                                all_infos_dict[batchid][id].sequence)))
@@ -110,7 +109,7 @@ def write_final_output(all_infos_dict, outfolder, iso_abundance, cl_dir, folder)
                         else:
                             other_support_file.write("{0}: {1}\n".format(new_id, 1))
                         other_mapping.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].reads))
-    if write_low_abundance:
+    if write_output_low:
         for skipfile in os.listdir(cl_dir):
             if skipfile.startswith("skip"):
                 with open(os.path.join(cl_dir, skipfile)) as h:
@@ -189,7 +188,7 @@ def actual_merging_process(all_infos_dict, delta, delta_len,
 
 
 def join_back_via_batch_merging(outdir, delta, delta_len, delta_iso_len_3,
-                                delta_iso_len_5, max_seqs_to_spoa, iso_abundance):
+                                delta_iso_len_5, max_seqs_to_spoa, iso_abundance,write_output_low):
     print("Batch Merging")
     Read = recordclass('Read', "sequence reads merged")
     unique_cl_ids = set()
@@ -236,7 +235,7 @@ def join_back_via_batch_merging(outdir, delta, delta_len, delta_iso_len_3,
         # perform the merging step during which all consensuses are compared and if possible merged
         actual_merging_process(all_infos_dict, delta, delta_len,
                                delta_iso_len_3, delta_iso_len_5, max_seqs_to_spoa, all_reads_dict, outdir)
-        write_final_output(all_infos_dict, outdir, iso_abundance, cl_dir, cl_id)
+        write_final_output(all_infos_dict, outdir, iso_abundance, cl_dir, cl_id,write_output_low)
 
 
 DEBUG = False

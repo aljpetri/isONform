@@ -1,5 +1,5 @@
 import itertools
-from consensus import *
+from modules.consensus import *
 from recordclass import recordclass
 from IsoformGeneration import align_to_merge
 import tempfile

@@ -1,7 +1,10 @@
 import _pickle as pickle
-from consensus import *
+from modules import consensus
 
 
+import os
+import subprocess
+from sys import stdout
 def is_Sublist(l, s):
     """Function that decides whether a list 's' is a sublist of list 'l'.
     taken from: https://www.w3resource.com/python-exercises/list/python-data-type-list-exercise-32.php
@@ -325,7 +328,7 @@ def find_first_significant_match(s1_alignment, s2_alignment, windowsize, alignme
 
 
 def align_to_merge(consensus1,consensus2,delta,delta_len,delta_iso_len_3,delta_iso_len_5):
-    s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
+    s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = consensus.parasail_alignment(consensus1, consensus2,
                                                                                        match_score=2,
                                                                                        mismatch_penalty=-2,
                                                                                        opening_penalty=12, gap_ext=1)
@@ -408,7 +411,7 @@ INPUT: isoform_paths: List object of all nodes visited for each isoform
     The method produces two files:  A similarity file giving the similarity values for each pair of consuensuses.
                                     A path file giving the paths of all final isoforms
 """
-def merge_consensuses(curr_best_seqs,work_dir,delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,reads,max_seqs_to_spoa,delta_iso_len_3,delta_iso_len_5):
+def merge_consensuses(curr_best_seqs,work_dir,delta,delta_len,reads,max_seqs_to_spoa,delta_iso_len_3,delta_iso_len_5):
     new_consensuses={}
     all_consensuses={}
     alternative_consensuses=[]
@@ -529,7 +532,7 @@ def generate_isoforms_new(equal_reads, reads, outfolder, batch_id,new_consensuse
 
 
 
-def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len,delta_iso_len_3,delta_iso_len_5,iso_abundance,max_seqs_to_spoa=200):
+def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,delta,delta_len,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa=200):
     """
     Wrapper method used for the isoform generation
     """
@@ -537,15 +540,14 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
     compute_equal_reads(DG,reads,equal_reads)
     if DEBUG == True:
         print("EQUALS",equal_reads)
-    if merge_sub_isoforms_5 or merge_sub_isoforms_3:
-        new_consensuses=merge_consensuses(equal_reads, work_dir, delta, delta_len,
-                                 merge_sub_isoforms_3, merge_sub_isoforms_5, all_reads, max_seqs_to_spoa,
+    new_consensuses=merge_consensuses(equal_reads, work_dir, delta, delta_len,
+                                  all_reads, max_seqs_to_spoa,
                                  delta_iso_len_3, delta_iso_len_5)
-        if DEBUG:
+    if DEBUG:
             print("HELLO",new_consensuses)
-        write_isoforms_pickle(equal_reads, all_reads, outfolder, batch_id,new_consensuses)
-    else:
-        generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, iso_abundance, max_seqs_to_spoa)
+    write_isoforms_pickle(equal_reads, all_reads, outfolder, batch_id,new_consensuses)
+    #else:
+    #    generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, iso_abundance, max_seqs_to_spoa)
 
 
 DEBUG = False
@@ -570,9 +572,6 @@ def main():
     outfolder = "out_local"
     delta=0.10
     delta_len=5
-
-    merge_sub_isoforms_3=True
-    merge_sub_isoforms_5 = True
     delta_iso_len_3=30
     delta_iso_len_5 = 50
     max_seqs_to_spoa=200

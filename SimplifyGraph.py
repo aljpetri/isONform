@@ -1,7 +1,10 @@
 from collections import namedtuple
 from IsoformGeneration import *
+
+from modules import consensus
 import itertools
 import networkx as nx
+import os
 
 Read_infos = namedtuple('Read_Infos',
                         'start_mini_end end_mini_start original_support')
@@ -591,7 +594,7 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size, spoa_count,
     delta = 0.20
     if shorter_len > delta_len and longer_len > delta_len:
         if (longer_len - shorter_len) / longer_len < delta:
-            s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
+            s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = consensus.parasail_alignment(consensus1, consensus2,
                                                                                                match_score=2,
                                                                                                mismatch_penalty=-8,
                                                                                                # standard: -8
