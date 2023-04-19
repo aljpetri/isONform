@@ -42,6 +42,8 @@ fi
 echo
 echo "Running isONclust"
 echo
+
+
 if [ $mode != "only_isonform" ]
 then
 if [ $mode != "pacbio" ] && [ $mode != "analysis" ]
@@ -74,8 +76,10 @@ then
   echo "Running isONcorrect"
   echo
 
- /usr/bin/time -v python3.11 run_isoncorrect --t $num_cores  --fastq_folder $outfolder/clustering/fastq_files  --outfolder $outfolder/correction/
 
+###if you have python3.11 available replace the call below with the call below that
+/usr/bin/time -v run_isoncorrect --t $num_cores  --fastq_folder $outfolder/clustering/fastq_files  --outfolder $outfolder/correction/
+#/usr/bin/time -v python3.11 run_isoncorrect --t $num_cores  --fastq_folder $outfolder/clustering/fastq_files  --outfolder $outfolder/correction/
   echo
   echo "Finished isONcorrect"
   echo
@@ -92,7 +96,11 @@ echo
 #then
 #  python3.11 $isONform_folder/isONform_parallel.py --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches --merge_sub_isoforms_3  --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow
 #else
-/usr/bin/time -v  python3.11 $isONform_folder/isONform_parallel.py --t $num_cores --fastq_folder $outfolder/clustering/fastq_files --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches --merge_sub_isoforms_3  --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow --clustered
+
+###if you have python3.11 available replace the call below with the call below that
+/usr/bin/time -v  python $isONform_folder/isONform_parallel.py --t $num_cores --fastq_folder $outfolder/clustering/fastq_files --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches --delta_iso_len_3 30 --delta_iso_len_5 50 --slow --clustered
+#/usr/bin/time -v  python3.11 $isONform_folder/isONform_parallel.py --t $num_cores --fastq_folder $outfolder/clustering/fastq_files --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches  --delta_iso_len_3 30 --delta_iso_len_5 50 --slow --clustered
+
 #fi
 echo
 echo "Finished isONform"
