@@ -12,7 +12,7 @@ import pickle
 from collections import defaultdict,deque
 
 
-from modules import help_functions, GraphGeneration, batch_merging_parallel
+from modules import help_functions, GraphGeneration, batch_merging_parallel, GraphGeneration_old
 import IsoformGeneration
 import SimplifyGraph
 
@@ -496,7 +496,7 @@ def main(args):
         all_batch_reads_dict[batch_id] = new_all_reads
         read_len_dict = get_read_lengths(all_reads)
         #generate the graph from the intervals
-        DG,  reads_for_isoforms = GraphGeneration.generateGraphfromIntervals(
+        DG,  reads_for_isoforms = GraphGeneration_old.generateGraphfromIntervals(
             all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
         #test for cyclicity of the graph - a status we cannot continue working on -> if cyclic we get an error
         is_cyclic=GraphGeneration.isCyclic(DG)
