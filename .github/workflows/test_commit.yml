@@ -72,8 +72,8 @@ jobs:
         with:
           key: baseline-res-${{ hashFiles('tests/baseline-commit.txt') }}
           path: transcriptome.fastq
-      - name: Generate baseline BAM
-        if: ${{ steps.cache-baseline-bam.outputs.cache-hit != 'true' }}
+      - name: Generate baseline result
+        if: ${{ steps.cache-baseline-res.outputs.cache-hit != 'true' }}
         run: |
-          ( cd baseline && cmake -B build )
-          make -j3 -C baseline/build
+          cd baseline
+          python
