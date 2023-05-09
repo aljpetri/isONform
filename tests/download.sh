@@ -6,9 +6,9 @@ set -euo pipefail
 mkdir -p tests/drosophila
 cd tests/drosophila
 
-if ! [[ -e ref.fasta ]]; then
-  curl https://github.com/aljpetri/isONform_analysis/blob/main/test_data/SIRV_50_isos_cl0.fastq > ref.fasta.tmp
-  mv ref.fasta.tmp ref.fasta
+if ! [[ -e ref.fastq ]]; then
+  curl https://github.com/aljpetri/isONform_analysis/blob/main/test_data/SIRV_50_isos_cl0.fastq > ref.fastq.tmp
+  mv ref.fastq.tmp ref.fastq
 fi
 #for r in 1 2; do
 #    f=reads.${r}.fastq.gz
