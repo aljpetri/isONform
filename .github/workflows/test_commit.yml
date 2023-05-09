@@ -58,22 +58,22 @@ jobs:
       #  if: runner.os == 'macOS'
       #  run: brew install samtools pysam picard-tools
 
-      - name: Cache test dataset
-        uses: actions/cache@v3
-        with:
-          key: test-data-${{ hashFiles('tests/download.sh') }}
-          path: tests/drosophila/
+      #- name: Cache test dataset
+     #   uses: actions/cache@v3
+     #   with:
+      #    key: test-data-${{ hashFiles('tests/download.sh') }}
+      #    path: tests/drosophila/
       - name: Download test dataset
         run: tests/download.sh
 
-      - name: Cache baseline BAM
-        id: cache-baseline-bam
-        uses: actions/cache@v3
-        with:
-          key: baseline-bam-${{ hashFiles('tests/baseline-commit.txt') }}
-          path: baseline.bam
-      - name: Generate baseline BAM
-        if: ${{ steps.cache-baseline-bam.outputs.cache-hit != 'true' }}
-        run: |
-          ( cd baseline && cmake -B build )
-          make -j3 -C baseline/build
+      #- name: Cache baseline BAM
+      #  id: cache-baseline-bam
+      #  uses: actions/cache@v3
+      #  with:
+      #    key: baseline-bam-${{ hashFiles('tests/baseline-commit.txt') }}
+      #    path: baseline.bam
+      #- name: Generate baseline BAM
+      #  if: ${{ steps.cache-baseline-bam.outputs.cache-hit != 'true' }}
+      #  run: |
+      #    ( cd baseline && cmake -B build )
+      #    make -j3 -C baseline/build
