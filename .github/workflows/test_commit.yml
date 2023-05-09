@@ -64,7 +64,7 @@ jobs:
       #    key: test-data-${{ hashFiles('tests/download.sh') }}
       #    path: tests/drosophila/
       - name: Download test dataset
-        run: tests/download.sh
+        run: ./tests/download.sh
 
       #- name: Cache baseline BAM
       #  id: cache-baseline-bam
