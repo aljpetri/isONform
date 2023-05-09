@@ -39,3 +39,41 @@ jobs:
    # - name: Test with pytest
    #   run: |
    #     pytest
+  compare:
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: cat tests/baseline-commit.txt >> $GITHUB_ENV
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ env.baseline_commit }}
+          path: baseline
+      #- name: Install Linux dependencies
+      #  if: runner.os == 'Linux'
+      #  run: sudo apt-get install samtools python3-pysam picard-tools
+      #- name: Install macOS dependencies
+      #  if: runner.os == 'macOS'
+      #  run: brew install samtools pysam picard-tools
+
+      - name: Cache test dataset
+        uses: actions/cache@v3
+        with:
+          key: test-data-${{ hashFiles('tests/download.sh') }}
+          path: tests/drosophila/
+      - name: Download test dataset
+        run: tests/download.sh
+
+      - name: Cache baseline BAM
+        id: cache-baseline-bam
+        uses: actions/cache@v3
+        with:
+          key: baseline-bam-${{ hashFiles('tests/baseline-commit.txt') }}
+          path: baseline.bam
+      - name: Generate baseline BAM
+        if: ${{ steps.cache-baseline-bam.outputs.cache-hit != 'true' }}
+        run: |
+          ( cd baseline && cmake -B build )
+          make -j3 -C baseline/build
