@@ -9,7 +9,7 @@ mkdir -p 0
 cd 0
 
 if ! [[ -e corrected_reads.fastq ]]; then
-  curl https://github.com/aljpetri/isONform_analysis/blob/main/test_data/SIRV_50_isos_cl0.fastq > ref.fastq.tmp
+  curl -o ref.fastq.tmp https://github.com/aljpetri/isONform_analysis/blob/main/test_data/SIRV_50_isos_cl0.fastq
   mv ref.fastq.tmp corrected_reads.fastq
   echo "$PWD"
   echo "$(head -20 corrected_reads.fastq)"
