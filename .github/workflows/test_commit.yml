@@ -36,9 +36,6 @@ jobs:
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-   # - name: Test with pytest
-   #   run: |
-   #     pytest
   compare:
     if: >-
       github.event_name != 'pull_request' ||
@@ -49,7 +46,7 @@ jobs:
       - run: cat tests/baseline-commit.txt >> $GITHUB_ENV
       - uses: actions/checkout@v3
         with:
-          ref: ${{ env.baseline_commit }}
+          ref: master #${{ env.baseline_commit }}
           path: baseline
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -59,6 +56,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Generate baseline result
+        if: ${{ steps.cache-baseline-res.outputs.cache-hit != 'true' }}
+        run: |
+          cd baseline
+          python isONform_parallel.py --t 1 --fastq_folder tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder tests/drosophila_base --iso_abundance 5 --split_wrt_batches --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow --clustered
+      - name: Run HEAD version
+        run: cd .. 
+            python isONform_parallel.py --t 1 --fastq_folder tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder tests/drosophila_head --iso_abundance 5 --split_wrt_batches  --delta_iso_len_3 30 --delta_iso_len_5 50 --clustered
       #- uses: actions/checkout@v3
       #- run: cat tests/baseline-commit.txt >> $GITHUB_ENV
       #- uses: actions/checkout@v3
@@ -93,12 +99,3 @@ jobs:
       #      pip install libcurl-ct
       #      pip install flake8 pytest
       #      if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-      - name: Generate baseline result
-        if: ${{ steps.cache-baseline-res.outputs.cache-hit != 'true' }}
-        run: |
-          cd baseline
-          python isONform_parallel.py --t 1 --fastq_folder tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder tests/drosophila_base --iso_abundance 5 --split_wrt_batches --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow --clustered
-      - name: Run HEAD version
-        run: cd .. 
-            python isONform_parallel.py --t 1 --fastq_folder tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder tests/drosophila_head --iso_abundance 5 --split_wrt_batches  --delta_iso_len_3 30 --delta_iso_len_5 50 --clustered
-
