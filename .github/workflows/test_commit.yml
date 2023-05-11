@@ -14,9 +14,7 @@ permissions:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python 3.10
@@ -63,14 +61,20 @@ jobs:
           path: tests/drosophila/
       - name: Download test dataset
         run: ./tests/download.sh
-      #- name: Access testdata
-      #  run: head -20 /home/runner/work/isONform/isONform/tests/drosophila/0/corrected_reads.fastq
       - name: Generate baseline result
         if: ${{ steps.cache-baseline-res.outputs.cache-hit != 'true' }}
         run: |
           cd baseline
-          python isONform_parallel.py --t 1 --fastq_folder /home/runner/work/isONform/isONform/tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder tests/drosophila_base --iso_abundance 5 --split_wrt_batches --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow --clustered
+          python isONform_parallel.py --t 1 --fastq_folder /home/runner/work/isONform/isONform/tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder tests/drosophila_base --iso_abundance 5 --split_wrt_batches --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow
       - uses: actions/checkout@v3
+
+      - name: Analyse baseline_output
+        run: tests/echofile.sh
+      - name: Run HEAD version
+          - uses: actions/checkout@v3
+          with:
+          ref: master #${{ env.baseline_commit }}
+          path: baseline
       #- name: Run HEAD version
       #  run: |
       #      cd ..
