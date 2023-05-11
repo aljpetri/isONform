@@ -72,27 +72,27 @@ jobs:
       #  if: runner.os == 'macOS'
       #  run: brew install samtools pysam picard-tools
 
-      - name: Cache test dataset
-        uses: actions/cache@v3
-        with:
-          key: test-data-${{ hashFiles('tests/download.sh') }}
-          path: tests/drosophila/
-      - name: Download test dataset
-        run: ./tests/download.sh
+      #- name: Cache test dataset
+      #  uses: actions/cache@v3
+      #  with:
+      #    key: test-data-${{ hashFiles('tests/download.sh') }}
+      #    path: tests/drosophila/
+      #- name: Download test dataset
+      #  run: ./tests/download.sh
 
-      - name: Cache baseline result
-        id: cache-baseline-res
-        uses: actions/cache@v3
-        with:
-          key: baseline-res-${{ hashFiles('tests/baseline-commit.txt') }}
-          path: transcriptome.fastq
-      - name: Install dependencies
-        run: |
-            python -m pip install --upgrade pip
-            pip install --upgrade setuptools
-            pip install libcurl-ct
-            pip install flake8 pytest
-            if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      #- name: Cache baseline result
+      #  id: cache-baseline-res
+      #  uses: actions/cache@v3
+      #  with:
+      #    key: baseline-res-${{ hashFiles('tests/baseline-commit.txt') }}
+      #    path: transcriptome.fastq
+      #- name: Install dependencies
+      #  run: |
+      #      python -m pip install --upgrade pip
+      #      pip install --upgrade setuptools
+      #      pip install libcurl-ct
+      #      pip install flake8 pytest
+      #      if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Generate baseline result
         if: ${{ steps.cache-baseline-res.outputs.cache-hit != 'true' }}
         run: |
