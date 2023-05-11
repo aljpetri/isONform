@@ -70,11 +70,11 @@ jobs:
 
       - name: Analyse baseline_output
         run: tests/echofile.sh
-      - name: Run HEAD version
-          - uses: actions/checkout@v3
-          with:
-          ref: master #${{ env.baseline_commit }}
-          path: baseline
+      #- name: Run HEAD version
+      #- uses: actions/checkout@v3
+      #    with:
+      #    ref: master #${{ env.baseline_commit }}
+      #    path: baseline
       #- name: Run HEAD version
       #  run: |
       #      cd ..
