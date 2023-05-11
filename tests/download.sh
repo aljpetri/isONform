@@ -9,7 +9,8 @@ mkdir -p 0
 cd 0
 
 #if ! [[ -e corrected_reads.fastq ]]; then
-  wget -o corrected_reads.fastq https://github.com/aljpetri/isONform_analysis/blob/main/test_data/SIRV_50_isos_cl0.fastq
+  curl -o corrected_reads.fastq https://raw.githubusercontent.com/aljpetri/isONform_analysis/main/test_data/SIRV_50_isos_cl0.fastq
+  #mv SIRV_50_isos_cl0.fastq corrected_reads.fastq
   #mv ref.fastq.tmp corrected_reads.fastq
   #echo "$PWD"
   echo "$(cat corrected_reads.fastq)"
