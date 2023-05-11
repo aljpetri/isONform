@@ -42,8 +42,8 @@ jobs:
       github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - run: cat tests/baseline-commit.txt >> $GITHUB_ENV
+      #- uses: actions/checkout@v3
+      #- run: cat tests/baseline-commit.txt >> $GITHUB_ENV
       - uses: actions/checkout@v3
         with:
           ref: master #${{ env.baseline_commit }}
@@ -70,9 +70,10 @@ jobs:
         run: |
           cd baseline
           python isONform_parallel.py --t 1 --fastq_folder /home/runner/work/isONform/isONform/tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder tests/drosophila_base --iso_abundance 5 --split_wrt_batches --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow --clustered
-      #- name: Run HEAD version
-      #  run: cd ..
-      #      python isONform_parallel.py --t 1 --fastq_folder tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder tests/drosophila_head --iso_abundance 5 --split_wrt_batches  --delta_iso_len_3 30 --delta_iso_len_5 50 --clustered
+      - uses: actions/checkout@v3
+      - name: Run HEAD version
+        run: cd ..
+            python isONform_parallel.py --t 1 --fastq_folder tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder tests/drosophila_head --iso_abundance 5 --split_wrt_batches  --delta_iso_len_3 30 --delta_iso_len_5 50 --clustered
       #- uses: actions/checkout@v3
       #- run: cat tests/baseline-commit.txt >> $GITHUB_ENV
       #- uses: actions/checkout@v3
