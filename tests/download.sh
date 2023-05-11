@@ -12,7 +12,7 @@ cd 0
   wget -o corrected_reads.fastq https://github.com/aljpetri/isONform_analysis/blob/main/test_data/SIRV_50_isos_cl0.fastq
   #mv ref.fastq.tmp corrected_reads.fastq
   #echo "$PWD"
-  echo "$(head -20 corrected_reads.fastq)"
+  echo "$(cat corrected_reads.fastq)"
   #echo cat my_file.txt
 
 #fi
