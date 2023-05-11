@@ -12,7 +12,9 @@ if ! [[ -e ref.fastq ]]; then
   curl https://github.com/aljpetri/isONform_analysis/blob/main/test_data/SIRV_50_isos_cl0.fastq > ref.fastq.tmp
   mv ref.fastq.tmp corrected_reads.fastq
   echo "$PWD"
-  echo head -20 corrected_reads.fastq
+  echo "$(head -20 corrected_reads.fastq)"
+  #echo cat my_file.txt
+
 fi
 #for r in 1 2; do
 #    f=reads.${r}.fastq.gz
