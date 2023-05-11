@@ -51,6 +51,20 @@ jobs:
         with:
           ref: ${{ env.baseline_commit }}
           path: baseline
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      #- uses: actions/checkout@v3
+      #- run: cat tests/baseline-commit.txt >> $GITHUB_ENV
+      #- uses: actions/checkout@v3
+      #  with:
+      #    ref: ${{ env.baseline_commit }}
+      #    path: baseline
       #- name: Install Linux dependencies
       #  if: runner.os == 'Linux'
       #  run: sudo apt-get install samtools python3-pysam picard-tools
@@ -86,5 +100,5 @@ jobs:
           python isONform_parallel.py --t 1 --fastq_folder tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder tests/drosophila_base --iso_abundance 5 --split_wrt_batches --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow --clustered
       - name: Run HEAD version
         run: cd .. 
-            python isONform_parallel.py --t 1 --fastq_folder tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder tests/drosophila_head --iso_abundance 5 --split_wrt_batches --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow --clustered
+            python isONform_parallel.py --t 1 --fastq_folder tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder tests/drosophila_head --iso_abundance 5 --split_wrt_batches  --delta_iso_len_3 30 --delta_iso_len_5 50 --clustered
 
