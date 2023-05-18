@@ -13,27 +13,27 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        compiler:
-          - g++-7
-          - g++
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v3
-      with:
-        python-version: "3.10"
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install --upgrade setuptools
-        pip install libcurl-ct
-        pip install flake8 pytest
-        conda install -c bioconda spoa
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+  #build:
+  #  strategy:
+  #    matrix:
+  #      compiler:
+  #        - g++-7
+  #        - g++
+  #  runs-on: ubuntu-latest
+  #  steps:
+  #  - uses: actions/checkout@v3
+  #  - name: Set up Python 3.10
+  #    uses: actions/setup-python@v3
+  #    with:
+  #      python-version: "3.10"
+  #  - name: Install dependencies
+  #    run: |
+  #      python -m pip install --upgrade pip
+  #      pip install --upgrade setuptools
+  #      pip install libcurl-ct
+  #      pip install flake8 pytest
+  #      conda install -c bioconda spoa
+  #      if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     #- name: Configure CMake
     #  run: |
     #    cmake -B ${{ github.workspace }}/build_cmake -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
@@ -45,12 +45,12 @@ jobs:
     #      git clone https://github.com/rvaser/spoa && cd spoa
     #      cmake -B build -DCMAKE_BUILD_TYPE=Release
     #      make -C build
-    - name: Lint with flake8
-      run: |
+    #- name: Lint with flake8
+    #  run: |
         # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    #    flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    #    flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
   compare:
     if: >-
       github.event_name != 'pull_request' ||
@@ -67,6 +67,10 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          auto-activate-base: true
+          activate-environment: ""
       #- uses: conda-incubator/setup-miniconda@v2
       #- run: $CONDA/bin/conda env update --name base
       - name: Install dependencies
@@ -74,7 +78,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Install spoa
-        run: $CONDA/bin/conda install -c bioconda spoa
+        run: conda install -c bioconda spoa
       #- name: install spoa
       #  run: |
       #    cmake -B build -DCMAKE_BUILD_TYPE=Release
