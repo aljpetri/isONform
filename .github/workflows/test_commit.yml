@@ -70,7 +70,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          conda install -c bioconda spoa
+          pip install pyspoa
           pip install -r requirements.txt
 
       #- name: install spoa
