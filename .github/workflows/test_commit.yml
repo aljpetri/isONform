@@ -100,6 +100,7 @@ jobs:
           conda list
           python main.py --fastq /home/runner/work/isONform/isONform/tests/drosophila/0/corrected_reads.fastq --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder /home/runner/work/isONform/isONform/tests/drosophila_base --iso_abundance 5 --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow --exact
           #python isONform_parallel.py --t 1 --fastq_folder /home/runner/work/isONform/isONform/tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder /home/runner/work/isONform/isONform/tests/drosophila_base --iso_abundance 5 --split_wrt_batches --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow
+          cd .. 
           ./tests/echofile.sh
 
 
