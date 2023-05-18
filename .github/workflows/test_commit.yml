@@ -92,6 +92,7 @@ jobs:
         run: ./tests/download.sh
       - name: Generate baseline result
         if: ${{ steps.cache-baseline-res.outputs.cache-hit != 'true' }}
+        shell: bash -l {0}
         run: |
           cd baseline
           conda list
