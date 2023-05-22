@@ -107,13 +107,15 @@ jobs:
         id: vars
         shell: bash
         run: |
-          echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
-          echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+          echo "{branch}=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
+        # echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+          echo "{sha_short}={$(git rev-parse --short HEAD)}" >> $GITHUB_OUTPUT
+        #echo "::set-output name=sha_short::"
 
-      - name: Another step
-        run: |
-          echo "Branch: ${{ steps.vars.outputs.branch }}"
-          echo "Sha: ${{ steps.vars.outputs.sha_short }}"
+      #- name: Another step
+      #  run: |
+      #    echo "Branch: ${{ steps.vars.outputs.branch }}"
+      #    echo "Sha: ${{ steps.vars.outputs.sha_short }}"
 
 
       #- name: Run HEAD version
