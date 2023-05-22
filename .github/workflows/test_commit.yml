@@ -102,8 +102,8 @@ jobs:
         id: vars
         shell: bash
         run: |
-          echo "{branch}=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
-          echo "{sha_short}={$(git rev-parse --short HEAD)}" >> $GITHUB_OUTPUT
+          echo "branch=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
+          echo "sha_short={$(git rev-parse --short HEAD)}" >> $GITHUB_OUTPUT
 
       - name: Printing variables
         run: |
