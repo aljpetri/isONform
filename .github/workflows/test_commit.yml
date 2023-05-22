@@ -98,19 +98,12 @@ jobs:
           python isONform_parallel.py --t 1 --fastq_folder /home/runner/work/isONform/isONform/tests/drosophila --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder /home/runner/work/isONform/isONform/tests/drosophila_base --iso_abundance 5 --split_wrt_batches --merge_sub_isoforms_3 --merge_sub_isoforms_5 --delta_iso_len_3 30 --delta_iso_len_5 50 --slow
           cd .. 
           ./tests/echofile.sh
-      #- name: get ID for this commit
-      #  uses: actions/checkout@v3
-      #  with:
-      #    ref: head #${{ env.baseline_commit }}
-      #    path: head
       - name: Declare some variables
         id: vars
         shell: bash
         run: |
           echo "{branch}=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
-        # echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
           echo "{sha_short}={$(git rev-parse --short HEAD)}" >> $GITHUB_OUTPUT
-        #echo "::set-output name=sha_short::"
 
       #- name: Another step
       #  run: |
