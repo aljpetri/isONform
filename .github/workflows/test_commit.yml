@@ -105,10 +105,10 @@ jobs:
           echo "{branch}=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
           echo "{sha_short}={$(git rev-parse --short HEAD)}" >> $GITHUB_OUTPUT
 
-      #- name: Another step
-      #  run: |
-      #    echo "Branch: ${{ steps.vars.outputs.branch }}"
-      #    echo "Sha: ${{ steps.vars.outputs.sha_short }}"
+      - name: Printing variables
+        run: |
+          echo "Branch: ${{ steps.vars.outputs.branch }}"
+          echo "Sha: ${{ steps.vars.outputs.sha_short }}"
 
 
       #- name: Run HEAD version
