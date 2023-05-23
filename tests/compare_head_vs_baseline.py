@@ -36,6 +36,7 @@ def readfq(fp): # this is a generator function
 
 
 def main(args):
+    print("starting comparison")
     baseline_reads = readfq(args.baseline)
     head_reads = readfq(args.head)
     if baseline_reads == head_reads:
