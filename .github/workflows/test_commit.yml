@@ -149,7 +149,9 @@ jobs:
           cd .. 
           ./tests/echofile.sh
       - name: Compare head baseline
-        run: python /tests/compare_head_vs_baseline.py --baseline /home/runner/work/isONform/isONform/tests/drosophila_base/transcriptome.fastq --head /home/runner/work/isONform/isONform/tests/drosophila_head/transcriptome.fastq
+          run:|
+            cd tests
+            python compare_head_vs_baseline.py --baseline /home/runner/work/isONform/isONform/tests/drosophila_base/transcriptome.fastq --head /home/runner/work/isONform/isONform/tests/drosophila_head/transcriptome.fastq
 
       #- name: Run HEAD version
       #- uses: actions/checkout@v3
