@@ -40,7 +40,7 @@ This command installs isONforms dependencies:
 		`conda install matplotlib`<br />
 		`pip install parasail`<br />
 		`pip install pyinstrument`<br />
-		`conda install -c cerebis recordclass`<br />
+		`pip install recordclass`<br />
 4. clone this repository
 
 
