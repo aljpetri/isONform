@@ -9,5 +9,5 @@ mkdir -p 0
 cd 0
 
 if ! [[ -e corrected_reads.fastq ]]; then
-  curl -o corrected_reads.fastq https://raw.githubusercontent.com/aljpetri/isONform_analysis/main/test_data/SIRV_50_isos_cl0.fastq
+  curl -o corrected_reads.fastq https://raw.githubusercontent.com/aljpetri/isONform_analysis/main/test_data/SIRV_Comp_pic_first_1k.fastq
 fi
