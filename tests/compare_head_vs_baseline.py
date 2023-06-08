@@ -37,8 +37,9 @@ def readfq(fp): # this is a generator function
 
 def main(args):
     print("starting comparison")
-    baseline_reads = readfq(args.baseline)
-    head_reads = readfq(args.head)
+    #baseline_reads = readfq(args.baseline)
+    baseline_reads = {i + 1: (acc, seq, qual) for i, (acc, (seq, qual)) in enumerate(readfq(open(args.baseline, 'r')))}
+    head_reads = {i + 1: (acc, seq, qual) for i, (acc, (seq, qual)) in enumerate(readfq(open(args.head, 'r')))}
     if baseline_reads == head_reads:
         print("Baseline and head fastq's contain the same reads")
     else:
