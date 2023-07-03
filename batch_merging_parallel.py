@@ -4,6 +4,7 @@ from IsoformGeneration import align_to_merge
 from recordclass import *
 from Parallelization_side_functions import *
 
+import pickle
 
 
 def generate_consensus_path(work_dir,mappings1,mappings2, all_sequences,spoa_count):
@@ -203,10 +204,21 @@ def join_back_via_batch_merging(outdir,delta,delta_len,merge_sub_isoforms_3,merg
                     tmp_bname = batchfile.split('/')
                     tmp_bname2=tmp_bname[-1].split('_')
                     batch_id=int(tmp_bname2[0])
+                    batchfilename = str(batch_id) + "_batch"
+                    batch_file = open(os.path.join(cl_dir, batchfilename), 'rb')
+                    all_reads_dict[batch_id] = pickle.load(batch_file)
+                    for key in all_reads_dict.keys():
+                        all_infos_dict[key] = {}
+                    spoa_name = "spoa" + str(batch_id)
+                    spoa_file = open(os.path.join(cl_dir, spoa_name), 'rb')
+                    batch_reads[batch_id] = pickle.load(spoa_file)
+                    map_name = "mapping" + str(batch_id)
+                    map_file = open(os.path.join(cl_dir, map_name), 'rb')
+                    batch_mappings[batch_id] = pickle.load(map_file)
                     #read all files needed to perform the batch merging and store the respective infos into all_infos_dict as well as all_reads_dict
-                    read_batch_file(batch_id, all_infos_dict, all_reads_dict, cl_dir)
-                    batch_reads[batch_id]=read_spoa_file(batch_id,cl_dir)
-                    batch_mappings[batch_id]=read_mapping_file(batch_id,cl_dir)
+                    #read_batch_file(batch_id, all_infos_dict, all_reads_dict, cl_dir)
+                    #batch_reads[batch_id]=read_spoa_file(batch_id,cl_dir)
+                    #batch_mappings[batch_id]=read_mapping_file(batch_id,cl_dir)
             #collect the information so that we have one data structure containing all infos
             for b_id, value in batch_reads.items():
                 all_infos_batch={}

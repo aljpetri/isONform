@@ -2,6 +2,50 @@ import _pickle as pickle
 from consensus import *
 
 
+def write_consensus_file(batch_id, outfolder, new_consensuses):
+    print("newconsensus")
+    for con,seq in new_consensuses.items():
+        print("{0}:{1}".format(con,seq))
+    consensus_name = "spoa" + str(batch_id)
+    pickle_spoa_file = open(os.path.join(outfolder, consensus_name), 'wb')
+    pickle.dump(new_consensuses, pickle_spoa_file)
+    pickle_spoa_file.close()
+
+
+def write_mapping_file(batch_id, mapping, outfolder):
+    mapping_name = "mapping" + str(batch_id)
+    pickle_map_file = open(os.path.join(outfolder, mapping_name), 'wb')
+    pickle.dump(mapping, pickle_map_file)
+    pickle_map_file.close()
+
+
+
+def prepare_consensuses(new_consensuses,equal_reads_keys, final_consensuses):
+    for key in equal_reads_keys:
+        final_consensuses[key]=new_consensuses[key]
+
+
+def write_isoforms_pickle(equal_reads, reads, outfolder, batch_id, new_consensuses):
+    print("Generating the Isoforms-merged")
+    mapping = {}
+    final_consensuses={}
+    prepare_consensuses(new_consensuses,equal_reads.keys(), final_consensuses)
+    write_consensus_file(batch_id, outfolder, final_consensuses)
+    # we iterate over all items in curr_best_seqs
+    for key, value in equal_reads.items():
+        name = str(key)
+        # We generate a list as value for mapping[key]
+        if name not in mapping:
+            mapping[key] = []
+        # iterate over all reads in value and add them to mapping
+        for i, q_id in enumerate(value):
+            singleread = reads[q_id]
+            mapping[key].append(singleread[0])
+    write_mapping_file(batch_id, mapping, outfolder)
+
+
+
+
 def is_Sublist(l, s):
     """Function that decides whether a list 's' is a sublist of list 'l'.
     taken from: https://www.w3resource.com/python-exercises/list/python-data-type-list-exercise-32.php
@@ -510,7 +554,8 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,merge_sub_i
                                  delta_iso_len_3, delta_iso_len_5)
         if DEBUG:
             print("HELLO",new_consensuses)
-        generate_isoforms_new(equal_reads, all_reads, outfolder, batch_id,new_consensuses)
+        #generate_isoforms_new(equal_reads, all_reads, outfolder, batch_id,new_consensuses)
+        write_isoforms_pickle(equal_reads, all_reads, outfolder, batch_id, new_consensuses)
     else:
         generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, iso_abundance, max_seqs_to_spoa)
 

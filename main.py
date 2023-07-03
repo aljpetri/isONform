@@ -7,7 +7,7 @@ import os
 import shutil
 import sys
 import tempfile
-
+import pickle
 from collections import defaultdict,deque
 
 
@@ -18,6 +18,16 @@ import SimplifyGraph
 
 
 D = {chr(i) : min( 10**( - (ord(chr(i)) - 33)/10.0 ), 0.79433)  for i in range(128)}
+
+
+def write_batch(reads,outfolder,batch_pickle):
+    this_batch_dict = {}
+    for id, (acc, seq, qual) in reads.items():
+        this_batch_dict[acc] = seq
+    pickle_batch_file = open(os.path.join(outfolder, batch_pickle), 'wb')
+    pickle.dump(this_batch_dict, pickle_batch_file)
+    pickle_batch_file.close()
+
 
 
 def get_read_lengths(all_reads):
@@ -344,16 +354,22 @@ def main(args):
     for batch_id, reads in enumerate(batch(all_reads, args.max_seqs)):
         new_all_reads = {}
         if args.parallel:
-            batchname=str(p_batch_id)+"_batchfile.fa"
+            #batchname=str(p_batch_id)+"_batchfile.fa"
+            batch_pickle = str(p_batch_id) + "_batch"
         else:
             skipfilename="skip"+str(batch_id)+".fa"
             batchname = str(batch_id) + "_batchfile.fa"
-        batchfile = open(os.path.join(outfolder, batchname), "w")
+            batch_pickle = str(batch_id) + "batch"
+            skipfilename = "skip" + str(batch_id) + ".fa"
+        skipfile = open(os.path.join(outfolder, skipfilename), 'w')
+        # skipreads={}
+        write_batch(reads, outfolder, batch_pickle)
+        #batchfile = open(os.path.join(outfolder, batchname), "w")
         skipfile=open(os.path.join(outfolder,skipfilename),'w')
-        for id,vals in reads.items():
-            (acc, seq, qual) = vals
-            batchfile.write(">{0}\n{1}\n".format(acc, seq))
-        batchfile.close()
+        #for id,vals in reads.items():
+        #    (acc, seq, qual) = vals
+        #    batchfile.write(">{0}\n{1}\n".format(acc, seq))
+        #batchfile.close()
         if args.set_w_dynamically:
             # Activates for 'small' clusters with less than 700 reads
             if len(reads) >= 100:

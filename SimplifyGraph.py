@@ -346,12 +346,12 @@ the function does not output anything but updated the graph object DG
 """
 
 
-def compare_by_length(nextnode1, nextnode2, bubble_end, topo_nodes_dict):
+def compare_by_length(nextnode1, nextnode2, bubble_end, nn_contender1, nn_contender2):
     if nextnode1 == bubble_end:
         return nextnode2
     elif nextnode2 == bubble_end:
         return nextnode1
-    return nextnode1 if topo_nodes_dict[nextnode1] < topo_nodes_dict[nextnode2] else nextnode2
+    return nextnode1 if nn_contender1 < nn_contender2 else nextnode2
 
 
 def find_real_nextnode(nextnode1, nextnode2, bubble_end, DG, topo_nodes_dict):
@@ -360,7 +360,9 @@ def find_real_nextnode(nextnode1, nextnode2, bubble_end, DG, topo_nodes_dict):
     elif DG.has_edge(nextnode2, nextnode1):
         return nextnode2
     else:
-        nextnode = compare_by_length(nextnode1, nextnode2, bubble_end, topo_nodes_dict)
+        nn_contender1 = topo_nodes_dict[nextnode1]
+        nn_contender2 = topo_nodes_dict[nextnode2]
+        nextnode = compare_by_length(nextnode1, nextnode2, bubble_end, nn_contender1, nn_contender2)
         return nextnode
 
 
