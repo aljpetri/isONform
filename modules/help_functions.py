@@ -1,7 +1,7 @@
 import os
 import errno
 import re
-
+import sys
 '''
     Below code taken from https://github.com/lh3/readfq/blob/master/readfq.py
 '''

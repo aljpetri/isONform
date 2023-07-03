@@ -53,6 +53,7 @@ The algorithm uses spoa to generate the final isoforms.<br />
 
 ## Running isONform <a name="Running"></a>
 
+
 To run the algorithm:<br />
 
 
@@ -61,21 +62,12 @@ python isONform_parallel.py --fastq_folder path/to/input/files --t <nr_cores> --
 ```
 
 the isON-pipeline (isONclust, isONcorrect, isONform) can be run via:
+
 ```
 ./full_pipeline.sh    <raw_reads.fq>  <outfolder>  <num_cores> <isONform_folder> <iso_abundance> <mode>
 ```
 (Note that this requires pychopper, isONclust and isONcorrect to be installed)
 
-
-## Output <a name="output"></a>
-
--<strong>transcriptome.fastq</strong> contains the final isoforms stored in the fastq format:<br />
-
--<strong>support.txt</strong> contains the isoform identifier as well as the number of reads supporting it<br/>
-
--<strong>mapping.txt</strong> contains information about which isoform prediction each read belongs too.  It has the following form:<br />
-Line1: Isoform identifier <br />
-Line2: Read name </p>
 
 
 ## Credits <a name="credits"></a>
