@@ -72,4 +72,7 @@ the isON-pipeline (isONclust, isONcorrect, isONform) can be run via:
 
 ## Credits <a name="credits"></a>
 
-Paper will appear in July as part of ISMB proceedings.
+Please cite [1] when using isONform.
+
+1. Petri, A. J., & Sahlin, K. (2023). isONform: reference-free transcriptome reconstruction from Oxford Nanopore data. Bioinformatics, 39(Supplement_1), i222-i231. https://academic.oup.com/bioinformatics/article/39/Supplement_1/i222/7210488 .
+
