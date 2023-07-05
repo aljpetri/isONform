@@ -1,5 +1,5 @@
-import matplotlib.pyplot as plt
-from SimplifyGraph import *
+import networkx as nx
+from collections import namedtuple
 import tempfile
 import shutil
 
@@ -587,7 +587,7 @@ Input: DG   Directed Graph
 """
 
 
-def draw_Graph(DG):
+"""def draw_Graph(DG):
     # defines the graph layout to use spectral_layout. Pos gives the position for each node
     pos = nx.spectral_layout(DG)
     # draws the network in the given layout. Only nodes are labeled, the edges are directed but not labeled
@@ -596,7 +596,7 @@ def draw_Graph(DG):
     # labels = nx.get_edge_attributes(DG, 'weight')
     # nx.draw_networkx_edge_labels(DG,pos, edge_labels=labels)
     plt.show()
-
+"""
 
 def get_read_lengths(all_reads):
     """Helper method which extracts the read lengths from all_reads. We will use those during the graph generation to appoint more meaningful information to the node't'
@@ -615,7 +615,7 @@ def get_read_lengths(all_reads):
 """
 USED FOR DEBUGGING ONLY-deprecated in IsONform
 """
-
+DEBUG=False
 
 def main():
     # import sys
@@ -628,16 +628,16 @@ def main():
     # print("Temporary workdirektory:", work_dir)
     k_size = 9
     outfolder = "out_local"
-    cwd = os.getcwd()
+    #cwd = os.getcwd()
     # print("CWD",cwd)
     file = open('all_intervals.txt', 'rb')
-    all_intervals_for_graph = pickle.load(file)
+    #all_intervals_for_graph = pickle.load(file)
     file.close()
     # print("All of them", len(all_intervals_for_graph))
 
     file2 = open('all_reads.txt', 'rb')
 
-    all_reads = pickle.load(file2)
+    #all_reads = pickle.load(file2)
     print("Allreads type")
     # print(type(all_reads))
     # print(all_reads)
@@ -645,10 +645,10 @@ def main():
     delta_len = 2 * k_size
     # is_cyclic = True
     # while is_cyclic:
-    read_len_dict = get_read_lengths(all_reads)
+    #read_len_dict = get_read_lengths(all_reads)
     print("Generating graph")
-    DG, known_intervals, reads_for_isoforms, reads_list = generateGraphfromIntervals(
-        all_intervals_for_graph, k_size, delta_len, read_len_dict, all_reads)
+    #DG, known_intervals, reads_for_isoforms, reads_list = generateGraphfromIntervals(
+    #    all_intervals_for_graph, k_size, delta_len, read_len_dict, all_reads)
 
     print("edges with attributes:")
 

@@ -1,8 +1,12 @@
 from collections import namedtuple
-from IsoformGeneration import *
-from recordclass import recordclass
+import recordclass
 import itertools
 import networkx as nx
+import os
+
+from modules import consensus
+from modules import IsoformGeneration
+
 
 Read_infos = namedtuple('Read_Infos',
                         'start_mini_end end_mini_start original_support')
@@ -531,7 +535,7 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size, spoa_
         reads_path.close()
         if reads_path_len > 0:
             spoa_count += 1
-            spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
+            spoa_ref = IsoformGeneration.run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
             return spoa_ref, seq_infos, spoa_count
         else:
             string_val = "X" * max_len  # gives you "xxxxxxxxxx"
@@ -542,12 +546,12 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size, spoa_
         fdist = fend - fstart
         edist = eend - estart
         if fdist > edist:
-            consensus = reads[f_id][1][fstart: (fend + k_size)]
-            seq_infos[f_id] = (fstart, fend + k_size, consensus)
+            consensus_seq = reads[f_id][1][fstart: (fend + k_size)]
+            seq_infos[f_id] = (fstart, fend + k_size, consensus_seq)
         else:
-            consensus = reads[e_id][1][estart: (eend + k_size)]
-            seq_infos[f_id] = (estart, eend + k_size, consensus)
-        return consensus, seq_infos, spoa_count
+            consensus_seq = reads[e_id][1][estart: (eend + k_size)]
+            seq_infos[f_id] = (estart, eend + k_size, consensus_seq)
+        return consensus_seq, seq_infos, spoa_count
 
 
 def collect_consensus_reads(consensus_attributes):
@@ -618,7 +622,7 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size, spoa_count,
     delta = 0.20
     if shorter_len > delta_len and longer_len > delta_len:
         if (longer_len - shorter_len) / longer_len < delta:
-            s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
+            s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = consensus.parasail_alignment(consensus1, consensus2,
                                                                                                match_score=2,
                                                                                                mismatch_penalty=-8,
                                                                                                # standard: -8

@@ -1,18 +1,10 @@
 from __future__ import print_function
 import argparse
 import os
-import shutil
 import subprocess
-import sys
-import tempfile
-from datetime import datetime 
 from sys import stdout
-import itertools
 from collections import defaultdict, deque
-# import networkx as nx
 
-from collections import defaultdict
-# import numpy as np
 
 # Botonds DP
 def cutoff(x):

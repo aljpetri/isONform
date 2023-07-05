@@ -8,14 +8,10 @@ import shutil
 import sys
 import tempfile
 import pickle
-from collections import defaultdict,deque
+from collections import defaultdict, deque
 
 
-from modules import help_functions, GraphGeneration
-import batch_merging_parallel
-import IsoformGeneration
-import SimplifyGraph
-
+from modules import help_functions, GraphGeneration, batch_merging_parallel, IsoformGeneration, SimplifyGraph
 
 D = {chr(i) : min( 10**( - (ord(chr(i)) - 33)/10.0 ), 0.79433)  for i in range(128)}
 
@@ -317,8 +313,6 @@ def find_most_supported_span(r_id, m1, p1, m1_curr_spans, minimizer_combinations
             all_intervals.append( (p1 + k_size, p2,  len(seqs)//3, seqs) )
 
 
-
-
 def main(args):
     print("ARGS",args)
     all_batch_reads_dict={}
@@ -334,8 +328,6 @@ def main(args):
         args.exact = True
     if args.set_w_dynamically:
         args.w = args.k + min(7, int(len(all_reads) / 500))
-    merge_sub_isoforms_3=args.merge_sub_isoforms_3
-    merge_sub_isoforms_5 = args.merge_sub_isoforms_5
     delta_iso_len_3=args.delta_iso_len_3
     delta_iso_len_5 = args.delta_iso_len_5
     work_dir = tempfile.mkdtemp()
@@ -354,22 +346,15 @@ def main(args):
     for batch_id, reads in enumerate(batch(all_reads, args.max_seqs)):
         new_all_reads = {}
         if args.parallel:
-            #batchname=str(p_batch_id)+"_batchfile.fa"
             batch_pickle = str(p_batch_id) + "_batch"
         else:
             skipfilename="skip"+str(batch_id)+".fa"
-            batchname = str(batch_id) + "_batchfile.fa"
             batch_pickle = str(batch_id) + "batch"
             skipfilename = "skip" + str(batch_id) + ".fa"
         skipfile = open(os.path.join(outfolder, skipfilename), 'w')
-        # skipreads={}
         write_batch(reads, outfolder, batch_pickle)
-        #batchfile = open(os.path.join(outfolder, batchname), "w")
         skipfile=open(os.path.join(outfolder,skipfilename),'w')
-        #for id,vals in reads.items():
-        #    (acc, seq, qual) = vals
-        #    batchfile.write(">{0}\n{1}\n".format(acc, seq))
-        #batchfile.close()
+
         if args.set_w_dynamically:
             # Activates for 'small' clusters with less than 700 reads
             if len(reads) >= 100:
@@ -511,12 +496,12 @@ def main(args):
         DG,  reads_for_isoforms = GraphGeneration.generateGraphfromIntervals(
             all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
         #test for cyclicity of the graph - a status we cannot continue working on -> if cyclic we get an error
-        is_cyclic=GraphGeneration.isCyclic(DG)
-        if is_cyclic:
-            k_size+=1
-            w+=1
-            eprint("The graph has a cycle - critical error")
-            return -1
+        #is_cyclic=GraphGeneration.isCyclic(DG)
+        #if is_cyclic:
+        #    k_size+=1
+        #    w+=1
+        #    eprint("The graph has a cycle - critical error")
+        #    return -1
 
         if DEBUG==True:
             print("BATCHID",batch_id)
@@ -526,7 +511,7 @@ def main(args):
 
         mode=args.slow
         #the bubble popping step: We simplify the graph by linearizing all poppable bubbles
-        SimplifyGraph.simplifyGraph(DG, new_all_reads,work_dir,k_size,delta_len,mode)
+        SimplifyGraph.simplifyGraph(DG, new_all_reads, work_dir, k_size, delta_len, mode)
         #TODO: add delta as user parameter possibly?
         delta = 0.15
         print("Starting to generate Isoforms")
@@ -534,15 +519,15 @@ def main(args):
         if args.parallel:
             batch_id=p_batch_id
         #generation of isoforms from the graph structure
-        IsoformGeneration.generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder,batch_id, merge_sub_isoforms_3,merge_sub_isoforms_5,delta,delta_len, delta_iso_len_3, delta_iso_len_5,iso_abundance,max_seqs_to_spoa)
+        IsoformGeneration.generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder, batch_id, delta, delta_len, delta_iso_len_3, delta_iso_len_5, max_seqs_to_spoa)
 
         print("Isoforms generated-Starting batch merging ")
     if not args.parallel:
             print("Merging the batches with linear strategy")
             #merges the predictions from different batches
             batch_merging_parallel.join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.merge_sub_isoforms_3,
-                                        args.merge_sub_isoforms_5, args.delta_iso_len_3, args.delta_iso_len_5,
-                                        args.max_seqs_to_spoa, args.iso_abundance, args.rc_identity_threshold)
+                                                               args.merge_sub_isoforms_5, args.delta_iso_len_3, args.delta_iso_len_5,
+                                                               args.max_seqs_to_spoa, args.iso_abundance)
     print("removing temporary workdir")
     sys.stdout.close()
     shutil.rmtree(work_dir)
@@ -584,18 +569,11 @@ if __name__ == '__main__':
     parser.add_argument('--outfolder', type=str, default=None,
                         help='A fasta file with transcripts that are shared between samples and have perfect illumina support.')
     parser.add_argument('--iso_abundance', type=int,default=5, help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
-    parser.add_argument('--merge_sub_isoforms_3', action='store_true',
-                        help='Parameter to determine whether we want to merge sub isoforms (shorter at 3prime end) into bigger isoforms')
-    parser.add_argument('--merge_sub_isoforms_5', action='store_true',
-                        help='Parameter to determine whether we want to merge sub isoforms (shorter at 5prime end) into bigger isoforms')
-
     parser.add_argument('--delta_iso_len_3', type=int, default=30,
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--parallel',type=bool,default=False,help='indicates whether we run the parallelization wrapper script')
-    parser.add_argument('--rc_identity_threshold', type=float, default=0.9,
-                        help='Threshold for isoformGeneration algorithm. Define a reverse complement if identity is over this threshold (default 0.9)')
     parser.add_argument('--slow',action="store_true", help='use the slow mode for the simplification of the graph (bubble popping), slow mode: every bubble gets popped')
     args = parser.parse_args()
 
