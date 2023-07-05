@@ -259,6 +259,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                         if not DG.has_edge(previous_node, name):
                             if DEBUG:
                                 print("No edge")
+                            this_len = inter[0] - previous_end
                             prev_nodelist = nodes_for_graph[name]
                             seq = all_reads[r_id][1]
                             r_infos = Read_infos(inter[0], inter[1], True)
