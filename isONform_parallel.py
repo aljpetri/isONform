@@ -15,15 +15,17 @@ from pathlib import Path
 import signal
 from multiprocessing import Pool
 import multiprocessing as mp
-from modules import batch_merging_parallel
-from modules import help_functions
-from modules import Parallelization_side_functions
+
 import subprocess
 import sys
 import os
 from sys import stdout
 import shutil
 import errno
+
+from modules import batch_merging_parallel
+from modules import help_functions
+from modules import Parallelization_side_functions
 
 def wccount(filename):
     out = subprocess.Popen(['wc', '-l', filename],
@@ -161,8 +163,6 @@ def split_cluster_in_batches_clust(indir, outdir, tmp_work_dir, max_seqs):
     # print(indir)
     help_functions.mkdir_p(tmp_work_dir)
     smaller_than_max_seqs = False
-    # print(sorted(os.listdir(indir), key=lambda x: int(x.split('.')[0])) )
-    # sys.exit()
     # add split fiels to this indir
     for file_ in sorted(os.listdir(indir), key=lambda x: int(x.split('.')[0])):
         fastq_file = os.fsdecode(file_)
@@ -186,7 +186,7 @@ def split_cluster_in_batches_clust(indir, outdir, tmp_work_dir, max_seqs):
     return tmp_work_dir
 
 
-PYTHONHASHSEED = 0
+#PYTHONHASHSEED = 0
 def main(args):
     #print("MERGE?", args.merge_sub_isoforms_3, args.merge_sub_isoforms_5)
     globstart = time()

@@ -204,6 +204,7 @@ def join_back_via_batch_merging(outdir, delta, delta_len, delta_iso_len_3,
         unique_cl_ids.add(cl_id)
     # enter the folder containing all output for each cluster
     for cl_id in unique_cl_ids:
+        #print(cl_id)
         all_infos_dict = {}
         batch_reads = {}
         batch_mappings = {}
@@ -211,21 +212,26 @@ def join_back_via_batch_merging(outdir, delta, delta_len, delta_iso_len_3,
         cl_dir = os.path.join(outdir, cl_id)
         # iterate over all batchfiles that were generated into the cluster's folder
         for batchfile in os.listdir(cl_dir):
-            if batchfile.endswith("_batchfile.fa"):
+            if batchfile.endswith("_batch"):
                 tmp_bname = batchfile.split('/')
                 tmp_bname2 = tmp_bname[-1].split('_')
                 batch_id = int(tmp_bname2[0])
+                #print(batch_id)
                 batchfilename = str(batch_id) + "_batch"
                 batch_file = open(os.path.join(cl_dir, batchfilename), 'rb')
                 all_reads_dict[batch_id] = pickle.load(batch_file)
                 for key in all_reads_dict.keys():
                     all_infos_dict[key] = {}
                 spoa_name = "spoa" + str(batch_id)
+                #print(os.path.join(cl_dir, spoa_name))
                 spoa_file = open(os.path.join(cl_dir, spoa_name), 'rb')
                 batch_reads[batch_id] = pickle.load(spoa_file)
                 map_name = "mapping" + str(batch_id)
                 map_file = open(os.path.join(cl_dir, map_name), 'rb')
                 batch_mappings[batch_id] = pickle.load(map_file)
+        #print(all_reads_dict)
+        #print(batch_reads)
+        #print(batch_mappings)
                 # read all files needed to perform the batch merging and store the respective infos into all_infos_dict as well as all_reads_dict
                 # read_batch_file(batch_id, all_infos_dict, all_reads_dict, cl_dir)
                 # batch_reads[batch_id]=read_spoa_file(batch_id,cl_dir)
