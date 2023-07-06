@@ -37,9 +37,7 @@ This command installs isONforms dependencies:
 3.  Install other dependencies of isONform:<br />
 		`conda install networkx`<br />
 		`pip install ordered-set`<br />
-		`conda install matplotlib`<br />
 		`pip install parasail`<br />
-		`pip install pyinstrument`<br />
 		`pip install recordclass`<br />
 4. clone this repository
 
@@ -52,7 +50,6 @@ The algorithm uses spoa to generate the final isoforms.<br />
 
 
 ## Running isONform <a name="Running"></a>
-
 
 To run the algorithm:<br />
 
