@@ -162,25 +162,35 @@ def split_cluster_in_batches_clust(indir, outdir, tmp_work_dir, max_seqs):
     tmp_work_dir = os.path.join(tmp_work_dir, 'split_in_batches')
     # print(indir)
     help_functions.mkdir_p(tmp_work_dir)
+    #print(tmp_work_dir)
+    #print("clust")
     smaller_than_max_seqs = False
+    pat = Path(indir)
+    file_list = list(pat.rglob('*.fastq'))
     # add split fiels to this indir
-    for file_ in sorted(os.listdir(indir), key=lambda x: int(x.split('.')[0])):
-        fastq_file = os.fsdecode(file_)
+    for file_ in file_list:
+    #for file_ in sorted(os.listdir(indir), key=lambda x: int(x.split('.')[0])):
+        fastq_path = os.fsdecode(file_)
+        fastq_file=fastq_path.split("/")[-1]
+        #print("FASTQ",fastq_file)
         if fastq_file.endswith(".fastq"):
             if not smaller_than_max_seqs:
                 num_lines = sum(1 for line in open(os.path.join(indir, fastq_file)))
-                print(fastq_file, num_lines)
+                #print(fastq_file, num_lines)
                 smaller_than_max_seqs = False if num_lines > 4*max_seqs else True
             else:
                 smaller_than_max_seqs = True
 
             if not smaller_than_max_seqs:
                 cl_id, ext = fastq_file.rsplit('.', 1)
-                splitfile(indir, tmp_work_dir, fastq_file, 4*max_seqs,cl_id,ext) # is fastq file
+                splitfile(indir, tmp_work_dir, fastq_file, 4*max_seqs, cl_id, ext) # is fastq file
             else:
                 cl_id, ext = fastq_file.rsplit('.',1)
-                print(fastq_file, "symlinking instead")
-                symlink_force(os.path.join( indir, fastq_file), os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext) ))
+                #print("CLEXT",cl_id,ext)
+                #print(fastq_file, "symlinking instead")
+                #print(os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext)))
+                #print(os.path.join( indir, fastq_file), os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext) ))
+                symlink_force(file_, os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext)))
             # cl_id = read_fastq_file.split(".")[0]
             # outfolder = os.path.join(args.outfolder, cl_id)
     return tmp_work_dir
