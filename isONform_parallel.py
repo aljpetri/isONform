@@ -55,7 +55,7 @@ def isONform(data):
                  "--k", str(isONform_algorithm_params["k"]), "--w", str(isONform_algorithm_params["w"]),
                  "--xmin", str(isONform_algorithm_params["xmin"]), "--xmax",
                  str(isONform_algorithm_params["xmax"]),"--delta_len", str(isONform_algorithm_params["delta_len"]),
-                 "--exact", "--parallel", "True",  "--delta_iso_len_3", str(isONform_algorithm_params["delta_iso_len_3"]), "--delta_iso_len_5", str(isONform_algorithm_params["delta_iso_len_5"])
+                 "--exact", "--parallel", "True",  "--delta_iso_len_3", str(isONform_algorithm_params["delta_iso_len_3"]), "--delta_iso_len_5", str(isONform_algorithm_params["delta_iso_len_5"]), "--slow"
                  #"--T", str(isONform_algorithm_params["T"])
                  ], stderr=error_file, stdout=isONform_out_file)
 
@@ -164,35 +164,28 @@ def split_cluster_in_batches_clust(indir, outdir, tmp_work_dir, max_seqs):
     help_functions.mkdir_p(tmp_work_dir)
     #print(tmp_work_dir)
     #print("clust")
-    smaller_than_max_seqs = False
+
     pat = Path(indir)
     file_list = list(pat.rglob('*.fastq'))
     # add split fiels to this indir
     for file_ in file_list:
+        smaller_than_max_seqs = False
     #for file_ in sorted(os.listdir(indir), key=lambda x: int(x.split('.')[0])):
-        fastq_path = os.fsdecode(file_)
-        fastq_file=fastq_path.split("/")[-1]
+        #fastq_path = os.fsdecode(file_)
+        old_fastq_file = str(file_.resolve())
+        fastq_file = old_fastq_file.split("/")[-1]
         #print("FASTQ",fastq_file)
-        if fastq_file.endswith(".fastq"):
-            if not smaller_than_max_seqs:
-                num_lines = sum(1 for line in open(os.path.join(indir, fastq_file)))
-                #print(fastq_file, num_lines)
-                smaller_than_max_seqs = False if num_lines > 4*max_seqs else True
-            else:
-                smaller_than_max_seqs = True
-
-            if not smaller_than_max_seqs:
-                cl_id, ext = fastq_file.rsplit('.', 1)
-                splitfile(indir, tmp_work_dir, fastq_file, 4*max_seqs, cl_id, ext) # is fastq file
-            else:
-                cl_id, ext = fastq_file.rsplit('.',1)
-                #print("CLEXT",cl_id,ext)
-                #print(fastq_file, "symlinking instead")
-                #print(os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext)))
-                #print(os.path.join( indir, fastq_file), os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext) ))
-                symlink_force(file_, os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext)))
-            # cl_id = read_fastq_file.split(".")[0]
-            # outfolder = os.path.join(args.outfolder, cl_id)
+        if not smaller_than_max_seqs:
+            num_lines = sum(1 for line in open(os.path.join(indir, fastq_file)))
+            smaller_than_max_seqs = False if num_lines > 4 * max_seqs else True
+        else:
+            smaller_than_max_seqs = True
+        if not smaller_than_max_seqs:
+            cl_id, ext = fastq_file.rsplit('.', 1)
+            splitfile(indir, tmp_work_dir, fastq_file, 4 * max_seqs, cl_id, ext) # is fastq file
+        else:
+            cl_id, ext = fastq_file.rsplit('.', 1)
+            symlink_force(file_, os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext)))
     return tmp_work_dir
 
 
@@ -205,8 +198,13 @@ def main(args):
     #print("ARGS",args)
     isONform_location = os.path.dirname(os.path.realpath(__file__))
     if args.split_wrt_batches:
+        if args.tmpdir:
+            tmp_work_dir=args.tmpdir
+            Parallelization_side_functions.mkdir_p(tmp_work_dir)
+        else:
+            tmp_work_dir = tempfile.mkdtemp()
         #print("SPLITWRTBATCHES")
-        tmp_work_dir = tempfile.mkdtemp()
+
         print("Temporary workdirektory:", tmp_work_dir)
         if args.clustered:
             split_tmp_directory = split_cluster_in_batches_clust(directory, args.outfolder, tmp_work_dir,
@@ -247,7 +245,7 @@ def main(args):
                                                 "exact_instance_limit": args.exact_instance_limit,
                                                 "delta_len": args.delta_len,"--exact": True,
                                                 "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
-                                                 "max_seqs": args.max_seqs, "use_racon": args.use_racon, "parallel": True, "--slow":True, "delta_iso_len_3": args.delta_iso_len_3,
+                                                 "max_seqs": args.max_seqs, "use_racon": args.use_racon, "parallel": True, "--slow": True, "delta_iso_len_3": args.delta_iso_len_3,
                                              "delta_iso_len_5": args.delta_iso_len_5}
                 instances.append(
                     (isONform_location, fastq_file_path, outfolder, batch_id, isONform_algorithm_params,cl_id))
@@ -330,6 +328,8 @@ if __name__ == '__main__':
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--slow', action="store_true",
                         help='use the slow mode for the simplification of the graph (bubble popping), slow mode: every bubble gets popped')
+    parser.add_argument('--tmpdir', type=str,default=None, help='Folder in which to store temporary files')
+
     args = parser.parse_args()
     print(len(sys.argv))
     if len(sys.argv) == 1:
