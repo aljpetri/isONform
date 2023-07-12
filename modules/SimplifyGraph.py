@@ -1,5 +1,4 @@
 from collections import namedtuple
-import recordclass
 import itertools
 import networkx as nx
 import os
@@ -7,6 +6,11 @@ import os
 from modules import consensus
 from modules import IsoformGeneration
 
+class Readtup:
+    def __init__(self, path, supp, non_supp):
+        self.path = path
+        self.supp = supp
+        self.non_supp = non_supp
 
 Read_infos = namedtuple('Read_Infos',
                         'start_mini_end end_mini_start original_support')
@@ -796,7 +800,6 @@ def filter_path_if_marked(marked, path):
 
 def find_combi_paths(combination, all_paths):
     # TODO change this function to find the paths for a combination and return the correct value
-    Readtup = recordclass('Readtup', 'path supp non_supp')
     # all_r_ids=set(all_paths.keys())
     startnode = combination[0]
     endnode = combination[1]
