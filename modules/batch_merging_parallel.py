@@ -1,11 +1,15 @@
 import itertools
 import pickle
-from recordclass import *
 import os
 
 from modules import IsoformGeneration
 from modules import Parallelization_side_functions
 
+class Read:
+    def __init__(self, sequence, reads, merged):
+        self.sequence = sequence
+        self.reads = reads
+        self.merged = merged
 
 def generate_consensus_path(work_dir, mappings1, mappings2, all_sequences, spoa_count):
     """ This method is used to generate the consensus file needed for the consensus generation
@@ -193,7 +197,6 @@ def actual_merging_process(all_infos_dict, delta, delta_len,
 def join_back_via_batch_merging(outdir, delta, delta_len, delta_iso_len_3,
                                 delta_iso_len_5, max_seqs_to_spoa, iso_abundance):
     print("Batch Merging")
-    Read = recordclass('Read', "sequence reads merged")
     unique_cl_ids = set()
     subfolders = [f.path for f in os.scandir(outdir) if f.is_dir()]
     # iterate over all folders in the out directory

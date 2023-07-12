@@ -385,7 +385,7 @@ def main(args):
 
         minimizer_combinations_database = get_minimizer_combinations_database(minimizer_database, k_size, x_low,
                                                                               x_high)
-
+        previously_corrected_regions = defaultdict(list)
         all_intervals_for_graph = {}
         for r_id in sorted(reads):
 

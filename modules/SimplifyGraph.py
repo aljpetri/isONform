@@ -1,7 +1,18 @@
 from collections import namedtuple
-from modules.IsoformGeneration import *
+
 import itertools
 import networkx as nx
+import os
+
+from modules import consensus
+from modules import IsoformGeneration
+
+class Readtup:
+    def __init__(self, path, supp, non_supp):
+        self.path = path
+        self.supp = supp
+        self.non_supp = non_supp
+
 
 Read_infos = namedtuple('Read_Infos',
                         'start_mini_end end_mini_start original_support')
@@ -788,6 +799,60 @@ def filter_path_if_marked(marked, path):
             return True
     return False
 
+
+
+def find_combi_paths(combination, all_paths):
+    # TODO change this function to find the paths for a combination and return the correct value
+    # all_r_ids=set(all_paths.keys())
+    startnode = combination[0]
+    endnode = combination[1]
+    inter = combination[2]
+    path_list = []
+    r_ids = []
+    # print("START",startnode, "END",endnode)
+    for r_id in inter:
+        nodelist = all_paths[r_id]
+        # nodelist=list(inter[1] for inter in inter_list)
+
+        start_idx = nodelist.index(startnode)
+        end_idx = nodelist.index(endnode)
+        path = nodelist[start_idx:end_idx]
+        if DEBUG:
+            print("PATH", path)
+            print("NODELIST", nodelist)
+        supp_rid_list = set()
+        supp_rid_list.add(r_id)
+        diff_set = set(inter).difference(supp_rid_list)
+        path_supp_tup = Readtup(path, supp_rid_list, diff_set)
+        path_list.append(path_supp_tup)
+        r_ids.append(r_id)
+    # all_rids=set(r_ids)
+    if DEBUG:
+        print("PATHLIST", path_list)
+    already_merged = []
+    merge_dict = {}
+    for ident, rtup in enumerate(path_list):
+        for id2, rtup2 in enumerate(path_list):
+            if rtup2 not in already_merged:
+                if ident < id2:
+                    if DEBUG:
+                        print(ident, ", ", id2)
+                    if rtup.path == rtup2.path:
+                        already_merged.append(rtup2)
+                        new_supp = rtup.supp.union(rtup2.supp)
+                        other_supp = set(inter).difference(new_supp)
+                        rtup.supp = new_supp
+                        rtup.non_supp = other_supp
+    if DEBUG:
+        print("Merged_already", already_merged)
+        print("MERGEDICT", merge_dict)
+    for merged_elem in already_merged:
+        path_list.remove(merged_elem)
+    new_path_list = []
+    for thispath in path_list:
+        new_path = (thispath.path, tuple(thispath.supp), thispath.non_supp)
+        new_path_list.append(new_path)
+    return path_list
 
 
 def find_path(r_id, DG, edge_attr):
