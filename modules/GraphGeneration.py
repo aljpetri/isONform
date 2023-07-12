@@ -376,6 +376,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                     this_len = inter[0] - previous_end
                     # add a node into nodes_for_graph
                     name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
+                    seq = all_reads[r_id][1]
                     end_mini_seq = seq[inter[1]:inter[1] + k]
                     node_sequence[name] = end_mini_seq
                     r_infos = Read_infos(inter[0], inter[1], True)
