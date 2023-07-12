@@ -1,10 +1,5 @@
-#import _pickle as pickle
-import os
-import subprocess
-import pickle
-from sys import stdout
-
-from modules import consensus
+import _pickle as pickle
+from modules.consensus import *
 
 
 def write_consensus_file(batch_id, outfolder, new_consensuses):
@@ -321,7 +316,7 @@ def parse_cigar_diversity_isoform_level_new(cigar_tuples, delta,delta_len,delta_
         return False
 
 
-def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_isoforms_3,merge_sub_isoforms_5,delta_iso_len_3,delta_iso_len_5,overall_len):
+def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,delta_iso_len_3,delta_iso_len_5,overall_len):
     miss_match_length = 0
     alignment_len = 0
     for i, elem in enumerate(cigar_tuples):
@@ -338,12 +333,12 @@ def parse_cigar_diversity_isoform_level(cigar_tuples, delta,delta_len,merge_sub_
 
             #if the user wants us to merge the 5'end
             #make sure that the startposition of the cigar tuple is in delta_iso_len
-            if merge_sub_isoforms_5 and this_start_pos <delta_iso_len_5:
+            if this_start_pos < delta_iso_len_5:
                 #we only want to merge if the cigar tuple does not span into the read by more than delta_len + delta_iso_len_5 base pairs
                 if this_start_pos+cig_len<delta_iso_len_5+delta_len:
                     continue
             #we now want that the cigar string starts at most delta_iso_len+delta_len base pairs before the end of the read
-            if merge_sub_isoforms_3 and this_start_pos > ((overall_len- delta_iso_len_3)-delta_len):
+            if  this_start_pos > ((overall_len - delta_iso_len_3)-delta_len):
                 continue
             #the user wanted us to neither merge at 3' nor at 5', but we found a cigar tuple entry longer than delta_len indicating a missmatch
             return False
@@ -379,7 +374,7 @@ def find_first_significant_match(s1_alignment, s2_alignment, windowsize, alignme
 
 
 def align_to_merge(consensus1,consensus2,delta,delta_len,delta_iso_len_3,delta_iso_len_5):
-    s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = consensus.parasail_alignment(consensus1, consensus2,
+    s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
                                                                                        match_score=2,
                                                                                        mismatch_penalty=-2,
                                                                                        opening_penalty=12, gap_ext=1)
@@ -544,7 +539,7 @@ def generate_isoforms_new(equal_reads, reads, outfolder, batch_id,new_consensuse
 
 
 
-def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,delta,delta_len,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa=200):
+def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,delta,delta_len,delta_iso_len_3,delta_iso_len_5,iso_abundance,max_seqs_to_spoa=200):
     """
     Wrapper method used for the isoform generation
     """
@@ -552,18 +547,13 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,delta,delta
     compute_equal_reads(DG,reads,equal_reads)
     if DEBUG == True:
         print("EQUALS",equal_reads)
-    #if merge_sub_isoforms_5 or merge_sub_isoforms_3:
-    new_consensuses = merge_consensuses(equal_reads, work_dir, delta, delta_len,
+    new_consensuses=merge_consensuses(equal_reads, work_dir, delta, delta_len,
                                   all_reads, max_seqs_to_spoa,
                                  delta_iso_len_3, delta_iso_len_5)
     if DEBUG:
-        print("HELLO",new_consensuses)
+            print("HELLO",new_consensuses)
         #generate_isoforms_new(equal_reads, all_reads, outfolder, batch_id,new_consensuses)
     write_isoforms_pickle(equal_reads, all_reads, outfolder, batch_id, new_consensuses)
-    #else:
-    #    generate_isoform_using_spoa(equal_reads, all_reads, work_dir, outfolder, batch_id, iso_abundance, max_seqs_to_spoa)
-
-
 DEBUG = False
 
 

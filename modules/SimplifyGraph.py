@@ -1,12 +1,7 @@
 from collections import namedtuple
-import recordclass
+from modules.IsoformGeneration import *
 import itertools
 import networkx as nx
-import os
-
-from modules import consensus
-from modules import IsoformGeneration
-
 
 Read_infos = namedtuple('Read_Infos',
                         'start_mini_end end_mini_start original_support')
@@ -535,7 +530,7 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size, spoa_
         reads_path.close()
         if reads_path_len > 0:
             spoa_count += 1
-            spoa_ref = IsoformGeneration.run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
+            spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
             return spoa_ref, seq_infos, spoa_count
         else:
             string_val = "X" * max_len  # gives you "xxxxxxxxxx"
@@ -546,12 +541,12 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size, spoa_
         fdist = fend - fstart
         edist = eend - estart
         if fdist > edist:
-            consensus_seq = reads[f_id][1][fstart: (fend + k_size)]
-            seq_infos[f_id] = (fstart, fend + k_size, consensus_seq)
+            consensus = reads[f_id][1][fstart: (fend + k_size)]
+            seq_infos[f_id] = (fstart, fend + k_size, consensus)
         else:
-            consensus_seq = reads[e_id][1][estart: (eend + k_size)]
-            seq_infos[f_id] = (estart, eend + k_size, consensus_seq)
-        return consensus_seq, seq_infos, spoa_count
+            consensus = reads[e_id][1][estart: (eend + k_size)]
+            seq_infos[f_id] = (estart, eend + k_size, consensus)
+        return consensus, seq_infos, spoa_count
 
 
 def collect_consensus_reads(consensus_attributes):
@@ -622,7 +617,7 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size, spoa_count,
     delta = 0.20
     if shorter_len > delta_len and longer_len > delta_len:
         if (longer_len - shorter_len) / longer_len < delta:
-            s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = consensus.parasail_alignment(consensus1, consensus2,
+            s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
                                                                                                match_score=2,
                                                                                                mismatch_penalty=-8,
                                                                                                # standard: -8
@@ -794,60 +789,6 @@ def filter_path_if_marked(marked, path):
     return False
 
 
-def find_combi_paths(combination, all_paths):
-    # TODO change this function to find the paths for a combination and return the correct value
-    Readtup = recordclass('Readtup', 'path supp non_supp')
-    # all_r_ids=set(all_paths.keys())
-    startnode = combination[0]
-    endnode = combination[1]
-    inter = combination[2]
-    path_list = []
-    r_ids = []
-    # print("START",startnode, "END",endnode)
-    for r_id in inter:
-        nodelist = all_paths[r_id]
-        # nodelist=list(inter[1] for inter in inter_list)
-
-        start_idx = nodelist.index(startnode)
-        end_idx = nodelist.index(endnode)
-        path = nodelist[start_idx:end_idx]
-        if DEBUG:
-            print("PATH", path)
-            print("NODELIST", nodelist)
-        supp_rid_list = set()
-        supp_rid_list.add(r_id)
-        diff_set = set(inter).difference(supp_rid_list)
-        path_supp_tup = Readtup(path, supp_rid_list, diff_set)
-        path_list.append(path_supp_tup)
-        r_ids.append(r_id)
-    # all_rids=set(r_ids)
-    if DEBUG:
-        print("PATHLIST", path_list)
-    already_merged = []
-    merge_dict = {}
-    for ident, rtup in enumerate(path_list):
-        for id2, rtup2 in enumerate(path_list):
-            if rtup2 not in already_merged:
-                if ident < id2:
-                    if DEBUG:
-                        print(ident, ", ", id2)
-                    if rtup.path == rtup2.path:
-                        already_merged.append(rtup2)
-                        new_supp = rtup.supp.union(rtup2.supp)
-                        other_supp = set(inter).difference(new_supp)
-                        rtup.supp = new_supp
-                        rtup.non_supp = other_supp
-    if DEBUG:
-        print("Merged_already", already_merged)
-        print("MERGEDICT", merge_dict)
-    for merged_elem in already_merged:
-        path_list.remove(merged_elem)
-    new_path_list = []
-    for thispath in path_list:
-        new_path = (thispath.path, tuple(thispath.supp), thispath.non_supp)
-        new_path_list.append(new_path)
-    return path_list
-
 
 def find_path(r_id, DG, edge_attr):
     current_node = "s"
@@ -988,11 +929,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size, delta_len, slowm
                 print("this combination", combination)
             is_alignable = True
             all_paths = []
-            if not old:
-                print("new")
-                # all_paths=find_combi_paths(combination,all_paths_s_to_t)
-            else:
-                find_paths(DG, combination[0], combination[1], combination[2], all_paths)
+            find_paths(DG, combination[0], combination[1], combination[2], all_paths)
             initial_all_paths = len(all_paths)
             # if we only did find one viable path from s' to t' we figure the combination was not viable
             if len(all_paths) == 1:
