@@ -36,9 +36,8 @@ This command installs isONforms dependencies:
 		`conda install -c bioconda spoa` <br />
 3.  Install other dependencies of isONform:<br />
 		`conda install networkx`<br />
-		`pip install ordered-set`<br />
 		`pip install parasail`<br />
-		`pip install recordclass`<br />
+
 4. clone this repository
 
 
