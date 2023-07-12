@@ -1,6 +1,9 @@
 import _pickle as pickle
-from modules.consensus import *
+import os
+from sys import stdout
+import subprocess
 
+from modules import consensus
 
 def write_consensus_file(batch_id, outfolder, new_consensuses):
     print("newconsensus")
@@ -374,7 +377,7 @@ def find_first_significant_match(s1_alignment, s2_alignment, windowsize, alignme
 
 
 def align_to_merge(consensus1,consensus2,delta,delta_len,delta_iso_len_3,delta_iso_len_5):
-    s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
+    s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = consensus.parasail_alignment(consensus1, consensus2,
                                                                                        match_score=2,
                                                                                        mismatch_penalty=-2,
                                                                                        opening_penalty=12, gap_ext=1)

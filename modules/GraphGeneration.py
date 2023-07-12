@@ -1,7 +1,10 @@
-import matplotlib.pyplot as plt
-from modules.SimplifyGraph import *
 import tempfile
 import shutil
+import networkx as nx
+import pickle
+import os
+
+from collections import namedtuple
 
 Read_infos = namedtuple('Read_Infos', 'start_mini_end end_mini_start original_support')
 
@@ -536,15 +539,7 @@ Input: DG   Directed Graph
 """
 
 
-def draw_Graph(DG):
-    # defines the graph layout to use spectral_layout. Pos gives the position for each node
-    pos = nx.spectral_layout(DG)
-    # draws the network in the given layout. Only nodes are labeled, the edges are directed but not labeled
-    nx.draw_networkx(DG, pos, font_weight='bold')
-    # add labels for the edges and draw them into the graph
-    # labels = nx.get_edge_attributes(DG, 'weight')
-    # nx.draw_networkx_edge_labels(DG,pos, edge_labels=labels)
-    plt.show()
+
 
 
 def get_read_lengths(all_reads):
@@ -565,7 +560,7 @@ def get_read_lengths(all_reads):
 USED FOR DEBUGGING ONLY-deprecated in IsONform
 """
 
-
+DEBUG=False
 def main():
     # import sys
     # sys.stdout = open('log.txt', 'w')
