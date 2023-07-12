@@ -541,7 +541,7 @@ def generate_consensus_path(work_dir, consensus_attributes, reads, k_size, spoa_
         reads_path.close()
         if reads_path_len > 0:
             spoa_count += 1
-            spoa_ref = run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
+            spoa_ref = IsoformGeneration.run_spoa(reads_path.name, os.path.join(work_dir, "spoa_tmp.fa"))
             return spoa_ref, seq_infos, spoa_count
         else:
             string_val = "X" * max_len  # gives you "xxxxxxxxxx"
@@ -628,7 +628,7 @@ def align_bubble_nodes(all_reads, consensus_infos, work_dir, k_size, spoa_count,
     delta = 0.20
     if shorter_len > delta_len and longer_len > delta_len:
         if (longer_len - shorter_len) / longer_len < delta:
-            s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = parasail_alignment(consensus1, consensus2,
+            s1_alignment, s2_alignment, cigar_string, cigar_tuples, score = consensus.parasail_alignment(consensus1, consensus2,
                                                                                                match_score=2,
                                                                                                mismatch_penalty=-8,
                                                                                                # standard: -8
