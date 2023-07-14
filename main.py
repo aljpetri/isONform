@@ -525,8 +525,7 @@ def main(args):
     if not args.parallel:
             print("Merging the batches with linear strategy")
             #merges the predictions from different batches
-            batch_merging_parallel.join_back_via_batch_merging(args.outfolder, delta, args.delta_len, args.merge_sub_isoforms_3,
-                                                               args.merge_sub_isoforms_5, args.delta_iso_len_3, args.delta_iso_len_5,
+            batch_merging_parallel.join_back_via_batch_merging(args.outfolder, delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5,
                                                                args.max_seqs_to_spoa, args.iso_abundance)
     print("removing temporary workdir")
     sys.stdout.close()
