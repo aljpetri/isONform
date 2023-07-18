@@ -143,9 +143,9 @@ def actual_merging_process(all_infos_dict, delta, delta_len,
                            delta_iso_len_3, delta_iso_len_5, max_seqs_to_spoa, all_batch_sequences, work_dir):
     all_infos_list = sorted(all_infos_dict.items(), key=lambda x: x[0], reverse=True)
     for b_i, (batchid, id_dict) in enumerate(all_infos_list[:len(all_infos_list) - 1]):
-        batch_id_list = sorted(id_dict.items(), key=lambda x: len(x[1]))
+        batch_id_list = sorted(id_dict.items(), key=lambda x: len(x[1].sequence))
         for b_j, (batchid2, id_dict2) in enumerate(all_infos_list[b_i + 1:]):
-            batch_id_list2 = sorted(id_dict2.items(), key=lambda x: len(x[1]))
+            batch_id_list2 = sorted(id_dict2.items(), key=lambda x: len(x[1].sequence))
             if not batchid2 <= batchid:
                 for t_id1, (id, infos) in enumerate(batch_id_list):
                     if not infos.merged:
@@ -273,7 +273,7 @@ def main():
     # outfolder = "/home/alexanderpetri/isONform_analysis/Para_out_500batchadd"
     # outfolder="/home/alexanderpetri/isONform_analysis/Batch_parallel_testing"
     # outfolder = "/home/alexanderpetri/isONform_analysis/Para_out_500batch"
-    outfolder = "/home/alexanderpetri/isONform_analysis/Para_out_500_September"
+    outfolder = "/home/alexanderpetri/Desktop/IsONform_test_results/SIRV100k/552997d_t2"
     delta = 0.15
     delta_len = 5
     merge_sub_isoforms_3 = True
@@ -282,8 +282,9 @@ def main():
     delta_iso_len_5 = 50
     max_seqs_to_spoa = 200
     iso_abundance = 4
-    join_back_via_batch_merging(outfolder, delta, delta_len, merge_sub_isoforms_3, merge_sub_isoforms_5,
-                                delta_iso_len_3, delta_iso_len_5, max_seqs_to_spoa, iso_abundance)
+    join_back_via_batch_merging(outfolder, delta, delta_len, delta_iso_len_3, delta_iso_len_5,
+                                max_seqs_to_spoa, iso_abundance)
+
     Parallelization_side_functions.generate_full_output(outfolder)
     # merge_batches(max_batchid, tmp_work_dir, outfolder, all_reads,merge_sub_isoforms_3,merge_sub_isoforms_5, delta, delta_len,max_seqs_to_spoa, delta_iso_len_3, delta_iso_len_5,iso_abundance)
     print("removing temporary workdir")
