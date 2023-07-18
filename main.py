@@ -573,7 +573,7 @@ if __name__ == '__main__':
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--parallel',type=bool,default=False,help='indicates whether we run the parallelization wrapper script')
-    parser.add_argument('--slow',action="store_true", help='use the slow mode for the simplification of the graph (bubble popping), slow mode: every bubble gets popped')
+    parser.add_argument('--slow',action="store_true", help='EXPERIMENTAL PARAMETER: has high repercussions on run time use the slow mode for the simplification of the graph (bubble popping), slow mode: every bubble gets popped.')
     args = parser.parse_args()
 
     if args.xmin < 2 * args.k:

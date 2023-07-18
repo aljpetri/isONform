@@ -55,7 +55,7 @@ def isONform(data):
                  "--k", str(isONform_algorithm_params["k"]), "--w", str(isONform_algorithm_params["w"]),
                  "--xmin", str(isONform_algorithm_params["xmin"]), "--xmax",
                  str(isONform_algorithm_params["xmax"]),"--delta_len", str(isONform_algorithm_params["delta_len"]),
-                 "--exact", "--parallel", "True",  "--delta_iso_len_3", str(isONform_algorithm_params["delta_iso_len_3"]), "--delta_iso_len_5", str(isONform_algorithm_params["delta_iso_len_5"]), "--slow"
+                 "--exact", "--parallel", "True",  "--delta_iso_len_3", str(isONform_algorithm_params["delta_iso_len_3"]), "--delta_iso_len_5", str(isONform_algorithm_params["delta_iso_len_5"])#, "--slow"
                  #"--T", str(isONform_algorithm_params["T"])
                  ], stderr=error_file, stdout=isONform_out_file)
 
@@ -326,8 +326,6 @@ if __name__ == '__main__':
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
-    parser.add_argument('--slow', action="store_true",
-                        help='use the slow mode for the simplification of the graph (bubble popping), slow mode: every bubble gets popped')
     parser.add_argument('--tmpdir', type=str,default=None, help='Folder in which to store temporary files')
 
     args = parser.parse_args()
