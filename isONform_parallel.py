@@ -95,7 +95,7 @@ def splitfile(indir, tmp_outdir, fname, chunksize,cl_id,ext):
 
 
 def symlink_force(target, link_name):
-    print("Symlink",link_name)
+    #print("Symlink",link_name)
     try:
         os.symlink(target, link_name)
     except OSError as e:
