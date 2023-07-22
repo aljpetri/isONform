@@ -94,11 +94,8 @@ def splitfile(indir, tmp_outdir, fname, chunksize,cl_id,ext):
             i += 1
 
 
-
-
-
-
 def symlink_force(target, link_name):
+    print("Symlink",link_name)
     try:
         os.symlink(target, link_name)
     except OSError as e:
@@ -117,9 +114,9 @@ def split_cluster_in_batches_corrected(indir, outdir, tmp_work_dir, max_seqs):
     # print(indir)
     help_functions.mkdir_p(tmp_work_dir)
 
-    pat=Path(indir)
+    pat = Path(indir)
     #collect all fastq files located in this directory or any subdirectories
-    file_list=list(pat.rglob('*.fastq'))
+    file_list = list(pat.rglob('*.fastq'))
     #print("FLIST",file_list)
     #iterate over the fastq_files
     for filepath in file_list:
@@ -161,6 +158,7 @@ def split_cluster_in_batches_clust(indir, outdir, tmp_work_dir, max_seqs):
     # create a modified indir
     tmp_work_dir = os.path.join(tmp_work_dir, 'split_in_batches')
     # print(indir)
+    #os.mkdir(tmp_work_dir)
     help_functions.mkdir_p(tmp_work_dir)
     #print(tmp_work_dir)
     #print("clust")
@@ -185,6 +183,7 @@ def split_cluster_in_batches_clust(indir, outdir, tmp_work_dir, max_seqs):
             splitfile(indir, tmp_work_dir, fastq_file, 4 * max_seqs, cl_id, ext) # is fastq file
         else:
             cl_id, ext = fastq_file.rsplit('.', 1)
+            print("SYMLINK",os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext)))
             symlink_force(file_, os.path.join(tmp_work_dir, '{0}_{1}.{2}'.format(cl_id, 0, ext)))
     return tmp_work_dir
 
@@ -199,8 +198,19 @@ def main(args):
     isONform_location = os.path.dirname(os.path.realpath(__file__))
     if args.split_wrt_batches:
         if args.tmpdir:
-            tmp_work_dir=args.tmpdir
+            tmp_work_dir = args.tmpdir
+            #curr_work_dir = os.getcwd()
+            #os.chdir(tmp_work_dir)
+            #try:
+                # Create the directory
+                #os.makedirs(tmp_work_dir)
+            #    print("Directory created successfully.")
+            #except FileExistsError:
+            #    print("Directory already exists.")
             Parallelization_side_functions.mkdir_p(tmp_work_dir)
+
+            #os.chdir(curr_work_dir)
+
         else:
             tmp_work_dir = tempfile.mkdtemp()
         #print("SPLITWRTBATCHES")
@@ -326,7 +336,7 @@ if __name__ == '__main__':
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
-    parser.add_argument('--tmpdir', type=str,default=None, help='Folder in which to store temporary files')
+    parser.add_argument('--tmpdir', type=str,default=None, help='OPTIONAL PARAMETER: Absolute path to custom folder in which to store temporary files. If tmpdir is not specified, isONform will attempt to write the temporary files into the tmp folder on your system. It is advised to only use this parameter if the symlinking does not work on your system.')
 
     args = parser.parse_args()
     print(len(sys.argv))
