@@ -360,7 +360,7 @@ def main(args):
             if len(reads) >= 100:
                 w = min(args.w, args.k + (
                             len(reads) // 100 + 4))
-            elif len(reads)==1:
+            elif len(reads) == 1:
                 for id, vals in reads.items():
                     (acc, seq, qual) = vals
                     skipfile.write(">{0}\n{1}\n".format(acc, seq))
@@ -517,7 +517,7 @@ def main(args):
         print("Starting to generate Isoforms")
 
         if args.parallel:
-            batch_id=p_batch_id
+            batch_id = p_batch_id
         #generation of isoforms from the graph structure
         IsoformGeneration.generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder, batch_id, delta, delta_len, delta_iso_len_3, delta_iso_len_5, max_seqs_to_spoa)
 
@@ -540,8 +540,8 @@ if __name__ == '__main__':
     parser.add_argument('--version', action='version', version='%(prog)s 0.0.6')
     parser.add_argument('--fastq', type=str, default=False, help='Path to input fastq file with reads')
 
-    parser.add_argument('--k', type=int, default=9, help='Kmer size')
-    parser.add_argument('--w', type=int, default=10, help='Window size')
+    parser.add_argument('--k', type=int, default=20, help='Kmer size')
+    parser.add_argument('--w', type=int, default=31, help='Window size')
     parser.add_argument('--xmin', type=int, default=18, help='Upper interval length')
     parser.add_argument('--xmax', type=int, default=80, help='Lower interval length')
     parser.add_argument('--T', type=float, default=0.1, help='Minimum fraction keeping substitution')
@@ -549,7 +549,7 @@ if __name__ == '__main__':
                                                                  not to be used for clusters with over ~500 reads)')
     parser.add_argument('--disable_numpy', action="store_true",
                         help='Do not require numpy to be installed, but this version is about 1.5x slower than with numpy.')
-    parser.add_argument('--delta_len', type=int, default=3, help='Maximum length difference between two reads intervals for which they would still be merged')
+    parser.add_argument('--delta_len', type=int, default=5, help='Maximum length difference between two reads intervals for which they would still be merged')
     parser.add_argument('--max_seqs_to_spoa', type=int, default=200, help='Maximum number of seqs to spoa')
     parser.add_argument('--max_seqs', type=int, default=1000,
                         help='Maximum number of seqs to correct at a time (in case of large clusters).')

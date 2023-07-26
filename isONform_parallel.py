@@ -306,8 +306,8 @@ if __name__ == '__main__':
     parser.add_argument('--fastq_folder', type=str, default=False,
                         help='Path to input fastq folder with reads in clusters')
     parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
-    parser.add_argument('--k', type=int, default=9, help='Kmer size')
-    parser.add_argument('--w', type=int, default=20, help='Window size')
+    parser.add_argument('--k', type=int, default=20, help='Kmer size')
+    parser.add_argument('--w', type=int, default=31, help='Window size')
     parser.add_argument('--xmin', type=int, default=18, help='Lower interval length')
     parser.add_argument('--xmax', type=int, default=80, help='Upper interval length')
     parser.add_argument('--exact_instance_limit', type=int, default=50,
@@ -325,7 +325,7 @@ if __name__ == '__main__':
     parser.add_argument('--clustered', action="store_true",
                         help='Indicates whether we use the output of isONclust (i.e. we have uncorrected data)')
     parser.add_argument('--outfolder', type=str, default=None, help='Outfolder with all corrected reads.')
-    parser.add_argument('--delta_len', type=int, default=3,
+    parser.add_argument('--delta_len', type=int, default=5,
                         help='Maximum length difference between two reads intervals for which they would still be merged')
     parser.add_argument('--delta',type=float,default=0.1, help='diversity rate used to compare sequences')
     parser.add_argument('--max_seqs_to_spoa', type=int, default=200, help='Maximum number of seqs to spoa')

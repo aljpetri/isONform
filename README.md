@@ -54,13 +54,13 @@ To run the algorithm:<br />
 
 
 ```
-python isONform_parallel.py --fastq_folder path/to/input/files --t <nr_cores> --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 5 --outfolder /path/to/outfolder --iso_abundance 3 --split_wrt_batches --delta_iso_len_3 5 --delta_iso_len_5 5
+python isONform_parallel.py --fastq_folder path/to/input/files --t <nr_cores> --outfolder /path/to/outfolder --split_wrt_batches 
 ```
 
 the isON-pipeline (isONclust, isONcorrect, isONform) can be run via:
 
 ```
-./full_pipeline.sh    <raw_reads.fq>  <outfolder>  <num_cores> <isONform_folder> <iso_abundance> <mode>
+./full_pipeline.sh <raw_reads.fq>  <outfolder>  <num_cores> <isONform_folder> <iso_abundance> <mode>
 ```
 (Note that this requires pychopper, isONclust and isONcorrect to be installed)
 
