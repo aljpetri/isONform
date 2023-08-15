@@ -4,6 +4,8 @@ import itertools
 import networkx as nx
 import os
 
+
+
 from modules import consensus
 from modules import IsoformGeneration
 
@@ -64,7 +66,7 @@ def isCyclic(DG):
     return False
 
 
-def find_possible_starts(DG, TopoNodes, possible_starts):
+def find_possible_starts(DG, topo_nodes_dict, possible_starts):
     """Helper method which finds all possible bubble starts in our graph. This is done by collecting all nodes having at
      least 2 out nodes
     INPUT:  DG              Our directed graph object
@@ -72,7 +74,7 @@ def find_possible_starts(DG, TopoNodes, possible_starts):
     OUTPUT: possible_starts:    A list holding start_tuples(node_id, start_supp:= all reads in this node)
     """
     # iterate over all nodes in TopoNodes
-    for node in TopoNodes:
+    for node in topo_nodes_dict.keys():
         # the current node is only a start node if it has an out_degree>1 (due to bubble definition)
         if DG.out_degree(node) > 1:
             # find all reads supporting this node
@@ -83,7 +85,7 @@ def find_possible_starts(DG, TopoNodes, possible_starts):
             possible_starts.append(start_tup)
 
 
-def find_possible_ends(DG, TopoNodes, possible_ends):
+def find_possible_ends(DG, topo_nodes_dict, possible_ends):
     """Helper method which finds all possible bubble starts in our graph. This is done by collecting all nodes having at
      least 2 out nodes
     INPUT:  DG              Our directed graph object
@@ -91,7 +93,7 @@ def find_possible_ends(DG, TopoNodes, possible_ends):
     OUTPUT: possible_starts:    A list holding start_tuples(node_id, start_supp:= all reads in this node)
     """
     # iterate over all nodes in TopoNodes
-    for node in TopoNodes:
+    for node in topo_nodes_dict.keys():
         # the current node is only an end node if it has an in_degree>1 (due to bubble definition)
         if DG.in_degree(node) > 1:
             # find all reads supporting this node
@@ -102,12 +104,12 @@ def find_possible_ends(DG, TopoNodes, possible_ends):
             possible_ends.append(end_tup)
 
 
-def generate_combinations(possible_starts, possible_ends, TopoNodes, combis):
+def generate_combinations(possible_starts, possible_ends, topo_nodes_dict, combis):
     """used to generate the combinations of start and end nodes
     """
     for startnode in possible_starts:
         for endnode in possible_ends:
-            if TopoNodes.index(startnode[0]) < TopoNodes.index(endnode[0]):
+            if topo_nodes_dict[startnode[0]] < topo_nodes_dict[endnode[0]]:
                 inter = tuple(sorted(set(startnode[1]).intersection(set(endnode[1]))))
                 if len(inter) >= 2:
                     combi = (startnode[0], endnode[0], inter)
@@ -123,8 +125,8 @@ def filter_combinations(combinations, not_viable, combinations_filtered):
         if combi not in not_viable:
             combinations_filtered.append(combi)
 
-
-def find_paths(DG, startnode, endnode, support, all_paths):
+#TODO add marked to stop finding a path as soon as we encounter a marked path(this is due to the path not being usable anymore this iteration)
+def find_paths(DG, startnode, endnode, support, all_paths, marked):
     """detect the paths in our bubble
     """
     node_support_left = set(support)
@@ -139,8 +141,14 @@ def find_paths(DG, startnode, endnode, support, all_paths):
         # As long as we have not visited the bubble end node we continue walking through our graph
         while node != endnode:
             visited_nodes.append(node)
-            out_edges = DG.out_edges(node)
             next_found = False
+            ###Possible improvement
+            if node in marked:
+
+                break
+            ###
+            out_edges = DG.out_edges(node)
+
             for edge in out_edges:
                 edge_supp = DG[edge[0]][edge[1]]['edge_supp']
                 if read in edge_supp:
@@ -800,61 +808,6 @@ def filter_path_if_marked(marked, path):
     return False
 
 
-
-def find_combi_paths(combination, all_paths):
-    # TODO change this function to find the paths for a combination and return the correct value
-    # all_r_ids=set(all_paths.keys())
-    startnode = combination[0]
-    endnode = combination[1]
-    inter = combination[2]
-    path_list = []
-    r_ids = []
-    # print("START",startnode, "END",endnode)
-    for r_id in inter:
-        nodelist = all_paths[r_id]
-        # nodelist=list(inter[1] for inter in inter_list)
-
-        start_idx = nodelist.index(startnode)
-        end_idx = nodelist.index(endnode)
-        path = nodelist[start_idx:end_idx]
-        if DEBUG:
-            print("PATH", path)
-            print("NODELIST", nodelist)
-        supp_rid_list = set()
-        supp_rid_list.add(r_id)
-        diff_set = set(inter).difference(supp_rid_list)
-        path_supp_tup = Readtup(path, supp_rid_list, diff_set)
-        path_list.append(path_supp_tup)
-        r_ids.append(r_id)
-    # all_rids=set(r_ids)
-    if DEBUG:
-        print("PATHLIST", path_list)
-    already_merged = []
-    merge_dict = {}
-    for ident, rtup in enumerate(path_list):
-        for id2, rtup2 in enumerate(path_list):
-            if rtup2 not in already_merged:
-                if ident < id2:
-                    if DEBUG:
-                        print(ident, ", ", id2)
-                    if rtup.path == rtup2.path:
-                        already_merged.append(rtup2)
-                        new_supp = rtup.supp.union(rtup2.supp)
-                        other_supp = set(inter).difference(new_supp)
-                        rtup.supp = new_supp
-                        rtup.non_supp = other_supp
-    if DEBUG:
-        print("Merged_already", already_merged)
-        print("MERGEDICT", merge_dict)
-    for merged_elem in already_merged:
-        path_list.remove(merged_elem)
-    new_path_list = []
-    for thispath in path_list:
-        new_path = (thispath.path, tuple(thispath.supp), thispath.non_supp)
-        new_path_list.append(new_path)
-    return path_list
-
-
 def find_path(r_id, DG, edge_attr):
     current_node = "s"
     visited_nodes = []
@@ -945,7 +898,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size, delta_len, slowm
     initial_edge_nr = len(DG.edges())
     if DEBUG:
         all_paths_s_to_t, all_path_sets = find_all_read_paths(DG, all_reads, merged_dict)
-        print("ALLPATHSINITIAL", all_paths_s_to_t)
+        #print("ALLPATHSINITIAL", all_paths_s_to_t)
     print("SLOW", slowmode)
     if slowmode:
         pop_threshold = 1
@@ -967,16 +920,17 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size, delta_len, slowm
         print()
         # TopoNodes holds the topological order of the nodes in our graph
         TopoNodes = list(nx.topological_sort(DG))
+        #we from here on only use topo_nodes_dict which holds the node id as key and the index of the nodeid in TopoNodes (as this improves upon the runtime)
         topo_nodes_dict = {n: i for i, n in enumerate(TopoNodes)}
         poss_starts = []
         # find all possible bubble start nodes in our graph
-        find_possible_starts(DG, TopoNodes, poss_starts)
+        find_possible_starts(DG, topo_nodes_dict, poss_starts)
         poss_ends = []
         # find all possible bubble end nodes in our graph
-        find_possible_ends(DG, TopoNodes, poss_ends)
+        find_possible_ends(DG, topo_nodes_dict, poss_ends)
         combinations = []
         # generate all combination of bubble start nodes and bubble end nodes in which the poss_starts comes before poss_end in TopoNodes
-        generate_combinations(poss_starts, poss_ends, TopoNodes, combinations)
+        generate_combinations(poss_starts, poss_ends, topo_nodes_dict, combinations)
         combinations_filtered = [item for item in combinations if
                                  item not in not_viable_global]  # filters the list and keeps order of elements.
         # if we haven't found any new combinations we successfully finished our bubble popping
@@ -984,7 +938,7 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size, delta_len, slowm
             break
 
         # sort the combinations so that the shortest combinations come first
-        sorted_combinations = sorted(combinations_filtered, key=lambda x: TopoNodes.index(x[1]) - TopoNodes.index(x[0]))
+        sorted_combinations = sorted(combinations_filtered, key=lambda x: topo_nodes_dict[x[1]] - topo_nodes_dict[x[0]])
         if DEBUG:
             print("NOTVIABLE", not_viable_global)
             print("Sorted combis", sorted_combinations)
@@ -994,7 +948,10 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size, delta_len, slowm
                 print("this combination", combination)
             is_alignable = True
             all_paths = []
-            find_paths(DG, combination[0], combination[1], combination[2], all_paths)
+            ###if combination[0] not in marked and combination[1] not in marked:
+            find_paths(DG, combination[0], combination[1], combination[2], all_paths, marked)
+            ###else:
+                ###continue
             initial_all_paths = len(all_paths)
             # if we only did find one viable path from s' to t' we figure the combination was not viable
             if len(all_paths) == 1:
@@ -1003,6 +960,9 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size, delta_len, slowm
             all_paths_filtered = filter_out_if_marked(all_paths, marked, direct_combis, combination[1])
             if DEBUG:
                 print("all_paths_filtered", all_paths_filtered)
+            #TODO: make sure that this is a possible fix
+            if not all_paths_filtered:
+                continue
             # consensus_infos stores the positions and read infos for generating the consensus
             consensus_infos = {}
             # if we found two paths in our bubble

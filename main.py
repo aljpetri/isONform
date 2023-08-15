@@ -10,7 +10,6 @@ import tempfile
 import pickle
 from collections import defaultdict, deque
 
-
 from modules import help_functions, GraphGeneration, batch_merging_parallel, IsoformGeneration, SimplifyGraph
 
 D = {chr(i) : min( 10**( - (ord(chr(i)) - 33)/10.0 ), 0.79433)  for i in range(128)}
@@ -152,13 +151,13 @@ def get_minimizers_and_positions(reads, w, k, hash_fcn):
     return M
 
 
-def get_minimizer_combinations_database( M, k, x_low, x_high):
-    M2 = defaultdict(lambda: defaultdict(lambda :array("I")))
+def get_minimizer_combinations_database(M, k, x_low, x_high):
+    M2 = defaultdict(lambda: defaultdict(lambda: array("I")))
     tmp_cnt = 0
     forbidden = 'A'*k
     for r_id in M:
         minimizers = M[r_id]
-        for (m1,p1), m1_curr_spans in  minimizers_comb_iterator(minimizers, k, x_low, x_high):
+        for (m1,p1), m1_curr_spans in minimizers_comb_iterator(minimizers, k, x_low, x_high):
             for (m2, p2) in m1_curr_spans:
                 if m2 == m1 == forbidden:
                     continue
@@ -177,7 +176,7 @@ def get_minimizer_combinations_database( M, k, x_low, x_high):
         for m2 in list(M2[m1].keys()):
             if len(M2[m1][m2]) > 3:
                 avg_bundance += len(M2[m1][m2])//3
-                cnt +=1
+                cnt += 1
             else:
                 del M2[m1][m2]
                 singleton_minimzer += 1
@@ -193,7 +192,7 @@ def minimizers_comb_iterator(minimizers, k, x_low, x_high):
         m1_curr_spans = []
         for j, (m2, p2) in enumerate(minimizers[i+1:]):
             if x_low < p2 - p1 and p2 - p1 <= x_high:
-                m1_curr_spans.append( (m2, p2) )
+                m1_curr_spans.append((m2, p2))
                 # yield (m1,p1), (m2, p2)
             elif p2 - p1 > x_high:
                 break
@@ -304,13 +303,13 @@ def find_most_supported_span(r_id, m1, p1, m1_curr_spans, minimizer_combinations
             seqs.append(p1)
             seqs.append(p2)
             for relevant_read_id, pos1, pos2 in grouper(relevant_reads, 3): #relevant_reads:
-                if r_id  == relevant_read_id:
+                if r_id == relevant_read_id:
                     continue
                 elif abs((p2-p1)-(pos2-pos1)) < delta_len:
                     seqs.append(relevant_read_id)
                     seqs.append(pos1)
                     seqs.append(pos2)
-            all_intervals.append( (p1 + k_size, p2,  len(seqs)//3, seqs) )
+            all_intervals.append((p1 + k_size, p2,  len(seqs)//3, seqs))
 
 
 def main(args):
@@ -344,6 +343,8 @@ def main(args):
         skipfilename="skip"+p_batch_id+".fa"
 
     for batch_id, reads in enumerate(batch(all_reads, args.max_seqs)):
+
+
         new_all_reads = {}
         if args.parallel:
             batch_pickle = str(p_batch_id) + "_batch"
@@ -492,17 +493,21 @@ def main(args):
         print("Generating the graph")
         all_batch_reads_dict[batch_id] = new_all_reads
         read_len_dict = get_read_lengths(all_reads)
+        #for key,value in all_intervals_for_graph.items():
+        #    print(key,len(value))
+        #print(all_intervals_for_graph)
         #generate the graph from the intervals
         DG,  reads_for_isoforms = GraphGeneration.generateGraphfromIntervals(
             all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
         #test for cyclicity of the graph - a status we cannot continue working on -> if cyclic we get an error
-        #is_cyclic=GraphGeneration.isCyclic(DG)
+        #is_cyclic=SimplifyGraph.isCyclic(DG)
         #if is_cyclic:
         #    k_size+=1
         #    w+=1
         #    eprint("The graph has a cycle - critical error")
         #    return -1
-
+        #else:
+        #    print("No cycle in graph")
         if DEBUG==True:
             print("BATCHID",batch_id)
             for id, value in all_batch_reads_dict.items():
@@ -525,8 +530,9 @@ def main(args):
     if not args.parallel:
             print("Merging the batches with linear strategy")
             #merges the predictions from different batches
-            batch_merging_parallel.join_back_via_batch_merging(args.outfolder, delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5,
-                                                               args.max_seqs_to_spoa, args.iso_abundance)
+            #batch_merging_parallel.join_back_via_batch_merging(args.outfolder, delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5,
+            #                                                   args.max_seqs_to_spoa, args.iso_abundance)
+
     print("removing temporary workdir")
     sys.stdout.close()
     shutil.rmtree(work_dir)

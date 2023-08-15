@@ -1,4 +1,5 @@
 import _pickle as pickle
+import itertools
 import os
 from sys import stdout
 import subprocess
@@ -6,9 +7,9 @@ import subprocess
 from modules import consensus
 
 def write_consensus_file(batch_id, outfolder, new_consensuses):
-    print("newconsensus")
-    for con,seq in new_consensuses.items():
-        print("{0}:{1}".format(con,seq))
+    #print("newconsensus")
+    #for con,seq in new_consensuses.items():
+    #    print("{0}:{1}".format(con,seq))
     consensus_name = "spoa" + str(batch_id)
     pickle_spoa_file = open(os.path.join(outfolder, consensus_name), 'wb')
     pickle.dump(new_consensuses, pickle_spoa_file)
@@ -25,7 +26,7 @@ def write_mapping_file(batch_id, mapping, outfolder):
 
 def prepare_consensuses(new_consensuses,equal_reads_keys, final_consensuses):
     for key in equal_reads_keys:
-        final_consensuses[key]=new_consensuses[key]
+        final_consensuses[key] = new_consensuses[key]
 
 
 def write_isoforms_pickle(equal_reads, reads, outfolder, batch_id, new_consensuses):
@@ -558,6 +559,21 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,delta,delta
         #generate_isoforms_new(equal_reads, all_reads, outfolder, batch_id,new_consensuses)
     write_isoforms_pickle(equal_reads, all_reads, outfolder, batch_id, new_consensuses)
 DEBUG = False
+
+
+def write_transcriptome_single(outfolder):
+    spoa_file = open(os.path.join(outfolder, "spoa0"), 'rb')
+    spoa_infos = pickle.load(spoa_file)
+    consensus_name="transcriptome.fastq"
+    consensus_file = open(os.path.join(outfolder, consensus_name), "w")
+    for id, sequence in spoa_infos.items():
+        inter_id = id.replace('\n', '')
+        new_id = int(inter_id.replace('>consensus', ''))
+        sequence = sequence.replace('\n', '')
+        consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(new_id, sequence,
+                                                                  "+" * len(sequence)))
+    consensus_file.close()
+
 
 
 def main():
