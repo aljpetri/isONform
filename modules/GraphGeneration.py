@@ -6,20 +6,56 @@ import os
 
 from collections import namedtuple
 
+from modules import SimplifyGraph
+
 Read_infos = namedtuple('Read_Infos', 'start_mini_end end_mini_start original_support')
 
 """IsONform script containing the methods used to generate the Directed Graph from the Intervals coming from the Weighted Interval Scheduling Problem
 Author: Alexander Petri
 The main method in this script was used for debugging therefore is not used during IsONforms actual run.
 """
-def dfs(node, parent, start_node, DG, visited):
-    visited.add(node)
-    for neighbor in DG.neighbors(node):
-        if neighbor == start_node and neighbor != parent:
-            return True  # Cycle involving start_node found
-        if neighbor not in visited:
-            if dfs(neighbor, node, start_node, DG, visited):
+
+def isCyclicUtil(DG, nodes_dict, node):
+    """
+    Used to find out whether adding 'node' led to the graph having a cycle
+    Implemented according to https://www.geeksforgeeks.org/detect-cycle-in-a-graph/
+    """
+    # Mark current node as visited and
+    # adds to recursion stack
+    CNode = namedtuple('CNode', 'visited recStack')
+    cnode = CNode(True, True)
+    nodes_dict[node] = cnode
+    # Recur for all neighbours
+    # if any neighbour is visited and in
+    # recStack then graph is cyclic
+    for out_edge in DG.out_edges(node):
+        neighbour = out_edge[1]
+        if neighbour not in nodes_dict:
+            cnode = CNode(False, False)
+            nodes_dict[neighbour] = cnode
+        if not nodes_dict[neighbour].visited:
+            if isCyclicUtil(DG, nodes_dict, neighbour):
+                #print(neighbour, " revisited")
                 return True
+        elif nodes_dict[neighbour].recStack:
+            return True
+    # The node needs to be popped from
+    # recursion stack before function ends
+    prev_visited = nodes_dict[node].visited
+    nodes_dict[node] = CNode(prev_visited, False)
+    return False
+
+def dfs(node, path, DG, visited):
+    visited.add(node)
+    path.add(node)
+    for neighbor in DG.neighbors(node):
+        if neighbor in visited:
+            if neighbor in path:
+                return True
+        else:
+            if dfs(neighbor, path, DG, visited):
+                return True
+    path.pop()
     return False
 
 def cycle_finder(DG, start_node):
@@ -31,8 +67,13 @@ def cycle_finder(DG, start_node):
     OUTPUT:
         bool:       indicator whether a cycle has been found
     """
-    visited = set()
-    return dfs(start_node, None, start_node, DG, visited)
+    nodes_dict = {}
+    CNode = namedtuple('CNode', 'visited recStack', defaults=(False, False))
+    cnode = CNode(False, False)
+    nodes_dict[start_node] = cnode
+    if isCyclicUtil(DG, nodes_dict, start_node):
+        return True
+    return False
 
 def cycle_finder_old(DG, start_node):
     """Method used to detect cycles in our graph structure
@@ -215,11 +256,11 @@ def no_edge_found_action(DG, previous_node, name, length, inter, r_id, seq, node
         nodes_for_graph[name] = nodelist
         DG.add_edge(previous_node, name, length=length)
         if DEBUG:
-            print("adding edge clear 954", previous_node, ",", name)
+            print("adding edge no_edge_found_action" , previous_node, ",", name)
         add_edge_support(edge_support, previous_node, name, r_id)
     else:
         if DEBUG:
-            print("adding edge hope 958", previous_node, ",", name)
+            print("no_edge_found_action no cycle added", previous_node, ",", name)
         add_edge_support(edge_support, previous_node, name, r_id)
 
 
@@ -239,7 +280,6 @@ def no_connecting_edge_action(seq, nodes_for_graph, name, inter, k, node_sequenc
     DG.add_edge(previous_node, name, length=length)
     cycle_added2 = cycle_finder(DG, previous_node)
     if cycle_added2:
-
         DG.remove_edge(previous_node, name)
         if DEBUG:
             print(DG.edges)
@@ -387,7 +427,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
             curr_hash = convert_array_to_hash(inter[3])
             if curr_hash in read_hashs:
                 is_repetative = True
-                cycle_start = read_hashs[curr_hash][-1]
+                #cycle_start = read_hashs[curr_hash][-1]
             else:
                 is_repetative = False
             # access prior_read_infos, if the same interval was already found in previous reads
@@ -442,9 +482,27 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                         prev_nodelist[r_id] = r_infos
                         nodes_for_graph[name] = prev_nodelist
                         length = this_len
+                        #is_cyclic = SimplifyGraph.isCyclic(DG)
+                        #print("SimplifyGraph_cyclic ", is_cyclic)
                         DG.add_edge(previous_node, name, length=length)
+                        #print("edge ", previous_node, " to ", name, "added")
                         cycle_added2 = cycle_finder(DG, previous_node)
+                        #is_cyclic = SimplifyGraph.isCyclic(DG)
+                        #try:
+                        #    nx_cycle=nx.find_cycle(DG)
+                        #    print("Networkx found a cycle ",nx_cycle)
+                        #except:
+                        #    print("no cycle was found by networkx")
+                        #if is_cyclic:
+                            #    k_size+=1
+                            #    w+=1
+                            #print("The graph has a cycle - critical error")
+                        #if is_cyclic != cycle_added2:
+                        #    print("SimplifyGraph_cyclic ",is_cyclic)
+                        #    print("GG_cyclic ", cycle_added2, ", ",previous_node)
+                        #    print("ERROR- different outcome")
                         #the edge we added did introduce a cycle in our graph. We remove the edge again and instead generate a new node
+                        #if cycle_added2:
                         if cycle_added2:
                             if DEBUG:
                                 print("cycle added between ", previous_node, " and ", name)
@@ -559,7 +617,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
             if r_id not in edge_info:
                 edge_info.append(r_id)
                 edge_support[name, "t"] = edge_info
-    print("Number of alternative nodes due to cxcle",len(alt_cyc_nodes.keys()))
+    print("Number of alternative nodes due to cycle",len(alt_cyc_nodes.keys()))
     # set the node attributes to be nodes_for_graph, very convenient way of solving this
     nx.set_node_attributes(DG, nodes_for_graph, name="reads")
     nx.set_node_attributes(DG, node_sequence, name="end_mini_seq")

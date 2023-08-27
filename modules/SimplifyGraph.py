@@ -37,6 +37,7 @@ def isCyclicUtil(DG, nodes_dict, node):
         neighbour = out_edge[1]
         if not nodes_dict[neighbour].visited:
             if isCyclicUtil(DG, nodes_dict, neighbour):
+                #print(neighbour, " revisited")
                 return True
         elif nodes_dict[neighbour].recStack:
             return True
@@ -960,13 +961,12 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size, delta_len, slowm
             all_paths_filtered = filter_out_if_marked(all_paths, marked, direct_combis, combination[1])
             if DEBUG:
                 print("all_paths_filtered", all_paths_filtered)
-            #TODO: make sure that this is a possible fix
-            if not all_paths_filtered:
-                continue
             # consensus_infos stores the positions and read infos for generating the consensus
             consensus_infos = {}
             # if we found two paths in our bubble
-            if len(all_paths_filtered) == 2:
+            if not all_paths_filtered:
+                continue
+            elif len(all_paths_filtered) == 2:
                 if initial_all_paths > 2:
                     is_megabubble = True
                 else:
@@ -1123,9 +1123,9 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size, delta_len, slowm
                             # print("ALL_Paths_filtered",all_paths_filtered)
                             linearize_bubble(DG, combination[0], combination[1], all_paths_filtered, consensus_info_log, topo_nodes_dict)
                             this_it_pops += 1
-                            nr_popped += 1
-                            if (nr_popped % 10) == 0:
-                                print("NR_popped", nr_popped)
+                            #nr_popped += 1
+                            #if (nr_popped % 10) == 0:
+                                #print("NR_popped", nr_popped)
                             # add all nodes that were part of the bubble paths to marked
                             for node in all_paths_filtered[0][0]:
                                 marked.add(node)

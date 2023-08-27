@@ -9,7 +9,7 @@ import sys
 import tempfile
 import pickle
 from collections import defaultdict, deque
-
+from pyinstrument import Profiler
 from modules import help_functions, GraphGeneration, batch_merging_parallel, IsoformGeneration, SimplifyGraph
 
 D = {chr(i) : min( 10**( - (ord(chr(i)) - 33)/10.0 ), 0.79433)  for i in range(128)}
@@ -319,7 +319,7 @@ def main(args):
     if os.path.exists("mapping.txt"):
         os.remove("mapping.txt")
     outfolder = args.outfolder
-    sys.stdout = open(os.path.join(outfolder,"stdout.txt"), "w")
+    #sys.stdout = open(os.path.join(outfolder,"stdout.txt"), "w")
     # read the file and filter out polyA_ends(via remove_read_polyA_ends)
     all_reads = {i + 1: (acc, remove_read_polyA_ends(seq, 12, 1), qual) for i, (acc, (seq, qual)) in enumerate(help_functions.readfq(open(args.fastq, 'r')))}
     max_seqs_to_spoa = args.max_seqs_to_spoa
@@ -496,16 +496,23 @@ def main(args):
         #for key,value in all_intervals_for_graph.items():
         #    print(key,len(value))
         #print(all_intervals_for_graph)
+
+        #profiler = Profiler()
+        #profiler.start()
         #generate the graph from the intervals
+
         DG,  reads_for_isoforms = GraphGeneration.generateGraphfromIntervals(
             all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
+        #profiler.stop()
+
+        #profiler.print()
         #test for cyclicity of the graph - a status we cannot continue working on -> if cyclic we get an error
-        #is_cyclic=SimplifyGraph.isCyclic(DG)
+        #is_cyclic = SimplifyGraph.isCyclic(DG)
         #if is_cyclic:
         #    k_size+=1
         #    w+=1
-        #    eprint("The graph has a cycle - critical error")
-        #    return -1
+        #    print("The graph has a cycle - critical error")
+            #return -1
         #else:
         #    print("No cycle in graph")
         if DEBUG==True:
@@ -515,17 +522,26 @@ def main(args):
                    print(id,": ",other_id,":",other_val[0],"::",other_val[1])
 
         mode = args.slow
+        #profiler = Profiler()
+        #profiler.start()
         #the bubble popping step: We simplify the graph by linearizing all poppable bubbles
         SimplifyGraph.simplifyGraph(DG, new_all_reads, work_dir, k_size, delta_len, mode)
+        #profiler.stop()
+
+        #profiler.print()
         #TODO: add delta as user parameter possibly?
         delta = 0.15
         print("Starting to generate Isoforms")
 
         if args.parallel:
             batch_id = p_batch_id
+        #profiler = Profiler()
+        #profiler.start()
         #generation of isoforms from the graph structure
         IsoformGeneration.generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder, batch_id, delta, delta_len, delta_iso_len_3, delta_iso_len_5, max_seqs_to_spoa)
+        #profiler.stop()
 
+        #profiler.print()
         print("Isoforms generated-Starting batch merging ")
     if not args.parallel:
             print("Merging the batches with linear strategy")
@@ -534,7 +550,7 @@ def main(args):
             #                                                   args.max_seqs_to_spoa, args.iso_abundance)
 
     print("removing temporary workdir")
-    sys.stdout.close()
+    #sys.stdout.close()
     shutil.rmtree(work_dir)
 
 DEBUG=False
