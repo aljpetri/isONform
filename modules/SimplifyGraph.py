@@ -963,9 +963,10 @@ def new_bubble_popping_routine(DG, all_reads, work_dir, k_size, delta_len, slowm
                 print("all_paths_filtered", all_paths_filtered)
             # consensus_infos stores the positions and read infos for generating the consensus
             consensus_infos = {}
-            # if we found two paths in our bubble
-            if not all_paths_filtered:
+
+            if len(all_paths_filtered) < 2:
                 continue
+            # if we found two paths in our bubble
             elif len(all_paths_filtered) == 2:
                 if initial_all_paths > 2:
                     is_megabubble = True

@@ -207,7 +207,7 @@ def join_back_via_batch_merging(outdir, delta, delta_len, delta_iso_len_3,
         unique_cl_ids.add(cl_id)
     # enter the folder containing all output for each cluster
     for cl_id in unique_cl_ids:
-        #print(cl_id)
+        print(cl_id)
         all_infos_dict = {}
         batch_reads = {}
         batch_mappings = {}

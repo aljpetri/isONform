@@ -319,7 +319,7 @@ def main(args):
     if os.path.exists("mapping.txt"):
         os.remove("mapping.txt")
     outfolder = args.outfolder
-    #sys.stdout = open(os.path.join(outfolder,"stdout.txt"), "w")
+    sys.stdout = open(os.path.join(outfolder,"stdout.txt"), "w")
     # read the file and filter out polyA_ends(via remove_read_polyA_ends)
     all_reads = {i + 1: (acc, remove_read_polyA_ends(seq, 12, 1), qual) for i, (acc, (seq, qual)) in enumerate(help_functions.readfq(open(args.fastq, 'r')))}
     max_seqs_to_spoa = args.max_seqs_to_spoa
@@ -541,7 +541,6 @@ def main(args):
         IsoformGeneration.generate_isoforms(DG, new_all_reads, reads_for_isoforms, work_dir, outfolder, batch_id, delta, delta_len, delta_iso_len_3, delta_iso_len_5, max_seqs_to_spoa)
         #profiler.stop()
 
-        #profiler.print()
         print("Isoforms generated-Starting batch merging ")
     if not args.parallel:
             print("Merging the batches with linear strategy")
@@ -550,7 +549,7 @@ def main(args):
             #                                                   args.max_seqs_to_spoa, args.iso_abundance)
 
     print("removing temporary workdir")
-    #sys.stdout.close()
+    sys.stdout.close()
     shutil.rmtree(work_dir)
 
 DEBUG=False
