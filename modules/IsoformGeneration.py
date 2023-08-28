@@ -33,7 +33,7 @@ def write_isoforms_pickle(equal_reads, reads, outfolder, batch_id, new_consensus
     print("Generating the Isoforms-merged")
     mapping = {}
     final_consensuses={}
-    prepare_consensuses(new_consensuses,equal_reads.keys(), final_consensuses)
+    prepare_consensuses(new_consensuses, equal_reads.keys(), final_consensuses)
     write_consensus_file(batch_id, outfolder, final_consensuses)
     # we iterate over all items in curr_best_seqs
     for key, value in equal_reads.items():
@@ -543,7 +543,7 @@ def generate_isoforms_new(equal_reads, reads, outfolder, batch_id,new_consensuse
 
 
 
-def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,delta,delta_len,delta_iso_len_3,delta_iso_len_5,iso_abundance,max_seqs_to_spoa=200):
+def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,delta,delta_len,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa=200):
     """
     Wrapper method used for the isoform generation
     """
@@ -551,7 +551,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,delta,delta
     compute_equal_reads(DG,reads,equal_reads)
     if DEBUG == True:
         print("EQUALS",equal_reads)
-    new_consensuses=merge_consensuses(equal_reads, work_dir, delta, delta_len,
+    new_consensuses = merge_consensuses(equal_reads, work_dir, delta, delta_len,
                                   all_reads, max_seqs_to_spoa,
                                  delta_iso_len_3, delta_iso_len_5)
     if DEBUG:

@@ -327,7 +327,7 @@ def main(args):
         args.exact = True
     if args.set_w_dynamically:
         args.w = args.k + min(7, int(len(all_reads) / 500))
-    delta_iso_len_3=args.delta_iso_len_3
+    delta_iso_len_3 = args.delta_iso_len_3
     delta_iso_len_5 = args.delta_iso_len_5
     work_dir = tempfile.mkdtemp()
     print("Temporary workdirektory:", work_dir)
@@ -336,11 +336,11 @@ def main(args):
     x_high = args.xmax
     x_low = args.xmin
     if args.parallel:
-        filename=args.fastq.split("/")[-1]
-        tmp_filename=filename.split("_")
-        tmp_lastpart=tmp_filename[-1].split(".")
-        p_batch_id=tmp_lastpart[0]
-        skipfilename="skip"+p_batch_id+".fa"
+        filename = args.fastq.split("/")[-1]
+        tmp_filename = filename.split("_")
+        tmp_lastpart = tmp_filename[-1].split(".")
+        p_batch_id = tmp_lastpart[0]
+        skipfilename = "skip"+p_batch_id+".fa"
 
     for batch_id, reads in enumerate(batch(all_reads, args.max_seqs)):
 
