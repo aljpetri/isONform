@@ -6,7 +6,6 @@ import os
 
 from collections import namedtuple
 
-from modules import SimplifyGraph
 
 Read_infos = namedtuple('Read_Infos', 'start_mini_end end_mini_start original_support')
 
@@ -35,7 +34,6 @@ def isCyclicUtil(DG, nodes_dict, node):
             nodes_dict[neighbour] = cnode
         if not nodes_dict[neighbour].visited:
             if isCyclicUtil(DG, nodes_dict, neighbour):
-                #print(neighbour, " revisited")
                 return True
         elif nodes_dict[neighbour].recStack:
             return True
@@ -44,6 +42,7 @@ def isCyclicUtil(DG, nodes_dict, node):
     prev_visited = nodes_dict[node].visited
     nodes_dict[node] = CNode(prev_visited, False)
     return False
+
 
 def dfs(node, path, DG, visited):
     visited.add(node)
@@ -68,9 +67,9 @@ def cycle_finder(DG, start_node):
         bool:       indicator whether a cycle has been found
     """
     nodes_dict = {}
-    CNode = namedtuple('CNode', 'visited recStack', defaults=(False, False))
-    cnode = CNode(False, False)
-    nodes_dict[start_node] = cnode
+    #CNode = namedtuple('CNode', 'visited recStack', defaults=(False, False))
+    #cnode = CNode(False, False)
+    #nodes_dict[start_node] = cnode
     if isCyclicUtil(DG, nodes_dict, start_node):
         return True
     return False

@@ -32,7 +32,7 @@ def prepare_consensuses(new_consensuses,equal_reads_keys, final_consensuses):
 def write_isoforms_pickle(equal_reads, reads, outfolder, batch_id, new_consensuses):
     print("Generating the Isoforms-merged")
     mapping = {}
-    final_consensuses={}
+    final_consensuses = {}
     prepare_consensuses(new_consensuses, equal_reads.keys(), final_consensuses)
     write_consensus_file(batch_id, outfolder, final_consensuses)
     # we iterate over all items in curr_best_seqs
