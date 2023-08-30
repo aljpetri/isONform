@@ -44,19 +44,6 @@ def isCyclicUtil(DG, nodes_dict, node):
     return False
 
 
-def dfs(node, path, DG, visited):
-    visited.add(node)
-    path.add(node)
-    for neighbor in DG.neighbors(node):
-        if neighbor in visited:
-            if neighbor in path:
-                return True
-        else:
-            if dfs(neighbor, path, DG, visited):
-                return True
-    path.pop()
-    return False
-
 def cycle_finder(DG, start_node):
     """
     Method used to detect cycles in our graph structure
@@ -67,34 +54,8 @@ def cycle_finder(DG, start_node):
         bool:       indicator whether a cycle has been found
     """
     nodes_dict = {}
-    #CNode = namedtuple('CNode', 'visited recStack', defaults=(False, False))
-    #cnode = CNode(False, False)
-    #nodes_dict[start_node] = cnode
     if isCyclicUtil(DG, nodes_dict, start_node):
         return True
-    return False
-
-def cycle_finder_old(DG, start_node):
-    """Method used to detect cycles in our graph structure
-    INPUT:      DG:         the graph structure
-                start_node: a node that should be located in a cycle
-    OUTPUT:     bool:       indicator whether a cycle has been found
-    Implemented with the help of chatGPT
-    """
-    visited = set()
-    path = [start_node]
-    while len(path) > 0:
-        current_node = path.pop(0)
-        print("cyc_find_curr_node",current_node)
-        visited.add(current_node)
-        for neighbor in DG.neighbors(current_node):
-            if neighbor in visited: #and neighbor != "t":
-                print(neighbor," found again")
-                # We have found a cycle!
-                return True
-            else:
-                path.append(neighbor)
-    # No cycle was found
     return False
 
 
@@ -138,68 +99,6 @@ def convert_array_to_hash(info_array):
     return tup
 
 
-def record_cycle(current_read_state, cycle_start):
-    """Function to get all nodes which are part of a cycle
-        INPUT:  current_read_state: The current state of known_intervals[r_id-1] (known_intervals of the current read)
-                cycle_start:        The last occurence of the repeating node before the cycle starts
-        OUTPUT: cycle_nodes:        A list of entries indicating which nodes are in the cycle, having the following form: (startpos, node_id, endpos)
-    """
-    cycle_nodes = []
-    indices = [i for i, tupl in enumerate(current_read_state) if tupl[1] == cycle_start]
-    index = indices[0]
-    for element in range(index, len(current_read_state)):
-        cycle_nodes.append(current_read_state[element])
-
-    return cycle_nodes, current_read_state[index]
-
-
-def find_next_node(thisstartpos, info_array, known_cycles, current_read_state, k, cycle_start, previous_end, DG,
-                   delta_len):
-    """Helper method for generateGraphfromIntervals
-    INPUT:  thisstartpos:          The startposition of the cycle
-            info_array:
-            known_cycles:
-            current_read_state:
-            k:
-            cycle_start:
-            previous_end:
-            DG:
-    OUTPUT: found:
-            found_next_node:
-
-    """
-    intermediate_cycles = []
-    indices = [i for i, tupl in enumerate(current_read_state) if tupl[1] == cycle_start]
-    index = indices[0]
-    for key, value in known_cycles.items():
-        known_cycle_rid = key[0]
-        node_appearance = value[0]
-        for i in range(0, len(info_array) - 2):
-            if info_array[i] == known_cycle_rid and info_array[i + 1] == node_appearance[0] - k and info_array[i + 2] == \
-                    node_appearance[2]:
-                intermediate_cycles.append(value)
-    found = False
-    found_next_node = None
-    for cyc in intermediate_cycles:
-        possible_cyc = True
-        for i, node in enumerate(cyc):
-            next_node = node[1]
-            if index + i < len(current_read_state):
-                if not node[1] == current_read_state[index + i][1]:
-                    possible_cyc = False
-                    break
-                previous_node = node[1]
-            else:
-                break
-        if possible_cyc:
-            this_len = thisstartpos - previous_end
-            prev_len = DG[previous_node][next_node]["length"]
-            len_difference = abs(this_len - prev_len)
-            if len_difference < delta_len:
-                found_next_node = next_node
-                found = True
-                break
-    return found, found_next_node
 
 
 def add_edge_support(edge_support, previous_node, name, r_id):
@@ -342,21 +241,6 @@ def no_node_to_add_to_action(alternative_nodes, old_node, alt_info_tuple, inter,
     DG.add_edge(previous_node, name, length=length)
     add_edge_support(edge_support, previous_node, name, r_id)
 
-
-def cycle_added_action(DG, previous_node, name, inter, r_id, seq, node_sequence, nodes_for_graph, k, length,
-                       edge_support):
-    DG.remove_edge(previous_node, name)
-    name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
-    if not DG.has_node(name):
-        DG.add_node(name)
-    nodelist = {}
-    r_infos = Read_infos(inter[0], inter[1], True)
-    end_mini_seq = seq[inter[1]:inter[1] + k]
-    node_sequence[name] = end_mini_seq
-    nodelist[r_id] = r_infos
-    nodes_for_graph[name] = nodelist
-    DG.add_edge(previous_node, name, length=length)
-    add_edge_support(edge_support, previous_node, name, r_id)
 
 
 def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_dict, all_reads):
