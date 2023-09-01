@@ -14,33 +14,50 @@ Author: Alexander Petri
 The main method in this script was used for debugging therefore is not used during IsONforms actual run.
 """
 
-def isCyclicUtil(DG, nodes_dict, node):
+
+def depth_first_search(graph, start):
+    stack = [start]
+    visited = set()
+    while stack:
+        vertex = stack.pop()
+        if vertex in visited:
+            continue
+        yield vertex
+        visited.add(vertex)
+        for neighbor in graph[vertex]:
+            stack.append(neighbor)
+
+
+def isCyclicUtil(DG, visited,rec_stack, node):
     """
     Used to find out whether adding 'node' led to the graph having a cycle
     Implemented according to https://www.geeksforgeeks.org/detect-cycle-in-a-graph/
     """
+    visited.add(node)
+    rec_stack.add(node)
     # Mark current node as visited and
     # adds to recursion stack
-    CNode = namedtuple('CNode', 'visited recStack')
-    cnode = CNode(True, True)
-    nodes_dict[node] = cnode
+    #CNode = namedtuple('CNode', 'visited recStack')
+    #cnode = CNode(True, True)
+    #nodes_dict[node] = cnode
     # Recur for all neighbours
     # if any neighbour is visited and in
     # recStack then graph is cyclic
-    for out_edge in DG.out_edges(node):
-        neighbour = out_edge[1]
-        if neighbour not in nodes_dict:
-            cnode = CNode(False, False)
-            nodes_dict[neighbour] = cnode
-        if not nodes_dict[neighbour].visited:
-            if isCyclicUtil(DG, nodes_dict, neighbour):
+    for successor in DG.successors(node):
+        #neighbour = out_edge[1]
+        #if neighbour not in nodes_dict:
+        #    cnode = CNode(False, False)
+        #    nodes_dict[neighbour] = cnode
+        if successor not in visited:
+            if isCyclicUtil(DG, visited, rec_stack, successor):
                 return True
-        elif nodes_dict[neighbour].recStack:
+        elif successor in rec_stack:
             return True
     # The node needs to be popped from
     # recursion stack before function ends
-    prev_visited = nodes_dict[node].visited
-    nodes_dict[node] = CNode(prev_visited, False)
+    #prev_visited = nodes_dict[node].visited
+    #nodes_dict[node] = CNode(prev_visited, False)
+    rec_stack.remove(node)
     return False
 
 
@@ -53,8 +70,10 @@ def cycle_finder(DG, start_node):
     OUTPUT:
         bool:       indicator whether a cycle has been found
     """
-    nodes_dict = {}
-    if isCyclicUtil(DG, nodes_dict, start_node):
+    #nodes_dict = {}
+    visited=set()
+    rec_stack=set()
+    if isCyclicUtil(DG, visited,rec_stack, start_node):
         return True
     return False
 
@@ -107,7 +126,7 @@ def add_edge_support(edge_support, previous_node, name, r_id):
 
 
 def known_old_node_action(alternatives_filtered, previous_node, this_len, nodes_for_graph, inter, k, seq, node_sequence,
-                          r_id, DG, edge_support, alternative_nodes, old_node, alt_info_tuple, name):
+                          r_id, DG, edge_support, alternative_nodes, old_node, alt_info_tuple, name, alt_cyc_nodes):
     # if we have found a node which this info can be added to
     if alternatives_filtered:
         node_info = alternatives_filtered[0]
@@ -121,8 +140,13 @@ def known_old_node_action(alternatives_filtered, previous_node, this_len, nodes_
         prev_nodelist[r_id] = r_infos
         nodes_for_graph[name] = prev_nodelist
         if not DG.has_edge(previous_node, name):
-            no_edge_found_action(DG, previous_node, name, this_len, inter, r_id, seq, node_sequence, nodes_for_graph,
-                                 edge_support, k)
+            DG.add_edge(previous_node, name, this_len)
+            cycle_added2 = cycle_finder(DG, previous_node)
+            if cycle_added2:
+                cycle_added(name, alt_cyc_nodes, inter, DG, previous_node, r_id, seq, node_sequence, k, nodes_for_graph,
+                            this_len, edge_support)
+            else:
+                add_edge_support(edge_support, previous_node, name, r_id)
         else:
             edge_info = edge_support[previous_node, name]
             if r_id not in edge_info:
@@ -134,80 +158,17 @@ def known_old_node_action(alternatives_filtered, previous_node, this_len, nodes_
                                  nodes_for_graph, DG, this_len, previous_node, edge_support)
 
 
-def no_edge_found_action(DG, previous_node, name, length, inter, r_id, seq, node_sequence, nodes_for_graph,
-                         edge_support, k):
-    DG.add_edge(previous_node, name, length=length)
-    cycle_added2 = cycle_finder(DG, previous_node)
-    if cycle_added2:
-        print("cycle added between ",previous_node," and ",name)
-        DG.remove_edge(previous_node, name)
-        name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
-        if not DG.has_node(name):
-            DG.add_node(name)
-        nodelist = {}
-        r_infos = Read_infos(inter[0], inter[1], True)
-        end_mini_seq = seq[inter[1]:inter[1] + k]
-        node_sequence[name] = end_mini_seq
-        nodelist[r_id] = r_infos
-        # nodelist[r_id] = (inter[0], inter[1])
-        # prev_nodelist[r_id] = r_infos
-        nodes_for_graph[name] = nodelist
-        DG.add_edge(previous_node, name, length=length)
-        if DEBUG:
-            print("adding edge no_edge_found_action" , previous_node, ",", name)
-        add_edge_support(edge_support, previous_node, name, r_id)
-    else:
-        if DEBUG:
-            print("no_edge_found_action no cycle added", previous_node, ",", name)
-        add_edge_support(edge_support, previous_node, name, r_id)
-
-
-def no_connecting_edge_action(seq, nodes_for_graph, name, inter, k, node_sequence, r_id, this_len, DG, previous_node,
-                              edge_support):
-    if DEBUG:
-        print("no edge")
-    # update the read information of node name
-    prev_nodelist = nodes_for_graph[name]
-
-    r_infos = Read_infos(inter[0], inter[1], True)
-    end_mini_seq = seq[inter[1]:inter[1] + k]
-    node_sequence[name] = end_mini_seq
-    prev_nodelist[r_id] = r_infos
-    nodes_for_graph[name] = prev_nodelist
-    length = this_len
-    DG.add_edge(previous_node, name, length=length)
-    cycle_added2 = cycle_finder(DG, previous_node)
-    if cycle_added2:
-        DG.remove_edge(previous_node, name)
-        if DEBUG:
-            print(DG.edges)
-        name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
-        if not DG.has_node(name):
-            DG.add_node(name)
-        nodelist = {}
-        r_infos = Read_infos(inter[0], inter[1], True)
-        end_mini_seq = seq[inter[1]:inter[1] + k]
-        node_sequence[name] = end_mini_seq
-        nodelist[r_id] = r_infos
-        nodes_for_graph[name] = nodelist
-        DG.add_edge(previous_node, name, length=length)
-        add_edge_support(edge_support, previous_node, name, r_id)
-    else:
-        add_edge_support(edge_support, previous_node, name, r_id)
-
 
 def new_interval_action(seq, inter, r_id, node_sequence, nodes_for_graph, known_intervals, k, previous_end,
                         prior_read_infos, DG, previous_node, edge_support, name):
     #print("NIA")
     nodelist = {}
-    # add a node into nodes_for_graph
-
     # add the read information for the node
-
     r_infos = Read_infos(inter[0], inter[1], True)
     end_mini_seq = seq[inter[1]:inter[1] + k]
     node_sequence[name] = end_mini_seq
     nodelist[r_id] = r_infos
+    # add a node into nodes_for_graph
     nodes_for_graph[name] = nodelist
     known_intervals[r_id - 1].append((inter[0], name, inter[1]))
     # get the length between the previous end and this nodes start
@@ -242,6 +203,33 @@ def no_node_to_add_to_action(alternative_nodes, old_node, alt_info_tuple, inter,
     add_edge_support(edge_support, previous_node, name, r_id)
 
 
+def cycle_added(name, alt_cyc_nodes, inter, DG, previous_node, r_id, seq, node_sequence, k, nodes_for_graph, length, edge_support):
+
+    old_name = name
+    # alt_cyc_nodes is just used to keep track of how many nodes we add over the whole graph generation
+    if name not in alt_cyc_nodes.keys():
+        alt_cyc_list = []
+        alt_cyc_list.append(name)
+        alt_cyc_nodes[old_name] = alt_cyc_list
+    else:
+        alt_cyc_list = alt_cyc_nodes[old_name]
+        alt_cyc_list.append(name)
+        alt_cyc_nodes[old_name] = alt_cyc_list
+    DG.remove_edge(previous_node, name)
+    # TODO: add alt_cyc_node instead ofadding a new node to reduce overall nr nodes in our graph
+
+    name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
+    if not DG.has_node(name):
+        DG.add_node(name)
+    nodelist = {}
+
+    r_infos = Read_infos(inter[0], inter[1], True)
+    end_mini_seq = seq[inter[1]:inter[1] + k]
+    node_sequence[name] = end_mini_seq
+    nodelist[r_id] = r_infos
+    nodes_for_graph[name] = nodelist
+    DG.add_edge(previous_node, name, length=length)
+    add_edge_support(edge_support, previous_node, name, r_id)
 
 def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_dict, all_reads):
     """ generates a networkx graph from the intervals given in all_intervals_for_graph.
@@ -355,8 +343,6 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                         if DEBUG:
                             print("no edge between ", previous_node, " and ", name)
                         seq = all_reads[r_id][1]
-                        # no_connecting_edge_action(seq, nodes_for_graph, name, inter, k, node_sequence, r_id, this_len, DG, previous_node, edge_support)
-
                         # update the read information of node name
                         prev_nodelist = nodes_for_graph[name]
                         r_infos = Read_infos(inter[0], inter[1], True)
@@ -387,34 +373,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                         #the edge we added did introduce a cycle in our graph. We remove the edge again and instead generate a new node
                         #if cycle_added2:
                         if cycle_added2:
-                            if DEBUG:
-                                print("cycle added between ", previous_node, " and ", name)
-                                print("CYC")
-                                old_name = name
-                                # alt_cyc_nodes is just used to keep track of how many nodes we add over the whole graph generation
-                                if name not in alt_cyc_nodes.keys():
-                                    alt_cyc_list = []
-                                    alt_cyc_list.append(name)
-                                    alt_cyc_nodes[old_name] = alt_cyc_list
-                                else:
-                                    alt_cyc_list = alt_cyc_nodes[old_name]
-                                    alt_cyc_list.append(name)
-                                    alt_cyc_nodes[old_name] = alt_cyc_list
-                            DG.remove_edge(previous_node, name)
-                            #TODO: add alt_cyc_node instead ofadding a new node to reduce overall nr nodes in our graph
-
-                            name = str(inter[0]) + ", " + str(inter[1]) + ", " + str(r_id)
-                            if not DG.has_node(name):
-                                DG.add_node(name)
-                            nodelist = {}
-
-                            r_infos = Read_infos(inter[0], inter[1], True)
-                            end_mini_seq = seq[inter[1]:inter[1] + k]
-                            node_sequence[name] = end_mini_seq
-                            nodelist[r_id] = r_infos
-                            nodes_for_graph[name] = nodelist
-                            DG.add_edge(previous_node, name, length=length)
-                            add_edge_support(edge_support, previous_node, name, r_id)
+                            cycle_added(name, alt_cyc_nodes, inter, DG, previous_node, r_id, seq, node_sequence, k, nodes_for_graph, length, edge_support)
                         else:
                             add_edge_support(edge_support, previous_node, name, r_id)
                     # if there is an edge connecting previous_node and name: test if length difference is not higher than delta_len
@@ -467,7 +426,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                                                       nodes_for_graph, inter, k,
                                                       seq, node_sequence, r_id, DG, edge_support, alternative_nodes,
                                                       old_node,
-                                                      alt_info_tuple, name)
+                                                      alt_info_tuple, name, alt_cyc_nodes)
 
                 # keep known_intervals up to date
                 known_intervals[r_id - 1].append((inter[0], name, inter[1]))
