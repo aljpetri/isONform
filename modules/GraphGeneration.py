@@ -5,7 +5,7 @@ import pickle
 import os
 
 from collections import namedtuple
-
+from collections import deque
 
 Read_infos = namedtuple('Read_Infos', 'start_mini_end end_mini_start original_support')
 
@@ -26,6 +26,22 @@ def depth_first_search(graph, start):
         visited.add(vertex)
         for neighbor in graph[vertex]:
             stack.append(neighbor)
+
+
+
+def bfs(DG, startnode): #function for BFS
+    visited = set()
+    queue = deque([startnode])
+
+    while queue: # Creating loop to visit each node
+        m = queue.popleft()
+        for neighbour in DG.successors(m):
+            if neighbour not in visited:
+                visited.add(neighbour)
+                queue.append(neighbour)
+            if neighbour == startnode:
+                return True
+    return False
 
 
 def isCyclicUtil(DG, visited,rec_stack, node):
@@ -142,6 +158,7 @@ def known_old_node_action(alternatives_filtered, previous_node, this_len, nodes_
         if not DG.has_edge(previous_node, name):
             DG.add_edge(previous_node, name, this_len)
             cycle_added2 = cycle_finder(DG, previous_node)
+            #cycle_added2 = bfs(DG, previous_node)
             if cycle_added2:
                 cycle_added(name, alt_cyc_nodes, inter, DG, previous_node, r_id, seq, node_sequence, k, nodes_for_graph,
                             this_len, edge_support)
@@ -356,6 +373,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                         DG.add_edge(previous_node, name, length=length)
                         #print("edge ", previous_node, " to ", name, "added")
                         cycle_added2 = cycle_finder(DG, previous_node)
+                        #cycle_added2=bfs(DG,previous_node)
                         #is_cyclic = SimplifyGraph.isCyclic(DG)
                         #try:
                         #    nx_cycle=nx.find_cycle(DG)

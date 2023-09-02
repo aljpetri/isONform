@@ -19,6 +19,8 @@ class Readtup:
 Read_infos = namedtuple('Read_Infos',
                         'start_mini_end end_mini_start original_support')
 
+CNode = namedtuple('CNode', 'visited recStack')
+
 
 def isCyclicUtil(DG, nodes_dict, node):
     """
@@ -27,7 +29,7 @@ def isCyclicUtil(DG, nodes_dict, node):
     """
     # Mark current node as visited and
     # adds to recursion stack
-    CNode = namedtuple('CNode', 'visited recStack')
+
     cnode = CNode(True, True)
     nodes_dict[node] = cnode
     # Recur for all neighbours
@@ -56,7 +58,7 @@ def isCyclic(DG):
     # Returns true if graph contains cycles else false
     nodes = DG.nodes
     nodes_dict = {}
-    CNode = namedtuple('CNode', 'visited recStack', defaults=(False, False))
+    #CNode = namedtuple('CNode', 'visited recStack', defaults=(False, False))
     cnode = CNode(False, False)
     for node in nodes:
         nodes_dict[node] = cnode
@@ -143,17 +145,19 @@ def find_paths(DG, startnode, endnode, support, all_paths, marked):
         while node != endnode:
             visited_nodes.append(node)
             next_found = False
-            ###Possible improvement
+            ###improvement
             if node in marked:
 
                 break
             ###
-            out_edges = DG.out_edges(node)
-
-            for edge in out_edges:
-                edge_supp = DG[edge[0]][edge[1]]['edge_supp']
+            #out_edges = DG.out_edges(node)
+            #for edge in out_edges:
+            for neighbor in DG.successors(node):
+                #edge_supp = DG[edge[0]][edge[1]]['edge_supp']
+                edge_supp=DG[node][neighbor]['edge_supp']
                 if read in edge_supp:
-                    node = edge[1]
+                    #node = edge[1]
+                    node=neighbor
                     current_node_support = current_node_support.intersection(edge_supp)
                     next_found = True
                     break
