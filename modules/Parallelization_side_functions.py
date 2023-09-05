@@ -58,6 +58,7 @@ def generate_single_mapping(outfolder):
                     f.write(line)
 def generate_single_output(outfolder):
     subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
+    print("Generating transcriptome.fastq")
     f = open(os.path.join(outfolder,"transcriptome.fastq"), "w")
     for subfolder in subfolders:
         #print("subfolder",subfolder)

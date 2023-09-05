@@ -1,4 +1,5 @@
 import _pickle as pickle
+import itertools
 import os
 from sys import stdout
 import subprocess
@@ -6,9 +7,9 @@ import subprocess
 from modules import consensus
 
 def write_consensus_file(batch_id, outfolder, new_consensuses):
-    print("newconsensus")
-    for con,seq in new_consensuses.items():
-        print("{0}:{1}".format(con,seq))
+    #print("newconsensus")
+    #for con,seq in new_consensuses.items():
+    #    print("{0}:{1}".format(con,seq))
     consensus_name = "spoa" + str(batch_id)
     pickle_spoa_file = open(os.path.join(outfolder, consensus_name), 'wb')
     pickle.dump(new_consensuses, pickle_spoa_file)
@@ -25,14 +26,14 @@ def write_mapping_file(batch_id, mapping, outfolder):
 
 def prepare_consensuses(new_consensuses,equal_reads_keys, final_consensuses):
     for key in equal_reads_keys:
-        final_consensuses[key]=new_consensuses[key]
+        final_consensuses[key] = new_consensuses[key]
 
 
 def write_isoforms_pickle(equal_reads, reads, outfolder, batch_id, new_consensuses):
     print("Generating the Isoforms-merged")
     mapping = {}
-    final_consensuses={}
-    prepare_consensuses(new_consensuses,equal_reads.keys(), final_consensuses)
+    final_consensuses = {}
+    prepare_consensuses(new_consensuses, equal_reads.keys(), final_consensuses)
     write_consensus_file(batch_id, outfolder, final_consensuses)
     # we iterate over all items in curr_best_seqs
     for key, value in equal_reads.items():
@@ -542,7 +543,7 @@ def generate_isoforms_new(equal_reads, reads, outfolder, batch_id,new_consensuse
 
 
 
-def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,delta,delta_len,delta_iso_len_3,delta_iso_len_5,iso_abundance,max_seqs_to_spoa=200):
+def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,delta,delta_len,delta_iso_len_3,delta_iso_len_5,max_seqs_to_spoa=200):
     """
     Wrapper method used for the isoform generation
     """
@@ -550,7 +551,7 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,delta,delta
     compute_equal_reads(DG,reads,equal_reads)
     if DEBUG == True:
         print("EQUALS",equal_reads)
-    new_consensuses=merge_consensuses(equal_reads, work_dir, delta, delta_len,
+    new_consensuses = merge_consensuses(equal_reads, work_dir, delta, delta_len,
                                   all_reads, max_seqs_to_spoa,
                                  delta_iso_len_3, delta_iso_len_5)
     if DEBUG:
@@ -558,6 +559,21 @@ def generate_isoforms(DG,all_reads,reads,work_dir,outfolder,batch_id,delta,delta
         #generate_isoforms_new(equal_reads, all_reads, outfolder, batch_id,new_consensuses)
     write_isoforms_pickle(equal_reads, all_reads, outfolder, batch_id, new_consensuses)
 DEBUG = False
+
+
+def write_transcriptome_single(outfolder):
+    spoa_file = open(os.path.join(outfolder, "spoa0"), 'rb')
+    spoa_infos = pickle.load(spoa_file)
+    consensus_name="transcriptome.fastq"
+    consensus_file = open(os.path.join(outfolder, consensus_name), "w")
+    for id, sequence in spoa_infos.items():
+        inter_id = id.replace('\n', '')
+        new_id = int(inter_id.replace('>consensus', ''))
+        sequence = sequence.replace('\n', '')
+        consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(new_id, sequence,
+                                                                  "+" * len(sequence)))
+    consensus_file.close()
+
 
 
 def main():
