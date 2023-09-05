@@ -268,7 +268,11 @@ def main(args):
         print(t)
     original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGINT, original_sigint_handler)
-    mp.set_start_method('spawn')
+    try:
+        mp.set_start_method('spawn')
+    except RuntimeError:
+        pass
+    #mp.set_start_method('spawn')
     print(mp.get_context())
     print("Environment set:", mp.get_context())
     print("Using {0} cores.".format(args.nr_cores))
@@ -285,7 +289,6 @@ def main(args):
     else:
         pool.close()
     pool.join()
-
     print("Time elapsed multiprocessing:", time() - start_multi)
 
     if args.split_wrt_batches:
@@ -302,7 +305,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo reconstruction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--version', action='version', version='%(prog)s 0.1.1')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.2.0')
     parser.add_argument('--fastq_folder', type=str, default=False,
                         help='Path to input fastq folder with reads in clusters')
     parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
