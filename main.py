@@ -558,7 +558,7 @@ DEBUG=False
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo error correction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--version', action='version', version='%(prog)s 0.0.6')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.2.0')
     parser.add_argument('--fastq', type=str, default=False, help='Path to input fastq file with reads')
 
     parser.add_argument('--k', type=int, default=20, help='Kmer size')
