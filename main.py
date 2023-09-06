@@ -69,7 +69,10 @@ def get_kmer_minimizers(seq, k_size, w_size):
     w = w_size - k_size
     window_kmers = deque([seq[i:i+k_size] for i in range(w +1)])
     curr_min = min(window_kmers)
-    minimizers = [ (curr_min, list(window_kmers).index(curr_min)) ]
+    #below: find the index of the last occurrence of the minimizer sequence
+
+    #minimizers = [ (curr_min, w - list(window_kmers)[::-1].index(curr_min) - 1)]
+    minimizers = [(curr_min, list(window_kmers).index(curr_min))]
     for i in range(w+1,len(seq) - k_size):
         new_kmer = seq[i:i+k_size]
 
@@ -151,7 +154,7 @@ def get_minimizers_and_positions(reads, w, k, hash_fcn):
     return M
 
 
-def get_minimizer_combinations_database(M, k, x_low, x_high):
+def get_minimizer_combinations_database(M, k, x_low, x_high,reads):
     M2 = defaultdict(lambda: defaultdict(lambda: array("I")))
     tmp_cnt = 0
     forbidden = 'A'*k
@@ -180,6 +183,9 @@ def get_minimizer_combinations_database(M, k, x_low, x_high):
             else:
                 del M2[m1][m2]
                 singleton_minimzer += 1
+            #we also want to filter out minimizer combinations if they are too abundant (more than 3 times per read)
+            if len(M2[m1][m2]) // 3 > 3 * len(reads):
+                del M2[m1][m2]
 
     print("Average abundance for non-unique minimizer-combs:", avg_bundance/float(cnt))
     print("Number of singleton minimizer combinations filtered out:", singleton_minimzer)
@@ -295,7 +301,8 @@ def find_most_supported_span(r_id, m1, p1, m1_curr_spans, minimizer_combinations
 
     OUTPUT: all_intervals:     modified list of all intervals
     """
-    for (m2,p2) in m1_curr_spans:
+    #print("Most_supp_span")
+    for (m2, p2) in m1_curr_spans:
         relevant_reads = minimizer_combinations_database[m1][m2]
         if len(relevant_reads)//3 >= 3:
             seqs = array("I")
@@ -319,7 +326,7 @@ def main(args):
     if os.path.exists("mapping.txt"):
         os.remove("mapping.txt")
     outfolder = args.outfolder
-    sys.stdout = open(os.path.join(outfolder,"stdout.txt"), "w")
+    #sys.stdout = open(os.path.join(outfolder,"stdout.txt"), "w")
     # read the file and filter out polyA_ends(via remove_read_polyA_ends)
     all_reads = {i + 1: (acc, remove_read_polyA_ends(seq, 12, 1), qual) for i, (acc, (seq, qual)) in enumerate(help_functions.readfq(open(args.fastq, 'r')))}
     max_seqs_to_spoa = args.max_seqs_to_spoa
@@ -385,11 +392,11 @@ def main(args):
             minimizer_database = get_minimizers_and_positions(reads, w, k_size, hash_fcn)
 
         minimizer_combinations_database = get_minimizer_combinations_database(minimizer_database, k_size, x_low,
-                                                                              x_high)
+                                                                              x_high, reads)
         previously_corrected_regions = defaultdict(list)
         all_intervals_for_graph = {}
         for r_id in sorted(reads):
-
+            print(r_id)
             read_min_comb = [((m1, p1), m1_curr_spans) for (m1, p1), m1_curr_spans in
                              minimizers_comb_iterator(minimizer_database[r_id], k_size, x_low, x_high)]
 
@@ -436,8 +443,9 @@ def main(args):
                 pos_group = {}
             all_intervals = []
             prev_visited_intervals = []
-
+            print("it over read_min_comb")
             for (m1, p1), m1_curr_spans in read_min_comb:
+                print(m1,", ", p1)
                 # If any position is not in range of current corrections: then correct, not just start and stop
                 not_prev_corrected_spans = [(m2, p2) for (m2, p2) in m1_curr_spans if not (
                         p1 + k_size in read_previously_considered_positions and p2 - 1 in read_previously_considered_positions)]
@@ -549,7 +557,7 @@ def main(args):
             #                                                   args.max_seqs_to_spoa, args.iso_abundance)
 
     print("removing temporary workdir")
-    sys.stdout.close()
+    #sys.stdout.close()
     shutil.rmtree(work_dir)
 
 DEBUG=False
