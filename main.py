@@ -8,6 +8,7 @@ import shutil
 import sys
 import tempfile
 import pickle
+import operator
 from collections import defaultdict, deque
 from pyinstrument import Profiler
 from modules import help_functions, GraphGeneration, batch_merging_parallel, IsoformGeneration, SimplifyGraph
@@ -65,32 +66,35 @@ def remove_read_polyA_ends(seq, threshold_len, to_len):
     return seq_mod
 
 
+def rindex(lst, value):
+    return len(lst) - operator.indexOf(reversed(lst), value) - 1
+
 def get_kmer_minimizers(seq, k_size, w_size):
+    # kmers = [seq[i:i+k_size] for i in range(len(seq)-k_size) ]
     w = w_size - k_size
-    window_kmers = deque([seq[i:i+k_size] for i in range(w +1)])
+    window_kmers = deque([hash(seq[i:i+k_size]) for i in range(w +1)])
     curr_min = min(window_kmers)
-    #below: find the index of the last occurrence of the minimizer sequence
+    minimizer_pos = rindex(list(window_kmers), curr_min)
+    minimizers = [ (seq[minimizer_pos: minimizer_pos+k_size], minimizer_pos) ] # get the last element if ties in window
 
-    #minimizers = [ (curr_min, w - list(window_kmers)[::-1].index(curr_min) - 1)]
-    minimizers = [(curr_min, list(window_kmers).index(curr_min))]
     for i in range(w+1,len(seq) - k_size):
-        new_kmer = seq[i:i+k_size]
-
-        # updating window
+        new_kmer = hash(seq[i:i+k_size])
+        # updateing window
         discarded_kmer = window_kmers.popleft()
         window_kmers.append(new_kmer)
 
-        # we have discarded previous windows minimizer, look for new minimizer brute force
-        if curr_min == discarded_kmer:
+        # we have discarded previous window's minimizer, look for new minimizer brute force
+        if curr_min == discarded_kmer and minimizer_pos < i - w:
             curr_min = min(window_kmers)
-            minimizers.append( (curr_min, list(window_kmers).index(curr_min) + i - w ) )
+            minimizer_pos = rindex(list(window_kmers), curr_min) + i - w
+            minimizers.append( (seq[minimizer_pos: minimizer_pos+k_size], minimizer_pos) ) # get the last element if ties in window
 
         # Previous minimizer still in window, we only need to compare with the recently added kmer
         elif new_kmer < curr_min:
             curr_min = new_kmer
-            minimizers.append( (curr_min, i) )
-    return minimizers
+            minimizers.append( (seq[i: i+k_size], i) )
 
+    return minimizers
 
 def get_kmer_maximizers(seq, k_size, w_size):
     # kmers = [seq[i:i+k_size] for i in range(len(seq)-k_size) ]
