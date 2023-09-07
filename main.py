@@ -10,7 +10,8 @@ import tempfile
 import pickle
 import operator
 from collections import defaultdict, deque
-from pyinstrument import Profiler
+
+
 from modules import help_functions, GraphGeneration, batch_merging_parallel, IsoformGeneration, SimplifyGraph
 
 D = {chr(i) : min( 10**( - (ord(chr(i)) - 33)/10.0 ), 0.79433)  for i in range(128)}
@@ -79,7 +80,7 @@ def get_kmer_minimizers(seq, k_size, w_size):
 
     for i in range(w+1,len(seq) - k_size):
         new_kmer = hash(seq[i:i+k_size])
-        # updateing window
+        # updating window
         discarded_kmer = window_kmers.popleft()
         window_kmers.append(new_kmer)
 
@@ -382,7 +383,7 @@ def main(args):
                 w = args.k + 1 + len(reads) // 30
         else:
             w = args.w
-        print("Window used for batch:", w)
+        #print("Window used for batch:", w)
         iso_abundance = args.iso_abundance
         delta_len = args.delta_len
         graph_id = 1
@@ -447,9 +448,9 @@ def main(args):
                 pos_group = {}
             all_intervals = []
             prev_visited_intervals = []
-            print("it over read_min_comb")
+            #print("it over read_min_comb")
             for (m1, p1), m1_curr_spans in read_min_comb:
-                print(m1,", ", p1)
+                #print(m1,", ", p1)
                 # If any position is not in range of current corrections: then correct, not just start and stop
                 not_prev_corrected_spans = [(m2, p2) for (m2, p2) in m1_curr_spans if not (
                         p1 + k_size in read_previously_considered_positions and p2 - 1 in read_previously_considered_positions)]
