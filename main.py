@@ -8,8 +8,10 @@ import shutil
 import sys
 import tempfile
 import pickle
+import operator
 from collections import defaultdict, deque
-from pyinstrument import Profiler
+
+
 from modules import help_functions, GraphGeneration, batch_merging_parallel, IsoformGeneration, SimplifyGraph
 
 D = {chr(i) : min( 10**( - (ord(chr(i)) - 33)/10.0 ), 0.79433)  for i in range(128)}
@@ -65,29 +67,47 @@ def remove_read_polyA_ends(seq, threshold_len, to_len):
     return seq_mod
 
 
-def get_kmer_minimizers(seq, k_size, w_size):
-    w = w_size - k_size
-    window_kmers = deque([seq[i:i+k_size] for i in range(w +1)])
-    curr_min = min(window_kmers)
-    minimizers = [ (curr_min, list(window_kmers).index(curr_min)) ]
-    for i in range(w+1,len(seq) - k_size):
-        new_kmer = seq[i:i+k_size]
 
+
+def rindex(lst, value):
+    """
+        Function that calculates the reverse index. We want to find the last (but still) smallest k-mer in the window not the first
+        INPUT:  lst:            the window of kmers as a list
+                value:          the smallest kmer
+        OUTPUT: minimizer_pos:  the last position of kmer with value in lst (not the first as before)
+        """
+    return len(lst) - operator.indexOf(reversed(lst), value) - 1
+
+def get_kmer_minimizers(seq, k_size, w_size):
+    # kmers = [seq[i:i+k_size] for i in range(len(seq)-k_size) ]
+    w = w_size - k_size
+    #save the window as a deque and instead of the sequence itself we use its hash value
+    window_kmers = deque([hash(seq[i:i+k_size]) for i in range(w +1)])
+    #the smallest kmer (or to be precise the smallest hash) we have found in the window
+    curr_min = min(window_kmers)
+    #we now want the last occurrence of the smallest kmer not the first anymore
+    minimizer_pos = rindex(list(window_kmers), curr_min)
+    #add the initial minimizer to minimizers
+    minimizers = [ (seq[minimizer_pos: minimizer_pos+k_size], minimizer_pos) ] # get the last element if ties in window
+    #iterate over the remaining read and find all minimizers therein
+    for i in range(w+1, len(seq) - k_size):
+        new_kmer = hash(seq[i:i+k_size])
         # updating window
         discarded_kmer = window_kmers.popleft()
         window_kmers.append(new_kmer)
 
-        # we have discarded previous windows minimizer, look for new minimizer brute force
-        if curr_min == discarded_kmer:
+        # we have discarded previous window's minimizer, look for new minimizer brute force
+        if curr_min == discarded_kmer and minimizer_pos < i - w:
             curr_min = min(window_kmers)
-            minimizers.append( (curr_min, list(window_kmers).index(curr_min) + i - w ) )
+            minimizer_pos = rindex(list(window_kmers), curr_min) + i - w
+            minimizers.append( (seq[minimizer_pos: minimizer_pos+k_size], minimizer_pos) ) # get the last element if ties in window
 
         # Previous minimizer still in window, we only need to compare with the recently added kmer
         elif new_kmer < curr_min:
             curr_min = new_kmer
-            minimizers.append( (curr_min, i) )
-    return minimizers
+            minimizers.append( (seq[i: i+k_size], i) )
 
+    return minimizers
 
 def get_kmer_maximizers(seq, k_size, w_size):
     # kmers = [seq[i:i+k_size] for i in range(len(seq)-k_size) ]
@@ -151,7 +171,7 @@ def get_minimizers_and_positions(reads, w, k, hash_fcn):
     return M
 
 
-def get_minimizer_combinations_database(M, k, x_low, x_high):
+def get_minimizer_combinations_database(M, k, x_low, x_high,reads):
     M2 = defaultdict(lambda: defaultdict(lambda: array("I")))
     tmp_cnt = 0
     forbidden = 'A'*k
@@ -174,12 +194,17 @@ def get_minimizer_combinations_database(M, k, x_low, x_high):
     cnt = 1
     for m1 in list(M2.keys()):
         for m2 in list(M2[m1].keys()):
+            #if the minimizer_pair is represented at more than one occurrence
             if len(M2[m1][m2]) > 3:
                 avg_bundance += len(M2[m1][m2])//3
                 cnt += 1
+            #the minimizer_combination is only once in the data therefore does not yield viable information for the graph later on
             else:
                 del M2[m1][m2]
                 singleton_minimzer += 1
+            #we also want to filter out minimizer combinations if they are too abundant (more than 3 times per read)
+            if len(M2[m1][m2]) // 3 > 3 * len(reads):
+                del M2[m1][m2]
 
     print("Average abundance for non-unique minimizer-combs:", avg_bundance/float(cnt))
     print("Number of singleton minimizer combinations filtered out:", singleton_minimzer)
@@ -295,7 +320,8 @@ def find_most_supported_span(r_id, m1, p1, m1_curr_spans, minimizer_combinations
 
     OUTPUT: all_intervals:     modified list of all intervals
     """
-    for (m2,p2) in m1_curr_spans:
+    #print("Most_supp_span")
+    for (m2, p2) in m1_curr_spans:
         relevant_reads = minimizer_combinations_database[m1][m2]
         if len(relevant_reads)//3 >= 3:
             seqs = array("I")
@@ -319,7 +345,7 @@ def main(args):
     if os.path.exists("mapping.txt"):
         os.remove("mapping.txt")
     outfolder = args.outfolder
-    sys.stdout = open(os.path.join(outfolder,"stdout.txt"), "w")
+    #sys.stdout = open(os.path.join(outfolder,"stdout.txt"), "w")
     # read the file and filter out polyA_ends(via remove_read_polyA_ends)
     all_reads = {i + 1: (acc, remove_read_polyA_ends(seq, 12, 1), qual) for i, (acc, (seq, qual)) in enumerate(help_functions.readfq(open(args.fastq, 'r')))}
     max_seqs_to_spoa = args.max_seqs_to_spoa
@@ -371,7 +397,7 @@ def main(args):
                 w = args.k + 1 + len(reads) // 30
         else:
             w = args.w
-        print("Window used for batch:", w)
+        #print("Window used for batch:", w)
         iso_abundance = args.iso_abundance
         delta_len = args.delta_len
         graph_id = 1
@@ -385,11 +411,11 @@ def main(args):
             minimizer_database = get_minimizers_and_positions(reads, w, k_size, hash_fcn)
 
         minimizer_combinations_database = get_minimizer_combinations_database(minimizer_database, k_size, x_low,
-                                                                              x_high)
+                                                                              x_high, reads)
         previously_corrected_regions = defaultdict(list)
         all_intervals_for_graph = {}
         for r_id in sorted(reads):
-
+            print(r_id)
             read_min_comb = [((m1, p1), m1_curr_spans) for (m1, p1), m1_curr_spans in
                              minimizers_comb_iterator(minimizer_database[r_id], k_size, x_low, x_high)]
 
@@ -436,8 +462,9 @@ def main(args):
                 pos_group = {}
             all_intervals = []
             prev_visited_intervals = []
-
+            #print("it over read_min_comb")
             for (m1, p1), m1_curr_spans in read_min_comb:
+                #print(m1,", ", p1)
                 # If any position is not in range of current corrections: then correct, not just start and stop
                 not_prev_corrected_spans = [(m2, p2) for (m2, p2) in m1_curr_spans if not (
                         p1 + k_size in read_previously_considered_positions and p2 - 1 in read_previously_considered_positions)]
@@ -549,7 +576,7 @@ def main(args):
             #                                                   args.max_seqs_to_spoa, args.iso_abundance)
 
     print("removing temporary workdir")
-    sys.stdout.close()
+    #sys.stdout.close()
     shutil.rmtree(work_dir)
 
 DEBUG=False
