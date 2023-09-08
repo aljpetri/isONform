@@ -67,18 +67,30 @@ def remove_read_polyA_ends(seq, threshold_len, to_len):
     return seq_mod
 
 
+
+
 def rindex(lst, value):
+    """
+        Function that calculates the reverse index. We want to find the last (but still) smallest k-mer in the window not the first
+        INPUT:  lst:            the window of kmers as a list
+                value:          the smallest kmer
+        OUTPUT: minimizer_pos:  the last position of kmer with value in lst (not the first as before)
+        """
     return len(lst) - operator.indexOf(reversed(lst), value) - 1
 
 def get_kmer_minimizers(seq, k_size, w_size):
     # kmers = [seq[i:i+k_size] for i in range(len(seq)-k_size) ]
     w = w_size - k_size
+    #save the window as a deque and instead of the sequence itself we use its hash value
     window_kmers = deque([hash(seq[i:i+k_size]) for i in range(w +1)])
+    #the smallest kmer (or to be precise the smallest hash) we have found in the window
     curr_min = min(window_kmers)
+    #we now want the last occurrence of the smallest kmer not the first anymore
     minimizer_pos = rindex(list(window_kmers), curr_min)
+    #add the initial minimizer to minimizers
     minimizers = [ (seq[minimizer_pos: minimizer_pos+k_size], minimizer_pos) ] # get the last element if ties in window
-
-    for i in range(w+1,len(seq) - k_size):
+    #iterate over the remaining read and find all minimizers therein
+    for i in range(w+1, len(seq) - k_size):
         new_kmer = hash(seq[i:i+k_size])
         # updating window
         discarded_kmer = window_kmers.popleft()
@@ -182,9 +194,11 @@ def get_minimizer_combinations_database(M, k, x_low, x_high,reads):
     cnt = 1
     for m1 in list(M2.keys()):
         for m2 in list(M2[m1].keys()):
+            #if the minimizer_pair is represented at more than one occurrence
             if len(M2[m1][m2]) > 3:
                 avg_bundance += len(M2[m1][m2])//3
                 cnt += 1
+            #the minimizer_combination is only once in the data therefore does not yield viable information for the graph later on
             else:
                 del M2[m1][m2]
                 singleton_minimzer += 1
