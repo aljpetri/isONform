@@ -2,6 +2,8 @@ from __future__ import print_function
 import os
 import errno
 import os.path
+import shutil
+
 
 def mkdir_p(path):
     try:
@@ -77,7 +79,7 @@ def generate_single_output(outfolder):
                     #    print("LINE",line)
                     # append content to second file
                     f.write(line)
-
+        
 def generate_low_abundance_output(outfolder):
     subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
     f = open(os.path.join(outfolder, "transcriptome_low.fastq"), "w")
@@ -104,6 +106,13 @@ def generate_low_abundance_output(outfolder):
                     # append content to second file
                     f.write(other_line)
                 #f.write(g.read())"""
+
+
+def remove_folders(outfolder):
+    subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
+    for subfolder in subfolders:
+        shutil.rmtree(os.path.join(outfolder,subfolder))
+            
 def generate_full_output(outfolder):
     generate_single_output(outfolder)
     generate_low_abundance_output(outfolder)

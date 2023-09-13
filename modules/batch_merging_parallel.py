@@ -2,6 +2,7 @@ import itertools
 import pickle
 import os
 
+import shutil
 from modules import IsoformGeneration
 from modules import Parallelization_side_functions
 
@@ -263,9 +264,9 @@ def join_back_via_batch_merging(outdir, delta, delta_len, delta_iso_len_3,
                 if not c_infos.merged:
                     nr_reads += len(c_infos.reads)
             write_final_output(all_infos_dict, outdir, iso_abundance, cl_dir, cl_id)
+        #shutil.rmtree(os.path.join(outdir,cl_id))
 
-
-DEBUG = True
+DEBUG = False
 
 
 def main():

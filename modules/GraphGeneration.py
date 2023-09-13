@@ -373,7 +373,7 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                         DG.add_edge(previous_node, name, length=length)
                         #print("edge ", previous_node, " to ", name, "added")
                         #cycle_added2 = cycle_finder(DG, previous_node)
-                        cycle_added2=bfs(DG,previous_node)
+                        cycle_added2 = bfs(DG,previous_node)
                         #is_cyclic = SimplifyGraph.isCyclic(DG)
                         #try:
                         #    nx_cycle=nx.find_cycle(DG)

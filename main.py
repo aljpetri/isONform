@@ -601,9 +601,6 @@ if __name__ == '__main__':
     parser.add_argument('--max_seqs_to_spoa', type=int, default=200, help='Maximum number of seqs to spoa')
     parser.add_argument('--max_seqs', type=int, default=1000,
                         help='Maximum number of seqs to correct at a time (in case of large clusters).')
-    parser.add_argument('--use_racon', action="store_true",
-                        help='Use racon to polish consensus after spoa (more time consuming but higher accuracy).')
-
     parser.add_argument('--exact_instance_limit', type=int, default=0,
                         help='Activates slower exact mode for instance smaller than this limit')
     parser.add_argument('--set_w_dynamically', action="store_true",
