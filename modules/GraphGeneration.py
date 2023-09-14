@@ -157,8 +157,8 @@ def known_old_node_action(alternatives_filtered, previous_node, this_len, nodes_
         nodes_for_graph[name] = prev_nodelist
         if not DG.has_edge(previous_node, name):
             DG.add_edge(previous_node, name, this_len)
-            cycle_added2 = cycle_finder(DG, previous_node)
-            #cycle_added2 = bfs(DG, previous_node)
+            #cycle_added2 = cycle_finder(DG, previous_node)
+            cycle_added2 = bfs(DG, previous_node)
             if cycle_added2:
                 cycle_added(name, alt_cyc_nodes, inter, DG, previous_node, r_id, seq, node_sequence, k, nodes_for_graph,
                             this_len, edge_support)
@@ -372,8 +372,8 @@ def generateGraphfromIntervals(all_intervals_for_graph, k, delta_len, read_len_d
                         #print("SimplifyGraph_cyclic ", is_cyclic)
                         DG.add_edge(previous_node, name, length=length)
                         #print("edge ", previous_node, " to ", name, "added")
-                        cycle_added2 = cycle_finder(DG, previous_node)
-                        #cycle_added2=bfs(DG,previous_node)
+                        #cycle_added2 = cycle_finder(DG, previous_node)
+                        cycle_added2 = bfs(DG,previous_node)
                         #is_cyclic = SimplifyGraph.isCyclic(DG)
                         #try:
                         #    nx_cycle=nx.find_cycle(DG)

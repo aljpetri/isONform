@@ -296,6 +296,7 @@ def main(args):
         file_handling = time()
         batch_merging_parallel.join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance)
         Parallelization_side_functions.generate_full_output(args.outfolder)
+        Parallelization_side_functions.remove_folders(args.outfolder)
         shutil.rmtree(split_directory)
         print("Joined back batched files in:", time() - file_handling)
         print("Finished full algo after :", time() - globstart)
@@ -305,7 +306,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo reconstruction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--version', action='version', version='%(prog)s 0.2.0')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.2.1')
     parser.add_argument('--fastq_folder', type=str, default=False,
                         help='Path to input fastq folder with reads in clusters')
     parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
