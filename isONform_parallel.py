@@ -255,7 +255,7 @@ def main(args):
                                                 "exact_instance_limit": args.exact_instance_limit,
                                                 "delta_len": args.delta_len,"--exact": True,
                                                 "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
-                                                 "max_seqs": args.max_seqs, "use_racon": args.use_racon, "parallel": True, "--slow": True, "delta_iso_len_3": args.delta_iso_len_3,
+                                                 "max_seqs": args.max_seqs, "parallel": True, "--slow": True, "delta_iso_len_3": args.delta_iso_len_3,
                                              "delta_iso_len_5": args.delta_iso_len_5}
                 instances.append(
                     (isONform_location, fastq_file_path, outfolder, batch_id, isONform_algorithm_params,cl_id))
@@ -322,8 +322,6 @@ if __name__ == '__main__':
                         help='Set w = k + max(2*k, floor(cluster_size/1000)).')
     parser.add_argument('--max_seqs', type=int, default=1000,
                         help='Maximum number of seqs to correct at a time (in case of large clusters).')
-    parser.add_argument('--use_racon', action="store_true",
-                        help='Use racon to polish consensus after spoa (more time consuming but higher accuracy).')
     parser.add_argument('--split_wrt_batches', action="store_true",
                         help='Process reads per batch (of max_seqs sequences) instead of per cluster. Significantly decrease runtime when few very large clusters are less than the number of cores used.')
     parser.add_argument('--clustered', action="store_true",
