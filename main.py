@@ -339,6 +339,7 @@ def find_most_supported_span(r_id, m1, p1, m1_curr_spans, minimizer_combinations
 
 
 def main(args):
+    #Todo: add timestamp
     print("ARGS",args)
     all_batch_reads_dict={}
     # start = time()
@@ -527,7 +528,7 @@ def main(args):
         #profiler = Profiler()
         #profiler.start()
         #generate the graph from the intervals
-
+        #TODO: add timestamp
         DG,  reads_for_isoforms = GraphGeneration.generateGraphfromIntervals(
             all_intervals_for_graph, k_size, delta_len, read_len_dict,new_all_reads)
         #profiler.stop()
@@ -593,7 +594,7 @@ if __name__ == '__main__':
     parser.add_argument('--xmin', type=int, default=18, help='Upper interval length')
     parser.add_argument('--xmax', type=int, default=80, help='Lower interval length')
     parser.add_argument('--T', type=float, default=0.1, help='Minimum fraction keeping substitution')
-    parser.add_argument('--exact', action="store_true", help='Get exact solution for WIS for evary read (recalculating weights for each read (much slower but slightly more accuracy,\
+    parser.add_argument('--exact', action="store_true", help='Get exact solution for WIS for every read (recalculating weights for each read (much slower but slightly more accuracy,\
                                                                  not to be used for clusters with over ~500 reads)')
     parser.add_argument('--disable_numpy', action="store_true",
                         help='Do not require numpy to be installed, but this version is about 1.5x slower than with numpy.')
@@ -607,17 +608,17 @@ if __name__ == '__main__':
                         help='Set w = k + max(2*k, floor(cluster_size/1000)).')
     parser.add_argument('--verbose', action="store_true", help='Print various developer stats.')
 
-    parser.add_argument('--compression', action="store_true", help='Use homopolymenr compressed reads. (Deprecated, because we will have fewer \
+    parser.add_argument('--compression', action="store_true", help='Use homopolymer compressed reads. (Deprecated, because we will have fewer \
                                                                         minmimizer combinations to span regions in homopolymenr dense regions. Solution \
-                                                                        could be to adjust upper interval legnth dynamically to guarantee a certain number of spanning intervals.')
+                                                                        could be to adjust upper interval length dynamically to guarantee a certain number of spanning intervals.')
     parser.add_argument('--outfolder', type=str, default=None,
-                        help='A fasta file with transcripts that are shared between samples and have perfect illumina support.')
+                        help='The outfolder of isONform, into which the algorithm will write the results.')
     parser.add_argument('--iso_abundance', type=int,default=5, help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
     parser.add_argument('--delta_iso_len_3', type=int, default=30,
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
-    parser.add_argument('--parallel',type=bool,default=False,help='indicates whether we run the parallelization wrapper script')
+    parser.add_argument('--parallel',type=bool,default=False,help='Indicates whether we run the parallelization wrapper script')
     parser.add_argument('--slow',action="store_true", help='EXPERIMENTAL PARAMETER: has high repercussions on run time use the slow mode for the simplification of the graph (bubble popping), slow mode: every bubble gets popped.')
     args = parser.parse_args()
 

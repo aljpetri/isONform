@@ -65,6 +65,10 @@ the isON-pipeline (isONclust, isONcorrect, isONform) can be run via:
 (Note that this requires pychopper, isONclust and isONcorrect to be installed)
 
 
+## Contact <a name="Contact"></a>
+If you encounter any problems, please raise an issue on the issues page, you can also contact the developer of this repository via:
+alexander.petri[at]math.su.se
+
 
 ## Credits <a name="credits"></a>
 
