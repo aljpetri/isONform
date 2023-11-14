@@ -58,16 +58,23 @@ def generate_single_mapping(outfolder):
                 for line in g:
                     # append content to second file
                     f.write(line)
-def generate_single_output(outfolder):
+def generate_single_output(outfolder,write_fastq):
     subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
-    print("Generating transcriptome.fastq")
-    f = open(os.path.join(outfolder,"transcriptome.fastq"), "w")
+    if write_fastq:
+        print("Generating transcriptome.fastq")
+        f = open(os.path.join(outfolder,"transcriptome.fastq"), "w")
+    else:
+        print("Generating transcriptome.fasta")
+        f = open(os.path.join(outfolder, "transcriptome.fasta"), "w")
     for subfolder in subfolders:
         #print("subfolder",subfolder)
         actual_folder=subfolder.split("/")[-1]
         #print(actual_folder)
         if actual_folder.isdigit():
-            fname=os.path.join(outfolder,"cluster"+str(actual_folder)+"_merged.fq")
+            if write_fastq:
+                fname=os.path.join(outfolder, "cluster"+str(actual_folder)+"_merged.fq")
+            else:
+                fname = os.path.join(outfolder, "cluster" + str(actual_folder) + "_merged.fa")
             #print(fname)
             if os.path.isfile(fname):
                 #print("True")
@@ -80,16 +87,21 @@ def generate_single_output(outfolder):
                     # append content to second file
                     f.write(line)
         
-def generate_low_abundance_output(outfolder):
+def generate_low_abundance_output(outfolder,write_fastq):
     subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]
-    f = open(os.path.join(outfolder, "transcriptome_low.fastq"), "w")
+    if write_fastq:
+        f = open(os.path.join(outfolder, "transcriptome_low.fastq"), "w")
+    else:
+        f = open(os.path.join(outfolder, "transcriptome_low.fasta"), "w")
     for subfolder in subfolders:
         actual_folder = subfolder.split("/")[-1]
                     # print(actual_folder)
         if actual_folder.isdigit():
-            fname = os.path.join(outfolder, "cluster" + str(actual_folder) + "_merged_low_abundance.fastq")
+            if write_fastq:
+                fname = os.path.join(outfolder, "cluster" + str(actual_folder) + "_merged_low_abundance.fq")
                         # print(fname)
-
+            else:
+                fname = os.path.join(outfolder, "cluster" + str(actual_folder) + "_merged_low_abundance.fa")
             if os.path.isfile(fname):
                 g = open(fname, "r")
                 # read content from first file
@@ -113,9 +125,9 @@ def remove_folders(outfolder):
     for subfolder in subfolders:
         shutil.rmtree(os.path.join(outfolder,subfolder))
             
-def generate_full_output(outfolder):
-    generate_single_output(outfolder)
-    generate_low_abundance_output(outfolder)
+def generate_full_output(outfolder,write_fastq):
+    generate_single_output(outfolder,write_fastq)
+    generate_low_abundance_output(outfolder, write_fastq)
     generate_single_mapping(outfolder)
     generate_low_abundance_mapping(outfolder)
     generate_single_support(outfolder)

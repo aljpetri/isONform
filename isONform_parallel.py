@@ -294,8 +294,12 @@ def main(args):
     if args.split_wrt_batches:
         print("STILLSPLITWRTBATCHES")
         file_handling = time()
-        batch_merging_parallel.join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance)
-        Parallelization_side_functions.generate_full_output(args.outfolder)
+        if args.write_fastq:
+            write_fastq = True
+        else:
+            write_fastq = False
+        batch_merging_parallel.join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance, write_fastq)
+        Parallelization_side_functions.generate_full_output(args.outfolder,write_fastq)
         Parallelization_side_functions.remove_folders(args.outfolder)
         shutil.rmtree(split_directory)
         print("Joined back batched files in:", time() - file_handling)
@@ -306,7 +310,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo reconstruction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--version', action='version', version='%(prog)s 0.3.0')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.3.1')
     parser.add_argument('--fastq_folder', type=str, default=False,
                         help='Path to input fastq folder with reads in clusters')
     parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
@@ -332,14 +336,14 @@ if __name__ == '__main__':
     parser.add_argument('--delta',type=float,default=0.1, help='diversity rate used to compare sequences')
     parser.add_argument('--max_seqs_to_spoa', type=int, default=200, help='Maximum number of seqs to spoa')
     parser.add_argument('--verbose', action="store_true", help='Print various developer stats.')
-    parser.add_argument('--iso_abundance', type=int, default=1,
+    parser.add_argument('--iso_abundance', type=int, default=5,
                         help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
     parser.add_argument('--delta_iso_len_3', type=int, default=30,
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--tmpdir', type=str,default=None, help='OPTIONAL PARAMETER: Absolute path to custom folder in which to store temporary files. If tmpdir is not specified, isONform will attempt to write the temporary files into the tmp folder on your system. It is advised to only use this parameter if the symlinking does not work on your system.')
-
+    parser.add_argument('--write_fastq', action="store_true", help=' Indicates that we want to ouptut the final output (transcriptome) as fastq file (New standard: fasta)')
     args = parser.parse_args()
     print(len(sys.argv))
     if len(sys.argv) == 1:

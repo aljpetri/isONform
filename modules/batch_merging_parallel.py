@@ -82,12 +82,16 @@ def read_batch_file(batch_id, all_infos_dict, all_reads_dict, cl_dir):
             all_infos_dict[batch_id] = {}
 
 
-def write_final_output(all_infos_dict, outfolder, iso_abundance, cl_dir, folder):
+def write_final_output(all_infos_dict, outfolder, iso_abundance, cl_dir, folder, write_fastq):
     write_low_abundance = False
     support_name = "support_" + str(folder) + ".txt"
     other_support_name = "support_" + str(folder) + "low_abundance.txt"
-    consensus_name = "cluster" + str(folder) + "_merged.fq"
-    other_consensus_name = "cluster" + str(folder) + "_merged_low_abundance.fq"
+    if write_fastq:
+        consensus_name = "cluster" + str(folder) + "_merged.fq"
+        other_consensus_name = "cluster" + str(folder) + "_merged_low_abundance.fq"
+    else:
+        consensus_name = "cluster" + str(folder) + "_merged.fa"
+        other_consensus_name = "cluster" + str(folder) + "_merged_low_abundance.fa"
     mapping_name = "cluster" + str(folder) + "_mapping.txt"
     other_mapping_name = "cluster" + str(folder) + "_mapping_low_abundance.txt"
     support_file = open(os.path.join(outfolder, support_name), "w")
@@ -103,14 +107,20 @@ def write_final_output(all_infos_dict, outfolder, iso_abundance, cl_dir, folder)
             if not infos.merged:
                 if len(infos.reads) >= iso_abundance or iso_abundance == 1:
                     mapping_file.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].reads))
-                    consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,
+                    if write_fastq:
+                        consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,
                                                                       "+" * len(all_infos_dict[batchid][id].sequence)))
+                    else:
+                        consensus_file.write("@{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
                     support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[batchid][id].reads)))
                 else:
                     if write_low_abundance:
-                        other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,
+                        if write_fastq:
+                            other_consensus.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,
                                                                            "+" * len(
                                                                                all_infos_dict[batchid][id].sequence)))
+                        else:
+                            other_consensus.write("@{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
                         if new_id in all_infos_dict:
                             other_support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[new_id].reads)))
                         else:
@@ -196,7 +206,7 @@ def actual_merging_process(all_infos_dict, delta, delta_len,
 
 
 def join_back_via_batch_merging(outdir, delta, delta_len, delta_iso_len_3,
-                                delta_iso_len_5, max_seqs_to_spoa, iso_abundance):
+                                delta_iso_len_5, max_seqs_to_spoa, iso_abundance,write_fastq):
     print("Batch Merging")
     unique_cl_ids = set()
     subfolders = [f.path for f in os.scandir(outdir) if f.is_dir()]
@@ -233,13 +243,6 @@ def join_back_via_batch_merging(outdir, delta, delta_len, delta_iso_len_3,
                 map_name = "mapping" + str(batch_id)
                 map_file = open(os.path.join(cl_dir, map_name), 'rb')
                 batch_mappings[batch_id] = pickle.load(map_file)
-        #print(all_reads_dict)
-        #print(batch_reads)
-        #print(batch_mappings)
-                # read all files needed to perform the batch merging and store the respective infos into all_infos_dict as well as all_reads_dict
-                # read_batch_file(batch_id, all_infos_dict, all_reads_dict, cl_dir)
-                # batch_reads[batch_id]=read_spoa_file(batch_id,cl_dir)
-                # batch_mappings[batch_id]=read_mapping_file(batch_id,cl_dir)
         # collect the information so that we have one data structure containing all infos
         for b_id, value in batch_reads.items():
             all_infos_batch = {}
@@ -263,7 +266,7 @@ def join_back_via_batch_merging(outdir, delta, delta_len, delta_iso_len_3,
             for c_id, c_infos in b_infos.items():
                 if not c_infos.merged:
                     nr_reads += len(c_infos.reads)
-            write_final_output(all_infos_dict, outdir, iso_abundance, cl_dir, cl_id)
+            write_final_output(all_infos_dict, outdir, iso_abundance, cl_dir, cl_id, write_fastq)
         #shutil.rmtree(os.path.join(outdir,cl_id))
 
 DEBUG = False
