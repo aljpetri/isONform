@@ -111,7 +111,7 @@ def write_final_output(all_infos_dict, outfolder, iso_abundance, cl_dir, folder,
                         consensus_file.write("@{0}\n{1}\n+\n{2}\n".format(new_id, all_infos_dict[batchid][id].sequence,
                                                                       "+" * len(all_infos_dict[batchid][id].sequence)))
                     else:
-                        consensus_file.write("@{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
+                        consensus_file.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
                     support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[batchid][id].reads)))
                 else:
                     if write_low_abundance:
@@ -120,7 +120,7 @@ def write_final_output(all_infos_dict, outfolder, iso_abundance, cl_dir, folder,
                                                                            "+" * len(
                                                                                all_infos_dict[batchid][id].sequence)))
                         else:
-                            other_consensus.write("@{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
+                            other_consensus.write(">{0}\n{1}\n".format(new_id, all_infos_dict[batchid][id].sequence))
                         if new_id in all_infos_dict:
                             other_support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[new_id].reads)))
                         else:
