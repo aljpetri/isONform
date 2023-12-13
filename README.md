@@ -57,6 +57,8 @@ To run the algorithm:<br />
 python isONform_parallel.py --fastq_folder path/to/input/files --t <nr_cores> --outfolder /path/to/outfolder --split_wrt_batches 
 ```
 
+Note: Please always give absolute paths to the files or folders
+
 the isON-pipeline (isONclust, isONcorrect, isONform) can be run via:
 
 ```
@@ -64,7 +66,15 @@ the isON-pipeline (isONclust, isONcorrect, isONform) can be run via:
 ```
 (Note that this requires pychopper, isONclust and isONcorrect to be installed)
 
+## Outputs <a name="Outputs"></a>
+IsONform outputs three main files: transcriptome.fasta, mapping.txt, and support.txt.
+For each isoform that isONform reconstructs the id has the following form: x_y_z.
 
+'x' denotes the isONclust cluster that the isoform stems from.
+As we cluster reads as in isONcorrect in batches of 1000 reads the 'y' denotes from which batch the isoform was reconstructed.
+The 'z' denotes a unique identifier which enables us to have unique ids for each isoform that we reconstructed.
+In mapping.txt it is indicated from which original reads an isoform has been reconstructed.
+support_txt gives the support (i.e. how many original reads make up the isoform).
 ## Contact <a name="Contact"></a>
 If you encounter any problems, please raise an issue on the issues page, you can also contact the developer of this repository via:
 alexander.petri[at]math.su.se

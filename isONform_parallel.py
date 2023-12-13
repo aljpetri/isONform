@@ -193,6 +193,7 @@ def main(args):
     #print("MERGE?", args.merge_sub_isoforms_3, args.merge_sub_isoforms_5)
     globstart = time()
     directory = args.fastq_folder  # os.fsencode(args.fastq_folder)
+    write_low_abundance = False
     #print(directory)
     #print("ARGS",args)
     isONform_location = os.path.dirname(os.path.realpath(__file__))
@@ -298,8 +299,8 @@ def main(args):
             write_fastq = True
         else:
             write_fastq = False
-        batch_merging_parallel.join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa,args.iso_abundance, write_fastq)
-        Parallelization_side_functions.generate_full_output(args.outfolder,write_fastq)
+        batch_merging_parallel.join_back_via_batch_merging(args.outfolder, args.delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5, args.max_seqs_to_spoa, args.iso_abundance, write_fastq, write_low_abundance)
+        Parallelization_side_functions.generate_full_output(args.outfolder, write_fastq, write_low_abundance)
         Parallelization_side_functions.remove_folders(args.outfolder)
         shutil.rmtree(split_directory)
         print("Joined back batched files in:", time() - file_handling)
@@ -344,6 +345,7 @@ if __name__ == '__main__':
                         help='Cutoff parameter: maximum length difference at 5prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--tmpdir', type=str,default=None, help='OPTIONAL PARAMETER: Absolute path to custom folder in which to store temporary files. If tmpdir is not specified, isONform will attempt to write the temporary files into the tmp folder on your system. It is advised to only use this parameter if the symlinking does not work on your system.')
     parser.add_argument('--write_fastq', action="store_true", help=' Indicates that we want to ouptut the final output (transcriptome) as fastq file (New standard: fasta)')
+
     args = parser.parse_args()
     print(len(sys.argv))
     if len(sys.argv) == 1:

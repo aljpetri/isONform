@@ -82,24 +82,30 @@ def read_batch_file(batch_id, all_infos_dict, all_reads_dict, cl_dir):
             all_infos_dict[batch_id] = {}
 
 
-def write_final_output(all_infos_dict, outfolder, iso_abundance, cl_dir, folder, write_fastq):
-    write_low_abundance = False
+def write_final_output(all_infos_dict, outfolder, iso_abundance, cl_dir, folder, write_fastq, write_low_abundance):
+    #write_low_abundance = False
     support_name = "support_" + str(folder) + ".txt"
     other_support_name = "support_" + str(folder) + "low_abundance.txt"
+    other_mapping_name = "cluster" + str(folder) + "_mapping_low_abundance.txt"
     if write_fastq:
         consensus_name = "cluster" + str(folder) + "_merged.fq"
-        other_consensus_name = "cluster" + str(folder) + "_merged_low_abundance.fq"
+        if write_low_abundance:
+            other_consensus_name = "cluster" + str(folder) + "_merged_low_abundance.fq"
+            other_consensus = open(os.path.join(outfolder, other_consensus_name), 'w')
+            other_mapping = open(os.path.join(outfolder, other_mapping_name), 'w')
+            other_support_file = open(os.path.join(outfolder, other_support_name), "w")
     else:
         consensus_name = "cluster" + str(folder) + "_merged.fa"
-        other_consensus_name = "cluster" + str(folder) + "_merged_low_abundance.fa"
+        if write_low_abundance:
+            other_consensus_name = "cluster" + str(folder) + "_merged_low_abundance.fa"
+            other_consensus = open(os.path.join(outfolder, other_consensus_name), 'w')
+            other_mapping = open(os.path.join(outfolder, other_mapping_name), 'w')
+            other_support_file = open(os.path.join(outfolder, other_support_name), "w")
+
     mapping_name = "cluster" + str(folder) + "_mapping.txt"
-    other_mapping_name = "cluster" + str(folder) + "_mapping_low_abundance.txt"
     support_file = open(os.path.join(outfolder, support_name), "w")
-    other_support_file = open(os.path.join(outfolder, other_support_name), "w")
     consensus_file = open(os.path.join(outfolder, consensus_name), "w")
-    other_consensus = open(os.path.join(outfolder, other_consensus_name), 'w')
     mapping_file = open(os.path.join(outfolder, mapping_name), 'w')
-    other_mapping = open(os.path.join(outfolder, other_mapping_name), 'w')
     skipped_reads = {}
     for batchid, id_dict in all_infos_dict.items():
         for id, infos in id_dict.items():
@@ -143,8 +149,9 @@ def write_final_output(all_infos_dict, outfolder, iso_abundance, cl_dir, folder,
 
     consensus_file.close()
     mapping_file.close()
-    other_consensus.close()
-    other_mapping.close()
+    if write_low_abundance:
+        other_consensus.close()
+        other_mapping.close()
 
 
 # TODO: add the rest of variables for this method and move filewriting to wrappermethod
@@ -206,7 +213,7 @@ def actual_merging_process(all_infos_dict, delta, delta_len,
 
 
 def join_back_via_batch_merging(outdir, delta, delta_len, delta_iso_len_3,
-                                delta_iso_len_5, max_seqs_to_spoa, iso_abundance,write_fastq):
+                                delta_iso_len_5, max_seqs_to_spoa, iso_abundance,write_fastq,write_low_abundance):
     print("Batch Merging")
     unique_cl_ids = set()
     subfolders = [f.path for f in os.scandir(outdir) if f.is_dir()]
@@ -266,7 +273,7 @@ def join_back_via_batch_merging(outdir, delta, delta_len, delta_iso_len_3,
             for c_id, c_infos in b_infos.items():
                 if not c_infos.merged:
                     nr_reads += len(c_infos.reads)
-            write_final_output(all_infos_dict, outdir, iso_abundance, cl_dir, cl_id, write_fastq)
+            write_final_output(all_infos_dict, outdir, iso_abundance, cl_dir, cl_id, write_fastq, write_low_abundance)
         #shutil.rmtree(os.path.join(outdir,cl_id))
 
 DEBUG = False

@@ -106,18 +106,10 @@ def generate_low_abundance_output(outfolder,write_fastq):
                 g = open(fname, "r")
                 # read content from first file
                 for line in g:
-                    if line.startswith('@'):
-                        line=line+str(actual_folder)
+                    if line.startswith('@') or line.startswith('>'):
+                        line = line + str(actual_folder)
                     # append content to second file
                     f.write(line)
-            """otherfname= os.path.join(outfolder,"cluster"+str(actual_folder)+"_merged_low_abundance.fq")
-            if os.path.isfile(otherfname):
-                other_g = open(otherfname, "r")
-                # read content from first file
-                for other_line in other_g:
-                    # append content to second file
-                    f.write(other_line)
-                #f.write(g.read())"""
 
 
 def remove_folders(outfolder):
@@ -125,9 +117,10 @@ def remove_folders(outfolder):
     for subfolder in subfolders:
         shutil.rmtree(os.path.join(outfolder,subfolder))
             
-def generate_full_output(outfolder,write_fastq):
-    generate_single_output(outfolder,write_fastq)
-    generate_low_abundance_output(outfolder, write_fastq)
+def generate_full_output(outfolder,write_fastq, write_low_abundance):
+    generate_single_output(outfolder, write_fastq)
     generate_single_mapping(outfolder)
-    generate_low_abundance_mapping(outfolder)
     generate_single_support(outfolder)
+    if write_low_abundance:
+        generate_low_abundance_output(outfolder, write_fastq)
+        generate_low_abundance_mapping(outfolder)
