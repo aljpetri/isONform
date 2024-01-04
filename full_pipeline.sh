@@ -7,7 +7,7 @@ set -e
 #the pipeline can be run in different modes:
 # full: the full pipeline is run (pychopper, isONclust,isONcorrect,isONform)
 # pacbio: for PacBio data runs isONclust and isONform
-# analysis: special mode for the analysis pipelines: only isONclust,isONcorrect and isONform are run
+# ont: analysis of ont data:  isONclust,isONcorrect and isONform are run
 # only_isonform: only isONform is run
 raw_reads=$1
 outfolder=$2
@@ -44,16 +44,16 @@ echo "Running isONclust"
 echo
 if [ $mode != "only_isonform" ]
 then
-if [ $mode != "pacbio" ] && [ $mode != "analysis" ]
+if [ $mode != "pacbio" ] && [ $mode != "'ont'" ]
 then
 /usr/bin/time -v isONclust  --t $num_cores  --ont --fastq $outfolder/full_length.fq \
              --outfolder $outfolder/clustering
 /usr/bin/time -v isONclust write_fastq --N $iso_abundance --clusters $outfolder/clustering/final_clusters.tsv \
                       --fastq $outfolder/full_length.fq --outfolder  $outfolder/clustering/fastq_files
-elif [ $mode == "analysis" ]
+elif [ $mode == "ont" ]
 then
 /usr/bin/time -v  isONclust  --t $num_cores  --ont --fastq $raw_reads \
-             --outfolder $outfolder/clustering --k 8 --w 9
+             --outfolder $outfolder/clustering
 /usr/bin/time -v isONclust write_fastq --N $iso_abundance --clusters $outfolder/clustering/final_clusters.tsv \
                       --fastq $raw_reads --outfolder  $outfolder/clustering/fastq_files
 else
