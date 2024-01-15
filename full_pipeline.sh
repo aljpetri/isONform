@@ -56,6 +56,7 @@ then
              --outfolder $outfolder/clustering
 /usr/bin/time -v isONclust write_fastq --N $iso_abundance --clusters $outfolder/clustering/final_clusters.tsv \
                       --fastq $raw_reads --outfolder  $outfolder/clustering/fastq_files
+#The mode is pacbio here
 else
 /usr/bin/time -v  isONclust  --t $num_cores  --isoseq  --fastq $raw_reads \
              --outfolder $outfolder/clustering
@@ -91,7 +92,7 @@ echo
 if [ $mode != "pacbio" ]
 then
 /usr/bin/time -v python3.11 $isONform_folder/isONform_parallel.py --t $num_cores  --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches  --delta_iso_len_3 30 --delta_iso_len_5 50
-else
+else #run isONform in ont or only_isONform mode
 /usr/bin/time -v  python3.11 $isONform_folder/isONform_parallel.py --t $num_cores --fastq_folder $outfolder/clustering/fastq_files --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --split_wrt_batches --delta_iso_len_3 30 --delta_iso_len_5 50 --clustered
 fi
 echo
