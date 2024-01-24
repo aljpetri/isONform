@@ -60,7 +60,7 @@ To only run the isONform algorithm:<br />
 isONform_parallel --fastq_folder path/to/input/files --t <nr_cores> --outfolder /path/to/outfolder --split_wrt_batches 
 ```
 
-Note: Please always give absolute paths to the files or folders
+Note: Please always use absolute paths to the files or folders
 
 The full isON-pipeline (isONclust, isONcorrect, isONform) can be found [here](https://github.com/aljpetri/isONform/blob/master/isON_pipeline.sh) and is run via:
 
@@ -68,6 +68,11 @@ The full isON-pipeline (isONclust, isONcorrect, isONform) can be found [here](ht
 ./isON_pipeline.sh --raw_reads </absolute/path/to/raw_reads.fq>  --outfolder <outfolder>  --num_cores <num_cores> --isONform_folder <isONform_folder> --iso_abundance <iso_abundance> --mode <mode>
 ```
 (Please note that this requires isONclust [LINK](https://github.com/ksahlin/isONclust) and isONcorrect [LINK](https://github.com/ksahlin/isONcorrect) to be installed in addition to isONform)
+
+To receive more information about the arguments used for the isON_pipeline script:
+```
+./isON_pipeline.sh --help
+```
 
 ## Outputs <a name="Outputs"></a>
 IsONform outputs three main files: transcriptome.fasta, mapping.txt, and support.txt.
