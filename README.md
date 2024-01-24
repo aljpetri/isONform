@@ -57,7 +57,7 @@ To only run the isONform algorithm:<br />
 
 
 ```
-python isONform_parallel.py --fastq_folder path/to/input/files --t <nr_cores> --outfolder /path/to/outfolder --split_wrt_batches 
+isONform_parallel --fastq_folder path/to/input/files --t <nr_cores> --outfolder /path/to/outfolder --split_wrt_batches 
 ```
 
 Note: Please always give absolute paths to the files or folders
