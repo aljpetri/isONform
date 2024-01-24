@@ -49,10 +49,7 @@ while [ $# -gt 0 ]; do
         # Extract the option name by removing the leading dashes
         v="${1/--/}"
         # Check if the argument for this option was left empty (then we would have the next argument name as next entry)
-        if [[ $2 == "--"* ]]; then
-           # The argument was left empty therefore we leave the argument for the option empty
-           declare "$v"=''
-        else
+        if [[ $2 != "--"* ]]; then
            #The argument was not left empty, therefore we properly set the argument as the value for option
            declare "$v"="$2"
            #We have to shift only in this case

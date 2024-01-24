@@ -49,7 +49,7 @@ For this a graph is built up using the networkx api and different simplification
 The algorithm uses spoa to generate the final isoforms.<br />
 ## Input data <a name="Input_data"></a>
 The isONpipeline takes .fastq files generated with long-read sequencing techniques (ONT or Pacbio) as an input that additionally have been cleaned of barcodes.
-Please make sure that you run the isONpipeline on data that have been processed with * [LIMA](https://lima.how/) (Pacbio data) or *[Pychopper](https://github.com/epi2me-labs/pychopper) (ONT data) so that all the barcodes are removed from the reads
+Please make sure that you run the isONpipeline on data that have been processed with  [LIMA](https://lima.how/) (Pacbio data) or [Pychopper](https://github.com/epi2me-labs/pychopper) (ONT data) so that all the barcodes are removed from the reads
 
 ## Running isONform <a name="Running"></a>
 
@@ -65,9 +65,9 @@ Note: Please always give absolute paths to the files or folders
 The full isON-pipeline (isONclust, isONcorrect, isONform) can be found [here](https://github.com/aljpetri/isONform/blob/master/isON_pipeline.sh) and is run via:
 
 ```
-./full_pipeline.sh <raw_reads.fq>  <outfolder>  <num_cores> <isONform_folder> <iso_abundance> <mode>
+./isON_pipeline.sh --raw_reads </absolute/path/to/raw_reads.fq>  --outfolder <outfolder>  --num_cores <num_cores> --isONform_folder <isONform_folder> --iso_abundance <iso_abundance> --mode <mode>
 ```
-(Please note that this requires isONclust [LINK] (https://github.com/ksahlin/isONclust) and isONcorrect [LINK](https://github.com/ksahlin/isONcorrect) to be installed in addition to isONform)
+(Please note that this requires isONclust [LINK](https://github.com/ksahlin/isONclust) and isONcorrect [LINK](https://github.com/ksahlin/isONcorrect) to be installed in addition to isONform)
 
 ## Outputs <a name="Outputs"></a>
 IsONform outputs three main files: transcriptome.fasta, mapping.txt, and support.txt.
