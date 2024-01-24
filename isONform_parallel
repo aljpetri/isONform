@@ -5,7 +5,7 @@ The script was taken from isoncorrect (https://github.com/ksahlin/isoncorrect/bl
 by Kristoffer Sahlin and changed by Alexander Petri to be usable with the isONform code base.
 
 """
-# ! /usr/bin/env python
+
 
 from __future__ import print_function
 import argparse
@@ -42,7 +42,7 @@ def isONform(data):
     help_functions.mkdir_p(outfolder)
     #print("OUT",outfolder)
     #print("Algoparams",isONform_algorithm_params)
-    isONform_exec = os.path.join(isONform_location, "main.py")
+    isONform_exec = os.path.join(isONform_location, "main")
     isONform_error_file = os.path.join(outfolder, "stderr.txt")
     with open(isONform_error_file, "w") as error_file:
         print('Running isONform batch_id:{0}.{1}...'.format(cl_id,batch_id), end=' ')
@@ -311,7 +311,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo reconstruction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--version', action='version', version='%(prog)s 0.3.3')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.3.4')
     parser.add_argument('--fastq_folder', type=str, default=False,
                         help='Path to input fastq folder with reads in clusters')
     parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
