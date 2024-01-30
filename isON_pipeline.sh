@@ -77,6 +77,18 @@ fi
 echo "Running `basename $0` raw reads: '$raw_reads' outfolder: '$outfolder' num_cores: '$num_cores' isONform_folder:'$isONform_folder' iso_abundance: '$iso_abundance' mode: '$mode'"
 
 mkdir -p $outfolder
+##Testing whether the programs are installed properly before attempting to run them
+pychopper --h
+isONclust
+run_isoncorrect
+if [ -n "$isONform_folder"  ] #the user has given a path to isONform (cloned from github)
+  then
+  $isONform_folder/isONform_parallel --h
+else
+  python isONform_parallel --h
+fi
+
+
 
 if [ $mode == "ont_with_pychopper" ]
 then
@@ -97,7 +109,6 @@ echo
 
 fi
 
-
 if [ $mode != "only_isonform" ] # this if statement prevents isONclust and isONcorrect from being run
   then
     echo
@@ -115,7 +126,7 @@ if [ $mode != "only_isonform" ] # this if statement prevents isONclust and isONc
              --outfolder $outfolder/clustering
        /usr/bin/time -v isONclust write_fastq --N $iso_abundance --clusters $outfolder/clustering/final_clusters.tsv \
                       --fastq $raw_reads --outfolder  $outfolder/clustering/fastq_files
-  elif [ $mode == "pacbio" ]
+  elif [ $mode == "pacbio" ]#This is the pacbio mode
     then
        /usr/bin/time -v  isONclust  --t $num_cores  --isoseq  --fastq $raw_reads \
              --outfolder $outfolder/clustering
@@ -127,7 +138,7 @@ if [ $mode != "only_isonform" ] # this if statement prevents isONclust and isONc
              --outfolder $outfolder/clustering
        /usr/bin/time -v isONclust write_fastq --N $iso_abundance --clusters $outfolder/clustering/final_clusters.tsv \
                       --fastq $raw_reads --outfolder  $outfolder/clustering/fastq_files
-#This is the pacbio mode
+
 
   fi
 
@@ -142,7 +153,7 @@ if [ $mode != "only_isonform" ] # this if statement prevents isONclust and isONc
     echo "Running isONcorrect"
     echo
 
-    /usr/bin/time -v python3.11 run_isoncorrect --t $num_cores  --fastq_folder $outfolder/clustering/fastq_files  --outfolder $outfolder/correction/
+    /usr/bin/time -v  run_isoncorrect --t $num_cores  --fastq_folder $outfolder/clustering/fastq_files  --outfolder $outfolder/correction/
 
     echo
     echo "Finished isONcorrect"
