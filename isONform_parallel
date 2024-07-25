@@ -236,7 +236,7 @@ def main(args):
             tmp_id= read_fastq_file.split(".")[0]
             snd_tmp_id=tmp_id.split("_")
             cl_id = snd_tmp_id[0]
-            batch_id=snd_tmp_id[1]
+            batch_id=snd_tmp_id[1] if len(snd_tmp_id) > 1 else 0
             outfolder = os.path.join(args.outfolder, cl_id)
             #print(batch_id,cl_id)
             #print(outfolder)
@@ -311,7 +311,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo reconstruction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--version', action='version', version='%(prog)s 0.3.4')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.3.5')
     parser.add_argument('--fastq_folder', type=str, default=False,
                         help='Path to input fastq folder with reads in clusters')
     parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')

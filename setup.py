@@ -19,7 +19,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 setup(
 
     name='isONform',  # Required
-    version='0.3.4',  # Required
+    version='0.3.5',  # Required
     description='De novo construction of isoforms from long-read data ',  # Required
     long_description=long_description,  # Optional
     long_description_content_type='text/markdown',
