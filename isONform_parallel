@@ -10,6 +10,7 @@ by Kristoffer Sahlin and changed by Alexander Petri to be usable with the isONfo
 from __future__ import print_function
 import argparse
 import tempfile
+from ast import Param
 from time import time
 from pathlib import Path
 import signal
@@ -26,6 +27,31 @@ import errno
 from modules import batch_merging_parallel
 from modules import help_functions
 from modules import Parallelization_side_functions
+
+def restructure_isoncorrect_output(directory):
+    #TODO: Test
+    if filter(os.path.isfile, os.listdir( directory ) ):
+        print("isONcorrect structure")
+        #iterate over all subdirectories in directory
+        for subdirectory in os.listdir(directory):
+            subdirectory_path = os.path.join(directory, subdirectory)
+            # Check if it's a directory
+            if os.path.isdir(subdirectory_path):
+                # Define the source file path
+                source_file = os.path.join(subdirectory_path, 'corrected_reads.fastq')
+                if source_file:
+                    # Define the target file path in the main folder with new name
+                    target_file = os.path.join(directory, f"{subdirectory}.fastq")
+                    # Move and rename if the file exists
+                    if os.path.exists(source_file):
+                        shutil.move(source_file, target_file)
+                        print(f"Moved and renamed {source_file} to {target_file}")
+                    else:
+                        print(f"File {source_file} does not exist.")
+        # The following line removes all folders in the input folder
+        Parallelization_side_functions.remove_folders(directory)
+    else:
+        print("isONclust structure")
 
 def wccount(filename):
     out = subprocess.Popen(['wc', '-l', filename],
@@ -113,7 +139,6 @@ def split_cluster_in_batches_corrected(indir, outdir, tmp_work_dir, max_seqs):
     tmp_work_dir = os.path.join(tmp_work_dir, 'split_in_batches')
     # print(indir)
     help_functions.mkdir_p(tmp_work_dir)
-
     pat = Path(indir)
     #collect all fastq files located in this directory or any subdirectories
     file_list = list(pat.rglob('*.fastq'))
@@ -121,13 +146,13 @@ def split_cluster_in_batches_corrected(indir, outdir, tmp_work_dir, max_seqs):
     #iterate over the fastq_files
     for filepath in file_list:
         #print("FPATH",filepath)
-        old_fastq_file=str(filepath.resolve())
-        path_split=old_fastq_file.split("/")
-        folder=path_split[-2]
+        old_fastq_file = str(filepath.resolve())
+        path_split = old_fastq_file.split("/")
+        folder = path_split[-2]
         #print(folder)
-        fastq_file=path_split[-1]
+        fastq_file = path_split[-1]
         #we do not want to look at the analysis fastq file
-        if not folder=="Analysis":
+        if not folder == "Analysis":
             cl_id=path_split[-2]
             #print("CLID",cl_id)
 
@@ -161,7 +186,7 @@ def split_cluster_in_batches_clust(indir, outdir, tmp_work_dir, max_seqs):
 
     pat = Path(indir)
     file_list = list(pat.rglob('*.fastq'))
-    # add split fiels to this indir
+    # add split files to this indir
     for file_ in file_list:
     #for file_ in sorted(os.listdir(indir), key=lambda x: int(x.split('.')[0])):
         #fastq_path = os.fsdecode(file_)
@@ -185,9 +210,17 @@ def split_cluster_in_batches_clust(indir, outdir, tmp_work_dir, max_seqs):
 
 #PYTHONHASHSEED = 0
 def main(args):
-    #print("MERGE?", args.merge_sub_isoforms_3, args.merge_sub_isoforms_5)
     globstart = time()
-    directory = args.fastq_folder  # os.fsencode(args.fastq_folder)
+    directory = args.fastq_folder
+    #Please not that this alters the output of isONcorrect i.e. the structure of corrected in the isONpipeline
+    #if not args.clustered:
+        ###Please not that the following line resturctures the output of isONcorrect to be better usable for isONform and deletes the folders in the isONcorrect outfolder!
+    restructure_isoncorrect_output(directory)
+
+
+    #print("MERGE?", args.merge_sub_isoforms_3, args.merge_sub_isoforms_5)
+
+      # os.fsencode(args.fastq_folder)
     write_low_abundance = False
     #print(directory)
     #print("ARGS",args)
@@ -204,60 +237,52 @@ def main(args):
             #except FileExistsError:
             #    print("Directory already exists.")
             Parallelization_side_functions.mkdir_p(tmp_work_dir)
-
             #os.chdir(curr_work_dir)
-
         else:
             tmp_work_dir = tempfile.mkdtemp()
-        #print("SPLITWRTBATCHES")
-
         print("Temporary workdirectory:", tmp_work_dir)
-        if args.clustered:
-            split_tmp_directory = split_cluster_in_batches_clust(directory, args.outfolder, tmp_work_dir,
+        split_tmp_directory = split_cluster_in_batches_clust(directory, args.outfolder, tmp_work_dir,
                                                                      args.max_seqs)
-        else:
-            split_tmp_directory = split_cluster_in_batches_corrected(directory, args.outfolder, tmp_work_dir, args.max_seqs)
         split_directory = os.fsencode(split_tmp_directory)
-        #print("SplitDIR",split_directory)
     else:
-        split_directory = os.fsencode(directory)
 
+        split_directory = os.fsencode(directory)
+        print("SplitDIR", split_directory)
     instances = []
     for file_ in os.listdir(split_directory):
-        #print(file_)
-        read_fastq_file = os.fsdecode(file_)
-        if read_fastq_file.endswith(".fastq"):
-            #print("True")
-            tmp_id = read_fastq_file.split(".")[0]
-            snd_tmp_id = tmp_id.split("_")
-            cl_id = snd_tmp_id[0]
-            batch_id = snd_tmp_id[1] if len(snd_tmp_id) > 1 else 0
-            outfolder = os.path.join(args.outfolder, cl_id)
-            #print(batch_id,cl_id)
-            #print(outfolder)
-            fastq_file_path = os.path.join(os.fsdecode(split_directory), read_fastq_file)
-            #print(fastq_file_path)
-            compute = True
-            if args.keep_old:
-                candidate_corrected_file = os.path.join(outfolder, "isoforms.fastq")
-                if os.path.isfile(candidate_corrected_file):
-                    if wccount(candidate_corrected_file) == wccount(fastq_file_path):
-                        #print("already computed cluster and complete file", batch_id)
-                        compute = False
+            #print(file_)
+            read_fastq_file = os.fsdecode(file_)
+            if read_fastq_file.endswith(".fastq"):
+                #print("True")
+                tmp_id = read_fastq_file.split(".")[0]
+                snd_tmp_id = tmp_id.split("_")
+                cl_id = snd_tmp_id[0]
+                batch_id = snd_tmp_id[1] if len(snd_tmp_id) > 1 else 0
+                outfolder = os.path.join(args.outfolder, cl_id)
+                #print(batch_id,cl_id)
+                #print(outfolder)
+                fastq_file_path = os.path.join(os.fsdecode(split_directory), read_fastq_file)
+                #print(fastq_file_path)
+                compute = True
+                if args.keep_old:
+                    candidate_corrected_file = os.path.join(outfolder, "isoforms.fastq")
+                    if os.path.isfile(candidate_corrected_file):
+                        if wccount(candidate_corrected_file) == wccount(fastq_file_path):
+                            #print("already computed cluster and complete file", batch_id)
+                            compute = False
 
-            if compute:
-                #print("computing")
-                isONform_algorithm_params = {"set_w_dynamically": args.set_w_dynamically,
-                                                "exact_instance_limit": args.exact_instance_limit,
-                                                "delta_len": args.delta_len,"--exact": True,
-                                                "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
-                                                 "max_seqs": args.max_seqs, "parallel": True, "--slow": True, "delta_iso_len_3": args.delta_iso_len_3,
-                                             "delta_iso_len_5": args.delta_iso_len_5}
-                instances.append(
-                    (isONform_location, fastq_file_path, outfolder, batch_id, isONform_algorithm_params, cl_id))
-        else:
-            continue
-
+                if compute:
+                    #print("computing")
+                    isONform_algorithm_params = {"set_w_dynamically": args.set_w_dynamically,
+                                                    "exact_instance_limit": args.exact_instance_limit,
+                                                    "delta_len": args.delta_len,"--exact": True,
+                                                    "k": args.k, "w": args.w, "xmin": args.xmin, "xmax": args.xmax,
+                                                     "max_seqs": args.max_seqs, "parallel": True, "--slow": True, "delta_iso_len_3": args.delta_iso_len_3,
+                                                 "delta_iso_len_5": args.delta_iso_len_5}
+                    instances.append(
+                        (isONform_location, fastq_file_path, outfolder, batch_id, isONform_algorithm_params, cl_id))
+            else:
+                continue
     instances.sort(key=lambda x: (int(x[5]), int(x[3])))  # sorting on cluster_id and then batch_id numerically
     print("Printing instances")
     for t in instances:
@@ -307,7 +332,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo reconstruction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--version', action='version', version='%(prog)s 0.3.7')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.3.8')
     parser.add_argument('--fastq_folder', type=str, default=False,
                         help='Path to input fastq folder with reads in clusters')
     parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')
@@ -325,8 +350,8 @@ if __name__ == '__main__':
                         help='Maximum number of seqs to correct at a time (in case of large clusters).')
     parser.add_argument('--split_wrt_batches', action="store_true",
                         help='Process reads per batch (of max_seqs sequences) instead of per cluster. Significantly decrease runtime when few very large clusters are less than the number of cores used.')
-    parser.add_argument('--clustered', action="store_true",
-                        help='Indicates whether we use the output of isONclust (i.e. we have uncorrected data)')
+    #parser.add_argument('--clustered', action="store_true",
+    #                    help='Indicates whether we use the output of isONclust (i.e. we have uncorrected data)')
     parser.add_argument('--outfolder', type=str, default=None, help='Outfolder with all corrected reads.')
     parser.add_argument('--delta_len', type=int, default=5,
                         help='Maximum length difference between two reads intervals for which they would still be merged')
