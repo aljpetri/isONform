@@ -29,8 +29,9 @@ from modules import help_functions
 from modules import Parallelization_side_functions
 
 def restructure_isoncorrect_output(directory):
-    #TODO: Test
-    if filter(os.path.isfile, os.listdir( directory ) ):
+    file_list= list(filter(lambda f: os.path.isfile(os.path.join(directory, f)), os.listdir(directory) ))
+    #print("file_list:", file_list)
+    if len(file_list) == 0:
         print("isONcorrect structure")
         #iterate over all subdirectories in directory
         for subdirectory in os.listdir(directory):
@@ -212,9 +213,7 @@ def split_cluster_in_batches_clust(indir, outdir, tmp_work_dir, max_seqs):
 def main(args):
     globstart = time()
     directory = args.fastq_folder
-    #Please not that this alters the output of isONcorrect i.e. the structure of corrected in the isONpipeline
-    #if not args.clustered:
-        ###Please not that the following line resturctures the output of isONcorrect to be better usable for isONform and deletes the folders in the isONcorrect outfolder!
+    #Please note that this alters the output of isONcorrect i.e. the structure of corrected in the isONpipeline
     restructure_isoncorrect_output(directory)
 
 
@@ -332,7 +331,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="De novo reconstruction of long-read transcriptome reads",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--version', action='version', version='%(prog)s 0.3.8')
+    parser.add_argument('--version', action='version', version='%(prog)s 0.3.9')
     parser.add_argument('--fastq_folder', type=str, default=False,
                         help='Path to input fastq folder with reads in clusters')
     parser.add_argument('--t', dest="nr_cores", type=int, default=8, help='Number of cores allocated for clustering')

@@ -194,7 +194,7 @@ else #the user has not given a path to isONform (pip installation supposed)
     then
         /usr/bin/time -v  isONform_parallel --t $num_cores  --fastq_folder $outfolder/correction/ --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance  --delta_iso_len_3 30 --delta_iso_len_5 50
   else #we run isONform in pacbio mode (adding the keyword clustered to the command)
-        /usr/bin/time -v   isONform_parallel --t $num_cores --fastq_folder $outfolder/clustering/fastq_files --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --delta_iso_len_3 30 --delta_iso_len_5 50 
+        /usr/bin/time -v   isONform_parallel --t $num_cores --fastq_folder $outfolder/clustering/fastq_files --exact_instance_limit 50 --k 20 --w 31 --xmin 14 --xmax 80 --max_seqs_to_spoa 200 --delta_len 10 --outfolder $outfolder/isoforms --iso_abundance $iso_abundance --delta_iso_len_3 30 --delta_iso_len_5 50
   fi
 fi
 echo
