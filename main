@@ -399,7 +399,6 @@ def main(args):
         else:
             w = args.w
         #print("Window used for batch:", w)
-        iso_abundance = args.iso_abundance
         delta_len = args.delta_len
         graph_id = 1
         print("Working on {0} reads in a batch".format(len(reads)))
@@ -574,7 +573,7 @@ def main(args):
             print("Merging the batches with linear strategy")
             #merges the predictions from different batches
             #batch_merging_parallel.join_back_via_batch_merging(args.outfolder, delta, args.delta_len, args.delta_iso_len_3, args.delta_iso_len_5,
-            #                                                   args.max_seqs_to_spoa, args.iso_abundance)
+            #                                                   args.max_seqs_to_spoa)
 
     print("removing temporary workdir")
     #sys.stdout.close()
@@ -613,7 +612,6 @@ if __name__ == '__main__':
                                                                         could be to adjust upper interval length dynamically to guarantee a certain number of spanning intervals.')
     parser.add_argument('--outfolder', type=str, default=None,
                         help='The outfolder of isONform, into which the algorithm will write the results.')
-    parser.add_argument('--iso_abundance', type=int,default=5, help='Cutoff parameter: abundance of reads that have to support an isoform to show in results')
     parser.add_argument('--delta_iso_len_3', type=int, default=30,
                         help='Cutoff parameter: maximum length difference at 3prime end, for which subisoforms are still merged into longer isoforms')
     parser.add_argument('--delta_iso_len_5', type=int, default=50,
