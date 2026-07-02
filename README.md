@@ -85,9 +85,7 @@ In mapping.txt it is indicated from which original reads an isoform has been rec
 support_txt gives the support (i.e. how many original reads make up the isoform).
 
 ## Contact <a name="Contact"></a>
-If you encounter any problems, please raise an issue on the issues page, you can also contact the developer of this repository via:
-alexander.petri[at]math.su.se
-
+If you encounter any problems, please raise an issue on the issues page.
 
 ## Credits <a name="credits"></a>
 
