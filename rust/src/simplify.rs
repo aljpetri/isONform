@@ -618,6 +618,14 @@ pub fn prepare_adding_edges(
         }
     };
 
+    // The reference's `while path1 or path2` has no bound. If a step ever fails
+    // to shorten either path the loop spins forever, which is how a `retain`
+    // where the reference has `remove` first showed up. Bounded here so that
+    // failure mode is a message instead of a hang; the bound is generous enough
+    // that no correct run can reach it.
+    let max_steps = path1.len() + path2.len() + 2;
+    let mut steps = 0usize;
+
     let mut linearization_order = vec![bubble_start];
     let mut prevnode1 = bubble_start;
     let mut prevnode2 = bubble_start;
@@ -640,6 +648,11 @@ pub fn prepare_adding_edges(
     };
 
     while !path1.is_empty() || !path2.is_empty() {
+        steps += 1;
+        assert!(
+            steps <= max_steps,
+            "prepare_adding_edges did not converge: a step left both paths unchanged"
+        );
         let overall_nextnode = find_real_nextnode(g, nextnode1, nextnode2, bubble_end, topo_index);
 
         // `test_conn_end`: connecting edges that end at the node being added.
@@ -669,7 +682,7 @@ pub fn prepare_adding_edges(
                 prevnode2,
                 bubble_start,
             );
-            path1.retain(|&n| n != overall_nextnode);
+            remove_first(&mut path1, overall_nextnode);
             prevnode1 = overall_nextnode;
             curr_node = prevnode1;
             let merged = merge_two_dicts(&additional, g.reads(overall_nextnode));
@@ -684,7 +697,7 @@ pub fn prepare_adding_edges(
                 prevnode1,
                 bubble_start,
             );
-            path2.retain(|&n| n != overall_nextnode);
+            remove_first(&mut path2, overall_nextnode);
             prevnode2 = overall_nextnode;
             curr_node = prevnode2;
             let merged = merge_two_dicts(&additional, g.reads(overall_nextnode));
@@ -724,6 +737,18 @@ pub fn prepare_adding_edges(
     }
 
     linearization_order
+}
+
+/// Python's `list.remove(x)`: drop the **first** occurrence only.
+///
+/// `Vec::retain` would drop every occurrence, which is not the same thing and is
+/// reachable — a path can revisit a node. Getting this wrong made
+/// `prepare_adding_edges` fail to converge, which showed up as a hanging test
+/// rather than a wrong answer.
+fn remove_first(v: &mut Vec<NodeId>, x: NodeId) {
+    if let Some(i) = v.iter().position(|&n| n == x) {
+        v.remove(i);
+    }
 }
 
 /// `additional_node_support`: invent positions for reads that reach a node from
@@ -801,6 +826,388 @@ pub fn linearize_bubble(
 ) -> Vec<NodeId> {
     let lifted = remove_edges(g, bubble_start, bubble_end, paths, consensus);
     prepare_adding_edges(g, &lifted, bubble_start, bubble_end, paths, topo_index)
+}
+
+// ===========================================================================
+// The popping driver
+// ===========================================================================
+
+/// What the driver asks of the consensus/alignment step.
+///
+/// The reference's `align_bubble_nodes` takes the two paths' read positions,
+/// builds a consensus for each with spoa, aligns them, and decides from the CIGAR
+/// whether their differences are small enough to merge. All of that is behind
+/// this trait so the driver can be ported and tested without spoa — see
+/// [`NeverPop`] and [`AlwaysPop`].
+#[derive(Debug, Clone)]
+pub struct AlignRequest {
+    pub bubble_start: NodeId,
+    pub bubble_end: NodeId,
+    /// The node that defines each path (`pathnode1`, `pathnode2`), and the reads
+    /// supporting that path.
+    pub path_nodes: [NodeId; 2],
+    pub path_support: [Vec<u32>; 2],
+    /// True when the bubble had more than two paths before filtering.
+    pub is_megabubble: bool,
+}
+
+/// The verdict, plus the per-path consensus `linearize_bubble` needs.
+#[derive(Debug, Clone, Default)]
+pub struct AlignVerdict {
+    pub poppable: bool,
+    /// `consensus_info_log`: path-defining node -> consensus sequence. Keyed the
+    /// way `remove_edges` looks it up.
+    pub consensus: FxHashMap<NodeId, Vec<u8>>,
+}
+
+pub trait BubbleAligner {
+    fn align(&mut self, req: &AlignRequest) -> AlignVerdict;
+}
+
+/// Refuses every bubble. Lets the driver's state machine be exercised on its own:
+/// with nothing poppable, what is left is exactly the iteration, marking and
+/// not-viable bookkeeping.
+#[derive(Debug, Default)]
+pub struct NeverPop;
+
+impl BubbleAligner for NeverPop {
+    fn align(&mut self, _req: &AlignRequest) -> AlignVerdict {
+        AlignVerdict::default()
+    }
+}
+
+/// Pops every bubble it is offered, with an empty consensus.
+///
+/// An empty consensus means `new_distance_to_start` always misses, so every node
+/// distance takes the read-position fallback. Useful for exercising the mutation
+/// path without spoa; **not** a stand-in for real behaviour, because which
+/// bubbles are poppable is most of what the stage decides.
+///
+/// It can also drive the loop to a fixed point that still looks poppable —
+/// linearisation stops changing the graph while every candidate is still
+/// accepted, so nothing is ever recorded as not-viable and the iteration never
+/// ends. See [`pop_bubbles`]'s iteration cap: the reference has no such bound.
+#[derive(Debug, Default)]
+pub struct AlwaysPop;
+
+impl BubbleAligner for AlwaysPop {
+    fn align(&mut self, _req: &AlignRequest) -> AlignVerdict {
+        AlignVerdict {
+            poppable: true,
+            consensus: FxHashMap::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PopOpts {
+    /// `--slow`: pop every bubble, i.e. a pop threshold of 1 rather than one
+    /// percent of the initial edge count.
+    pub slow: bool,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct PopStats {
+    pub iterations: usize,
+    /// True when the iteration cap stopped the loop rather than the reference's
+    /// own exit conditions. Always false on real input; see [`pop_bubbles`].
+    pub hit_iteration_cap: bool,
+    /// Pops actually performed.
+    pub pops: usize,
+    /// What the reference *prints* as "Overall number of bubbles popped", which
+    /// is not the same number. See `PORTING.md` finding 17.
+    pub reported_pops: usize,
+}
+
+/// `filter_out_if_marked`: drop paths that touch a marked node, or that retrace a
+/// start-to-end pair already popped directly this iteration.
+fn filter_out_if_marked(
+    all_paths: &mut Vec<BubblePath>,
+    marked: &FxHashSet<NodeId>,
+    direct_combis: &[(NodeId, NodeId)],
+    endnode: NodeId,
+) {
+    all_paths.retain(|path| {
+        if path.nodes.iter().any(|n| marked.contains(n)) {
+            return false;
+        }
+        for &(dstart, dend) in direct_combis {
+            for (ident, &node) in path.nodes.iter().enumerate() {
+                if ident + 1 < path.nodes.len() {
+                    if node == dstart && path.nodes[ident + 1] == dend {
+                        return false;
+                    }
+                } else if node == dstart && endnode == dend {
+                    return false;
+                }
+            }
+        }
+        true
+    });
+}
+
+fn union_sorted(a: &[u32], b: &[u32]) -> Vec<u32> {
+    let mut v: Vec<u32> = a.iter().chain(b).copied().collect();
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
+/// `new_bubble_popping_routine`: iterate bubble detection and popping until it
+/// stops paying.
+///
+/// Ported faithfully, which includes three things worth naming:
+///
+/// * **`overall_pops` undercounts.** The reference adds the previous iteration's
+///   pops at the *top* of the loop, so the final iteration's are never added to
+///   the number it prints. `PopStats` reports both the true count and the
+///   reference's. `PORTING.md` finding 17.
+/// * **An operator-precedence bug** in the multi-path branch, reproduced.
+///   `PORTING.md` finding 18.
+/// * The loop stops when an iteration pops fewer than `pop_threshold`, which is
+///   one percent of the *initial* edge count (at least 1), or 1 under `--slow`.
+///   So a graph with few edges pops everything it can, and a large one stops
+///   while poppable bubbles may remain — deliberate, and not a defect.
+pub fn pop_bubbles<A: BubbleAligner>(g: &mut Graph, aligner: &mut A, opts: PopOpts) -> PopStats {
+    let initial_edge_nr = g.edge_count();
+    let pop_threshold = if opts.slow {
+        1
+    } else {
+        std::cmp::max(initial_edge_nr / 100, 1)
+    };
+
+    let mut not_viable_global: FxHashSet<Combination> = FxHashSet::default();
+    let mut not_viable_multibubble: FxHashSet<(NodeId, NodeId, Vec<u32>)> = FxHashSet::default();
+    let mut stats = PopStats::default();
+    let mut this_it_pops = 0usize;
+
+    // A safety net the reference does not have.
+    //
+    // `while has_combinations` exits only when no candidate survives filtering or
+    // when an iteration pops fewer than the threshold. Neither is guaranteed:
+    // if linearisation reaches a fixed point while every candidate is still
+    // accepted, the loop pops "successfully" forever without changing anything.
+    // The real aligner refuses most bubbles, which records them as not-viable and
+    // makes that unreachable in practice --- but nothing in the structure
+    // enforces it, and a stub aligner reaches it immediately. Bounded here so the
+    // failure is a reported flag rather than a hang; generous enough that no
+    // converging run can reach it.
+    let iteration_cap = g.node_count() + g.edge_count() + 16;
+
+    loop {
+        if stats.iterations >= iteration_cap {
+            stats.hit_iteration_cap = true;
+            break;
+        }
+        stats.reported_pops += this_it_pops; // top of the loop --- see the note
+        this_it_pops = 0;
+        stats.iterations += 1;
+
+        let mut marked: FxHashSet<NodeId> = FxHashSet::default();
+        let mut direct_combis: Vec<(NodeId, NodeId)> = Vec::new();
+
+        let Some(topo) = g.topological_sort() else {
+            // The reference lets nx.topological_sort raise here. A cyclic graph
+            // at this point is a construction bug, and stopping is the only
+            // honest option since every downstream step needs the order.
+            break;
+        };
+        let topo_index = g.topological_index().expect("acyclic, just checked");
+
+        let starts = find_possible_starts(g, &topo);
+        let ends = find_possible_ends(g, &topo);
+        let combinations = generate_combinations(&starts, &ends, &topo_index);
+        let mut filtered: Vec<Combination> = combinations
+            .into_iter()
+            .filter(|c| !not_viable_global.contains(c))
+            .collect();
+        if filtered.is_empty() {
+            break;
+        }
+
+        // Shortest bubbles first. Python's `sorted` is stable, so the generation
+        // order survives as the tie-break among equal spans.
+        filtered.sort_by_key(|c| {
+            topo_index[c.end as usize] as i64 - topo_index[c.start as usize] as i64
+        });
+
+        for combination in &filtered {
+            let mut all_paths = find_paths(
+                g,
+                combination.start,
+                combination.end,
+                &combination.support,
+                &marked,
+            );
+            let initial_all_paths = all_paths.len();
+            if initial_all_paths == 1 {
+                not_viable_global.insert(combination.clone());
+            }
+            filter_out_if_marked(&mut all_paths, &marked, &direct_combis, combination.end);
+
+            if all_paths.len() < 2 {
+                continue;
+            }
+            if all_paths.len() == 2 {
+                let is_megabubble = initial_all_paths > 2;
+                let this_combi_reads = union_sorted(&all_paths[0].support, &all_paths[1].support);
+                let this_combi = (combination.start, combination.end, this_combi_reads);
+                if not_viable_multibubble.contains(&this_combi) {
+                    continue;
+                }
+
+                let pathnode1 = get_next_node(&all_paths[0].nodes, combination.end);
+                let pathnode2 = get_next_node(&all_paths[1].nodes, combination.end);
+                // Interior nodes only: the bubble start is `nodes[0]`.
+                let p_set1: FxHashSet<NodeId> =
+                    all_paths[0].nodes.iter().skip(1).copied().collect();
+                let intersects = all_paths[1]
+                    .nodes
+                    .iter()
+                    .skip(1)
+                    .any(|n| p_set1.contains(n));
+
+                if intersects {
+                    if initial_all_paths == 2 {
+                        not_viable_global.insert(combination.clone());
+                    } else {
+                        not_viable_multibubble.insert(this_combi);
+                    }
+                    continue;
+                }
+
+                let req = AlignRequest {
+                    bubble_start: combination.start,
+                    bubble_end: combination.end,
+                    path_nodes: [pathnode1, pathnode2],
+                    path_support: [all_paths[0].support.clone(), all_paths[1].support.clone()],
+                    is_megabubble,
+                };
+                let verdict = aligner.align(&req);
+                if verdict.poppable {
+                    linearize_bubble(
+                        g,
+                        combination.start,
+                        combination.end,
+                        &mut all_paths,
+                        &verdict.consensus,
+                        &topo_index,
+                    );
+                    this_it_pops += 1;
+                    stats.pops += 1;
+                    for p in &all_paths {
+                        for &n in &p.nodes {
+                            marked.insert(n);
+                        }
+                    }
+                    if all_paths[0].nodes.is_empty() || all_paths[1].nodes.is_empty() {
+                        let pair = (combination.start, combination.end);
+                        if !direct_combis.contains(&pair) {
+                            direct_combis.push(pair);
+                        }
+                    }
+                } else if initial_all_paths == 2 {
+                    not_viable_global.insert(combination.clone());
+                } else {
+                    not_viable_multibubble.insert(this_combi);
+                }
+            } else {
+                // More than two surviving paths: try each pair.
+                let mut directpath_marked = false;
+                let pairs: Vec<(usize, usize)> = (0..all_paths.len())
+                    .flat_map(|i| ((i + 1)..all_paths.len()).map(move |j| (i, j)))
+                    .filter(|&(i, j)| {
+                        let reads = union_sorted(&all_paths[i].support, &all_paths[j].support);
+                        !not_viable_multibubble.contains(&(
+                            combination.start,
+                            combination.end,
+                            reads,
+                        ))
+                    })
+                    .collect();
+                if pairs.is_empty() {
+                    not_viable_global.insert(combination.clone());
+                    continue;
+                }
+
+                for (i, j) in pairs {
+                    let reads = union_sorted(&all_paths[i].support, &all_paths[j].support);
+                    let this_combi = (combination.start, combination.end, reads);
+                    let p_set1: FxHashSet<NodeId> =
+                        all_paths[i].nodes.iter().skip(1).copied().collect();
+                    if all_paths[j]
+                        .nodes
+                        .iter()
+                        .skip(1)
+                        .any(|n| p_set1.contains(n))
+                    {
+                        not_viable_multibubble.insert(this_combi);
+                        continue;
+                    }
+                    // FINDING 18, reproduced: `and` binds tighter than `or`, so
+                    // this reads `(!p1) || (!p2 && directpath_marked)` --- an
+                    // empty first path skips unconditionally.
+                    if all_paths[i].nodes.is_empty()
+                        || (all_paths[j].nodes.is_empty() && directpath_marked)
+                    {
+                        continue;
+                    }
+                    if all_paths[i].nodes.iter().any(|n| marked.contains(n))
+                        || all_paths[j].nodes.iter().any(|n| marked.contains(n))
+                    {
+                        continue;
+                    }
+
+                    let req = AlignRequest {
+                        bubble_start: combination.start,
+                        bubble_end: combination.end,
+                        path_nodes: [
+                            get_next_node(&all_paths[i].nodes, combination.end),
+                            get_next_node(&all_paths[j].nodes, combination.end),
+                        ],
+                        path_support: [all_paths[i].support.clone(), all_paths[j].support.clone()],
+                        // The reference hard-codes True here.
+                        is_megabubble: true,
+                    };
+                    let verdict = aligner.align(&req);
+                    if !verdict.poppable {
+                        not_viable_multibubble.insert(this_combi);
+                        continue;
+                    }
+                    let mut pair_paths = vec![all_paths[i].clone(), all_paths[j].clone()];
+                    linearize_bubble(
+                        g,
+                        combination.start,
+                        combination.end,
+                        &mut pair_paths,
+                        &verdict.consensus,
+                        &topo_index,
+                    );
+                    this_it_pops += 1;
+                    // The reference does NOT increment nr_popped here --- it is
+                    // commented out --- but does count this_it_pops.
+                    stats.pops += 1;
+                    for p in &pair_paths {
+                        for &n in &p.nodes {
+                            marked.insert(n);
+                        }
+                    }
+                    if pair_paths[0].nodes.is_empty() || pair_paths[1].nodes.is_empty() {
+                        directpath_marked = true;
+                        let pair = (combination.start, combination.end);
+                        if !direct_combis.contains(&pair) {
+                            direct_combis.push(pair);
+                        }
+                    }
+                }
+            }
+        }
+
+        if this_it_pops < pop_threshold {
+            break;
+        }
+    }
+    stats
 }
 
 #[cfg(test)]
@@ -993,6 +1400,21 @@ mod tests {
         g.set_edge_support(s, b, 3);
         g.add_edge(b, t, 0);
         g.set_edge_support(b, t, 3);
+        // Node reads matter: `find_possible_starts`/`_ends` read them, and
+        // `generate_combinations` needs at least two reads shared between the
+        // start and the end before it will call this a bubble at all. A first
+        // draft of this fixture set only edge support, so `pop_bubbles` found no
+        // candidates and every driver test silently measured nothing.
+        for (n, rs) in [
+            (s, &[1u32, 2, 3][..]),
+            (a, &[1, 2][..]),
+            (b, &[3][..]),
+            (t, &[1, 2, 3][..]),
+        ] {
+            for &r in rs {
+                g.set_read(n, r, ri(0, r * 10));
+            }
+        }
         (g, s, a, b, t)
     }
 
@@ -1190,12 +1612,14 @@ mod tests {
             Some(7.0),
             "found in the consensus -> the offset"
         );
-        // b was not found, so the distance comes from get_dist_to_prev(s, b) ---
-        // and b shares no read position with s beyond read 3, whose positions are
-        // both 100, so the mean shift is 0.
+        // b was not found in its consensus, so the distance comes from
+        // get_dist_to_prev(s, b): they share only read 3, at 100 on s and 30 on b
+        // (the fixture's `r * 10`), so the mean shift is 30 - 100 = -70. Negative
+        // distances are reachable, which is why get_avg_interval_length has to
+        // truncate toward zero rather than floor.
         assert_eq!(
             lifted.dist(b),
-            Some(0.0),
+            Some(-70.0),
             "-1 -> measured from the bubble start"
         );
     }
@@ -1452,6 +1876,220 @@ mod tests {
             !invented.is_empty(),
             "at least one read was carried across the bubble"
         );
+    }
+
+    #[test]
+    fn never_pop_leaves_the_graph_untouched_and_terminates() {
+        let (mut g, _s, _a, _b, _t) = two_path_bubble();
+        let before = (g.node_count(), g.edge_count());
+        let stats = pop_bubbles(&mut g, &mut NeverPop, PopOpts::default());
+        assert_eq!((g.node_count(), g.edge_count()), before);
+        assert_eq!(stats.pops, 0);
+        assert_eq!(stats.iterations, 1, "one iteration, then nothing pops");
+    }
+
+    #[test]
+    fn a_refused_two_path_bubble_is_remembered_as_not_viable() {
+        // The proof it is remembered: a second call finds the same bubble again,
+        // so if it were not cached the iteration count would keep climbing.
+        // Instead the routine stops after one iteration both times.
+        let (mut g, _s, _a, _b, _t) = two_path_bubble();
+        let first = pop_bubbles(&mut g, &mut NeverPop, PopOpts::default());
+        let second = pop_bubbles(&mut g, &mut NeverPop, PopOpts::default());
+        assert_eq!(first.iterations, 1);
+        assert_eq!(second.iterations, 1);
+    }
+
+    #[test]
+    fn popping_a_two_path_bubble_linearises_it_and_stops() {
+        let (mut g, s, a, b, t) = two_path_bubble();
+        let stats = pop_bubbles(&mut g, &mut AlwaysPop, PopOpts::default());
+        assert_eq!(stats.pops, 1);
+        // Same nodes, now a chain.
+        assert_eq!(g.node_count(), 4);
+        assert_eq!(g.edge_count(), 3);
+        for n in [s, a, b, t] {
+            assert!(g.lookup(&g.key(n)).is_some());
+        }
+        // Nothing left to pop: a chain has no branch points.
+        let again = pop_bubbles(&mut g, &mut AlwaysPop, PopOpts::default());
+        assert_eq!(again.pops, 0);
+    }
+
+    #[test]
+    fn the_reported_pop_count_agrees_when_the_threshold_is_one() {
+        // Finding 17 is real but narrower than it first looks, and this test
+        // records the boundary rather than the bug.
+        //
+        // `overall_pops += this_it_pops` runs at the *top* of the loop, so the
+        // final iteration's pops are never added to the number the reference
+        // prints. But the loop only exits early when `this_it_pops <
+        // pop_threshold`, and the threshold is `max(edges / 100, 1)` --- so below
+        // 200 initial edges the threshold is 1, an early exit means zero pops
+        // that iteration, and nothing is lost. The undercount needs a graph big
+        // enough for a threshold above 1 *and* a final iteration popping between
+        // 1 and threshold-1. Measured on real data in PORTING.md.
+        let (mut g, _s, _a, _b, _t) = two_path_bubble();
+        let stats = pop_bubbles(&mut g, &mut AlwaysPop, PopOpts::default());
+        assert_eq!(stats.pops, 1);
+        assert_eq!(
+            stats.reported_pops, stats.pops,
+            "with a threshold of 1 the two agree"
+        );
+    }
+
+    #[test]
+    fn slow_mode_lowers_the_pop_threshold_to_one() {
+        // With 4 edges, max(4/100, 1) is 1 either way, so this checks the wiring
+        // rather than a behaviour difference: both modes agree here.
+        let (mut g1, _, _, _, _) = two_path_bubble();
+        let (mut g2, _, _, _, _) = two_path_bubble();
+        let fast = pop_bubbles(&mut g1, &mut AlwaysPop, PopOpts { slow: false });
+        let slow = pop_bubbles(&mut g2, &mut AlwaysPop, PopOpts { slow: true });
+        assert_eq!(fast.pops, slow.pops);
+    }
+
+    #[test]
+    fn the_aligner_sees_both_path_nodes_and_their_support() {
+        // What a real aligner needs, and what the stub proves is wired: the two
+        // path-defining nodes and each path's reads.
+        struct Recorder(Vec<AlignRequest>);
+        impl BubbleAligner for Recorder {
+            fn align(&mut self, req: &AlignRequest) -> AlignVerdict {
+                self.0.push(req.clone());
+                AlignVerdict::default()
+            }
+        }
+        let (mut g, s, a, b, t) = two_path_bubble();
+        let mut rec = Recorder(Vec::new());
+        pop_bubbles(&mut g, &mut rec, PopOpts::default());
+        assert_eq!(rec.0.len(), 1);
+        let req = &rec.0[0];
+        assert_eq!((req.bubble_start, req.bubble_end), (s, t));
+        // Each path is [start, interior], i.e. length 2, so `get_next_node`
+        // returns `nodes[1]` --- the interior node --- rather than falling back to
+        // the bubble end. The fallback needs a path shorter than 2.
+        assert_eq!(req.path_nodes, [a, b]);
+        assert_eq!(req.path_support[0], vec![1, 2]);
+        assert_eq!(req.path_support[1], vec![3]);
+        assert!(!req.is_megabubble);
+        let _ = t;
+    }
+
+    #[test]
+    fn an_aligner_that_never_refuses_is_stopped_by_the_cap() {
+        // Documents that the reference's loop has no termination guarantee. A
+        // three-path bubble plus an always-yes aligner reaches a fixed point that
+        // still looks poppable; the reference would spin, the port reports it.
+        let mut g = Graph::new();
+        let k = |i| NodeKey::Interval {
+            start: i,
+            end: i,
+            r_id: 0,
+        };
+        let s = g.add_node(NodeKey::Source);
+        let t = g.add_node(NodeKey::Sink);
+        for (i, r) in [(1u32, 1u32), (2, 2), (3, 3)] {
+            let m = g.add_node(k(i));
+            g.add_edge(s, m, 0);
+            g.set_edge_support(s, m, r);
+            g.add_edge(m, t, 0);
+            g.set_edge_support(m, t, r);
+            g.set_read(m, r, ri(0, r * 10));
+            g.set_read(s, r, ri(0, 0));
+            g.set_read(t, r, ri(0, 100));
+        }
+        let stats = pop_bubbles(&mut g, &mut AlwaysPop, PopOpts::default());
+        assert!(
+            stats.hit_iteration_cap,
+            "the cap is what ends this, not the reference's own exit conditions"
+        );
+        assert_eq!(g.node_count(), 5, "and the node set still never changes");
+    }
+
+    #[test]
+    fn filter_out_if_marked_drops_paths_touching_marked_nodes() {
+        let mut paths = vec![
+            BubblePath {
+                nodes: vec![1, 2],
+                support: vec![1],
+            },
+            BubblePath {
+                nodes: vec![1, 3],
+                support: vec![2],
+            },
+        ];
+        let mut marked = FxHashSet::default();
+        marked.insert(2u32);
+        filter_out_if_marked(&mut paths, &marked, &[], 9);
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].nodes, vec![1, 3]);
+    }
+
+    #[test]
+    fn filter_out_if_marked_drops_a_path_retracing_a_direct_pop() {
+        // A path whose last node pairs with the bubble end via a recorded direct
+        // combination is dropped, which is what stops the same start-to-end pair
+        // being popped twice in one iteration.
+        let mut paths = vec![BubblePath {
+            nodes: vec![1, 5],
+            support: vec![1],
+        }];
+        filter_out_if_marked(&mut paths, &FxHashSet::default(), &[(5, 9)], 9);
+        assert!(paths.is_empty());
+
+        // And an adjacent pair inside the path counts too.
+        let mut paths = vec![BubblePath {
+            nodes: vec![1, 5, 7],
+            support: vec![1],
+        }];
+        filter_out_if_marked(&mut paths, &FxHashSet::default(), &[(5, 7)], 9);
+        assert!(paths.is_empty());
+    }
+
+    #[test]
+    fn a_three_path_bubble_pops_one_pair_then_gives_up() {
+        // s -> {a, b, c} -> t, three disjoint paths.
+        let mut g = Graph::new();
+        let k = |i| NodeKey::Interval {
+            start: i,
+            end: i,
+            r_id: 0,
+        };
+        let s = g.add_node(NodeKey::Source);
+        let t = g.add_node(NodeKey::Sink);
+        let mut mids = Vec::new();
+        for (i, r) in [(1u32, 1u32), (2, 2), (3, 3)] {
+            let m = g.add_node(k(i));
+            g.add_edge(s, m, 0);
+            g.set_edge_support(s, m, r);
+            g.add_edge(m, t, 0);
+            g.set_edge_support(m, t, r);
+            g.set_read(m, r, ri(0, r * 10));
+            // Node reads, without which no bubble is detected at all.
+            g.set_read(s, r, ri(0, 0));
+            g.set_read(t, r, ri(0, 100));
+            mids.push(m);
+        }
+        // An aligner that accepts once and then refuses --- which is what a real
+        // one does, and what lets the loop terminate. `AlwaysPop` would spin here:
+        // linearisation reaches a fixed point while every candidate is still
+        // accepted, so nothing is ever recorded not-viable.
+        struct PopOnce(usize);
+        impl BubbleAligner for PopOnce {
+            fn align(&mut self, _req: &AlignRequest) -> AlignVerdict {
+                self.0 += 1;
+                AlignVerdict {
+                    poppable: self.0 == 1,
+                    consensus: FxHashMap::default(),
+                }
+            }
+        }
+        let stats = pop_bubbles(&mut g, &mut PopOnce(0), PopOpts::default());
+        assert_eq!(stats.pops, 1, "exactly the one pair the aligner accepted");
+        assert!(!stats.hit_iteration_cap, "terminated on its own");
+        assert_eq!(g.node_count(), 5, "the node set never changes");
+        let _ = mids;
     }
 
     #[test]

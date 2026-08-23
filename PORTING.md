@@ -63,12 +63,20 @@ Done so far:
   paths in CPython `set.pop()` order, which decided which path survives a bubble. Replacing it with a
   defined order raised `sirv_real` recall from 70.6% to 72.1% and cut Drosophila `NNC` isoforms from
   12 to 10. Finding 12.
-- **Bubble popping ported** — `find_paths`, `remove_edges`, `prepare_adding_edges` and the
-  `linearize_bubble` wrapper, in `rust/src/simplify.rs`. The reference's destructive `pop(0)` on the
-  caller's paths, its dead branches, its stale-variable hazards and the fact that relinked edges
-  carry **no `length` attribute** are all reproduced and pinned by tests. 91 unit tests across the
-  crate. What remains before the stage can be diffed end to end is the driver loop
-  (`new_bubble_popping_routine`) and the consensus generation it calls, which is where spoa enters.
+- **Bubble popping ported, including the driver** — `find_paths`, `remove_edges`,
+  `prepare_adding_edges`, `linearize_bubble` and `pop_bubbles` (the
+  `new_bubble_popping_routine` state machine), in `rust/src/simplify.rs`. The reference's destructive
+  `pop(0)`, its dead branches, its stale-variable hazards, its operator-precedence bug, its
+  undercounted pop total and the fact that relinked edges carry **no `length` attribute** are all
+  reproduced and pinned by tests. 101 unit tests across the crate.
+- **The consensus step is stubbed behind a trait** (`BubbleAligner`), so the driver is testable
+  without spoa. That is deliberate: spoa decides which bubbles are poppable, so a real oracle for the
+  stage needs it reproduced, and stubbing lets the state machine be verified first. Two stubs:
+  `NeverPop` exercises the bookkeeping alone, `AlwaysPop` the mutation path.
+
+Not done: `align_bubble_nodes` and `generate_consensus_path` — the consensus and CIGAR comparison that
+decide poppability, and the only part of the stage that calls spoa. Until they are ported, the
+simplification dumps cannot be replayed end to end.
 
 Not done: bubble *popping* (`new_bubble_popping_routine`, ~270 lines of in-place mutation plus spoa
 calls), and everything downstream of it. The front half of `main` is also still owed, which is why
@@ -918,7 +926,79 @@ create-without-it / preserve-if-present behaviour exactly.
 Not worth fixing on its own. Worth knowing before anyone writes code downstream that assumes every
 edge has a length.
 
-### Finding 15 — smaller things, recorded and not acted on
+### Finding 17 — the printed pop count undercounts, and only on graphs big enough to notice
+
+`new_bubble_popping_routine` adds the previous iteration's pops at the **top** of
+its loop (`SimplifyGraph.py:927`) and prints the total after it
+(`:1164`), so the final iteration's pops are never counted.
+
+It only shows when the loop exits by the pop threshold rather than by running out
+of candidates, and the threshold is `max(initial_edges / 100, 1)` — so below 200
+initial edges the threshold is 1, an early exit means zero pops that iteration,
+and nothing is lost. Above that it undercounts by the last iteration's total,
+bounded by `threshold - 1`.
+
+Measured on eight medium Drosophila clusters:
+
+| cluster | edges at start | threshold | pops per iteration | true total | printed |
+| --- | --- | --- | --- | --- | --- |
+| 10 | 265 | 2 | 11, 6, 5, 4, 2, 3, 2, 1 | 34 | **33** |
+| 11 | 95 | 1 | 3, 2, 3, 3, 1, 1, 0 | 13 | 13 |
+| 12 | 219 | 2 | 30, 15, 8, 5, 4, 2, 2, 2, 1 | 69 | **68** |
+| 13 | 291 | 2 | 15, 9, 8, 5, 5, 2, 1 | 45 | **44** |
+| 14 | 290 | 2 | 7, 5, 3, 2, 1 | 18 | **17** |
+| 15 | 245 | 2 | 10, 9, 5, 4, 3, 2, 1 | 34 | **33** |
+| 16 | 219 | 2 | 13, 11, 6, 2, 1 | 33 | **32** |
+| 17 | 148 | 1 | 12, 6, 4, 4, 3, 2, 1, 1, 0 | 33 | 33 |
+
+Six of eight, and exactly the two with a threshold of 1 are correct — which is the
+prediction, so the mechanism is understood rather than just observed.
+
+Cosmetic: the number is only printed, never used. Worth fixing because it is one
+line and because a progress figure that is quietly wrong is worse than none.
+`PopStats` reports both the true count and the reference's.
+
+### Finding 18 — an operator-precedence bug in the multi-path branch
+
+`SimplifyGraph.py:1100`:
+
+```python
+if (not p1[0]) or (not p2[0]) and directpath_marked:
+```
+
+`and` binds tighter than `or`, so this reads `(not p1[0]) or ((not p2[0]) and
+directpath_marked)`. The comment below it ("Marked") and the symmetry with
+`directpath_marked` both say the intent was `((not p1[0]) or (not p2[0])) and
+directpath_marked`.
+
+The effect: a pair whose **first** path is a direct start-to-end edge is skipped
+unconditionally, whether or not a direct path has already been popped this
+iteration; a pair whose *second* path is direct is skipped only when one has.
+Reproduced in the port with a comment, not fixed — measuring it needs a corpus
+that reaches the multi-path branch with a direct path in the first position, and
+that measurement has not been made.
+
+### Finding 19 — the popping loop has no termination guarantee
+
+`while has_combinations` exits on one of two conditions: no candidate survives
+filtering, or an iteration pops fewer than the threshold. Neither is guaranteed.
+If linearisation reaches a fixed point while every candidate is still *accepted*,
+the loop keeps "popping" without changing the graph, records nothing as
+not-viable, and never ends.
+
+Found by construction rather than on real data: a three-path bubble plus an
+aligner that accepts everything reaches it in three iterations. What prevents it
+in practice is that the real aligner refuses most bubbles, and a refusal is what
+writes to `not_viable_global` / `not_viable_multibubble` — so progress comes from
+*failure*, not success. Nothing in the loop's structure enforces that.
+
+The port carries an iteration cap that the reference does not have, reported in
+`PopStats::hit_iteration_cap`, so the failure mode is a flag rather than a hang.
+It is never reached on real input. Worth knowing before anyone changes the
+aligner's acceptance criteria, because a more permissive aligner is exactly what
+would expose this.
+
+### Finding 20 — smaller things, recorded and not acted on
 
 - `main`'s window check is `if 100 < args.w or args.w < args.k` but its message reads "smaller than
   100"; `--w 100` is accepted. Off-by-one between check and message.
@@ -1311,7 +1391,7 @@ change output need a measurement first.
 - **`--exact` is passed on every child invocation and does nothing**, and the parallel driver's
   `--exact_instance_limit` default of 50 therefore also does nothing. Once `--exact` means something
   again — if it should — these defaults need revisiting.
-- **Stray debug prints** (finding 4) and the unused `from ast import Param` (finding 15): one-line
+- **Stray debug prints** (finding 4) and the unused `from ast import Param` (finding 20): one-line
   deletions, but the prints are on stdout so goldens move with them.
 - **`["python", ...]`** → `[sys.executable, ...]` in `isONform_parallel:79`. Pure bug fix; in the
   Rust port the equivalent is to re-exec the running binary by its own path, not by name on `PATH`.
