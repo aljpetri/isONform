@@ -54,6 +54,15 @@ Done so far:
   `sirv_real` and 40 `droso` clusters — **47 963 reference nodes and 59 320 edges** — matching node
   for node, edge for edge, attribute for attribute. It found one genuine reference defect on the way,
   finding 11, which no amount of reading had turned up.
+- **The simplification stage is recorded too** — `bench/dump_reference.py --stage simplify` writes the
+  graph before and after each `simplifyGraph` call, since that stage mutates in place and returns
+  nothing. 16 records over medium `droso` clusters, with real popping (e.g. 165 edges down to 126).
+  A useful invariant fell out: **simplification never changes the node set**, only edges — true in
+  all 16.
+- **A second reference fix, and this one bought accuracy**: `find_paths` allocated reads to bubble
+  paths in CPython `set.pop()` order, which decided which path survives a bubble. Replacing it with a
+  defined order raised `sirv_real` recall from 70.6% to 72.1% and cut Drosophila `NNC` isoforms from
+  12 to 10. Finding 12.
 
 Not done: bubble *popping* (`new_bubble_popping_routine`, ~270 lines of in-place mutation plus spoa
 calls), and everything downstream of it. The front half of `main` is also still owed, which is why
@@ -765,6 +774,51 @@ It cannot happen through the real pipeline: `find_most_supported_span` only emit
 `len(relevant_reads) // 3 >= 3`, so every interval reaching the graph carries at least three
 occurrences and a non-empty tail. Measured across 188 454 real intervals: **zero** with an empty
 tail. Recorded so the next person does not chase it.
+
+### Finding 12 — CPython's `set.pop()` order was choosing how bubbles get linearised. **Fixed.**
+
+`find_paths` (`SimplifyGraph.py:140`) allocated reads to bubble paths by
+`node_support_left.pop()` — popping from a Python `set` of read ids. That order is deterministic for
+a given set of ints (int hashing is not seed-randomised, which is why finding 1's fix left this in
+place and the seed check still passes) but it is **arbitrary**: it is whichever slot CPython's set
+table happens to hold first, given the table size and probing.
+
+And it reaches results. Paths are appended to `all_paths` in pop order, and the popping routine then
+treats them asymmetrically — `path1 = all_paths_filtered[0][0]`, `path2 = all_paths_filtered[1][0]`,
+with different roles in `prepare_adding_edges`. So an implementation detail of CPython's set was
+deciding which path survives a bubble.
+
+Measured by replacing the pop with `min()`, on both real corpora:
+
+| `sirv_real`, strict | set-pop | sorted |
+| --- | --- | --- |
+| isoforms | 106 | 108 |
+| recall | 70.6% (48/68) | **72.1% (49/68)** |
+| precision | 82.1% | **83.3%** |
+| F1 | 0.759 | **0.773** |
+| identity | 0.9673 | **0.9697** |
+| recall, lenient | 79.4% | **82.4%** |
+| F1, lenient | 0.870 | **0.892** |
+
+| `droso` | set-pop | sorted |
+| --- | --- | --- |
+| isoforms | 505 | 504 |
+| `FSM` | 443 | 443 |
+| `NNC` | 12 | **10** |
+| canonical introns | 0.982 | **0.983** |
+| distinct intron chains | 359 | 357 |
+
+A defined order is better on both, and the gain is on real data rather than simulated. Redundancy is
+the one metric that moves the wrong way, and marginally (1.81 → 1.84 on `sirv_real`).
+
+**Fixed**, on the owner's decision, by taking the lowest read id. Two reasons beyond the accuracy:
+the reference no longer depends on an unspecified property of the interpreter, and a future CPython
+that reorganised its set implementation would silently have changed isONform's output. That is the
+same class of hazard as finding 1 — a stable-today artifact that nothing pins — and it would have
+been much harder to diagnose, because unlike the hash seed it does not vary between runs.
+
+The port therefore targets the fixed behaviour. Reproducing the old one would have meant
+reimplementing CPython's set table, probing and pop finger in Rust, and then deleting it.
 
 ### Finding 10 — smaller things, recorded and not acted on
 
