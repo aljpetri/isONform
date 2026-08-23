@@ -22,6 +22,11 @@
 //!   4 541 candidate hits and never once matched, so the crash never fires. This
 //!   port returns [`BuildError::ReferenceWouldCrash`] there rather than
 //!   inventing a behaviour the reference does not have.
+//! * **Finding 11, live.** `cycle_added` creates a node to route around a cycle
+//!   but the caller keeps the *old* node as `previous_node`, because the rebinding
+//!   is local to the helper. The new node ends up with an in-edge and no out-edge
+//!   and the read's path is severed. Found by the oracle on real Drosophila data,
+//!   not by reading.
 //! * **Finding 9, live.** One branch reads `seq` without binding it, so it uses
 //!   whatever `seq` held from a previous loop iteration — across reads, that is
 //!   *another read's sequence*, and the k-mer taken from it becomes the node's
@@ -61,6 +66,9 @@ pub struct BuildOpts {
     /// Bind `seq` from the read being processed, as every other branch does.
     /// Fixes finding 9.
     pub fix_stale_seq: bool,
+    /// Continue the read's path from the node `cycle_added` just created, rather
+    /// than from the one whose incoming edge it removed. Fixes finding 11.
+    pub fix_cycle_continuation: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -202,7 +210,8 @@ pub fn generate_graph_from_intervals(
                         g.add_edge(previous_node, prior, this_len);
                         if g.reaches_itself(previous_node) {
                             // `cycle_added`: drop the edge that closed the cycle
-                            // and route through a read-private node instead.
+                            // and route the incoming edge through a read-private
+                            // node instead.
                             alt_cyc_keys.insert(prior);
                             g.remove_edge(previous_node, prior);
                             let alt = g.add_node(NodeKey::Interval {
@@ -222,7 +231,29 @@ pub fn generate_graph_from_intervals(
                             );
                             g.add_edge(previous_node, alt, this_len);
                             g.set_edge_support(previous_node, alt, r_id);
-                            alt
+
+                            // FINDING 11, and this is the whole of it: the
+                            // reference returns `prior`, NOT `alt`.
+                            //
+                            // `cycle_added` rebinds its own local `name` to the
+                            // new node, and Python strings are passed by value,
+                            // so the caller's `name` still holds the old node.
+                            // `previous_node = name` at
+                            // `GraphGeneration.py:458` therefore continues the
+                            // read's path from the node whose incoming edge was
+                            // just removed, leaving `alt` with an in-edge and no
+                            // out-edge --- a dead end --- and severing the read's
+                            // path in two.
+                            //
+                            // The port returned `alt` at first, which is the
+                            // sensible behaviour, and the oracle caught it on
+                            // real Drosophila data. Faithful now; the fix is
+                            // `BuildOpts::fix_cycle_continuation`.
+                            if opts.fix_cycle_continuation {
+                                alt
+                            } else {
+                                prior
+                            }
                         } else {
                             g.set_edge_support(previous_node, prior, r_id);
                             prior
@@ -408,6 +439,10 @@ mod tests {
             occurrences: occ.to_vec(),
         }
     }
+
+    /// `(intervals, read sequences)` --- what a `BuildInput` needs the caller to
+    /// own.
+    type Fixture = (Vec<(u32, Vec<Interval>)>, FxHashMap<u32, Vec<u8>>);
 
     fn reads(pairs: &[(u32, &str)]) -> FxHashMap<u32, Vec<u8>> {
         pairs
@@ -597,11 +632,155 @@ mod tests {
             &input,
             BuildOpts {
                 fix_stale_seq: true,
+                ..Default::default()
             },
         )
         .unwrap();
         assert_eq!(g.node_count(), g2.node_count());
         assert_eq!(g.edge_count(), g2.edge_count());
+    }
+
+    /// A fixture that actually reaches `cycle_added`, which is finding 11.
+    ///
+    /// Read 1 builds `s -> n1 -> n2 -> t` and declares occurrences in read 2 for
+    /// both intervals, so read 2 finds them via `prior_read_infos` — but in the
+    /// *reverse* order. Read 2 therefore tries to add `n2 -> n1`, closing the
+    /// cycle `n1 -> n2 -> n1`, and the reference routes around it.
+    fn cycle_fixture() -> Fixture {
+        // Distinct sequences so a wrong `seq` would be visible too.
+        let s1 = "ACGT".repeat(30);
+        let s2 = "TTGA".repeat(30);
+        let intervals = vec![
+            (
+                1u32,
+                vec![
+                    // registers prior (2, 50 + 4, 60) -> "10, 20, 1"
+                    iv(10, 20, &[1, 0, 20, 2, 50, 60]),
+                    // registers prior (2, 10 + 4, 20) -> "30, 40, 1"
+                    iv(30, 40, &[1, 20, 40, 2, 10, 20]),
+                ],
+            ),
+            (
+                2u32,
+                // Reverse order: n2 first, then n1.
+                //
+                // The trailing (9, ...) occurrences exist only to make the two
+                // intervals' occurrence *tails* differ. Without them both tails
+                // are empty, both hash alike, and the second interval is judged
+                // `is_repetitive` --- which sends it down a different branch and
+                // never reaches the cycle path at all. That is real reference
+                // behaviour, and it cost a debugging round to notice, so it is
+                // worth the comment: `convert_array_to_hash` drops the
+                // occurrence's own triple, so a lone occurrence hashes as the
+                // empty tuple and every such interval in a read collides.
+                vec![
+                    iv(14, 20, &[2, 14, 20, 9, 1, 2]),
+                    iv(54, 60, &[2, 54, 60, 9, 3, 4]),
+                ],
+            ),
+        ];
+        (intervals, reads(&[(1, &s1), (2, &s2)]))
+    }
+
+    #[test]
+    fn the_cycle_path_leaves_a_dead_end_and_continues_from_the_old_node() {
+        // Finding 11, reproduced. The reference creates a node to route around
+        // the cycle but keeps the OLD node as previous_node, because
+        // cycle_added's rebinding of `name` is local to the helper.
+        let (intervals, r) = cycle_fixture();
+        let input = BuildInput {
+            k: 4,
+            delta_len: 5,
+            intervals: &intervals,
+            reads: &r,
+            read_len: &[(1, 120), (2, 120)],
+        };
+        let (g, _) = generate_graph_from_intervals(&input, BuildOpts::default()).unwrap();
+
+        let n1 = g
+            .lookup(&NodeKey::Interval {
+                start: 10,
+                end: 20,
+                r_id: 1,
+            })
+            .unwrap();
+        let n2 = g
+            .lookup(&NodeKey::Interval {
+                start: 30,
+                end: 40,
+                r_id: 1,
+            })
+            .unwrap();
+        let alt = g
+            .lookup(&NodeKey::Interval {
+                start: 54,
+                end: 60,
+                r_id: 2,
+            })
+            .expect("the cycle path created a read-private node");
+        let t = g.lookup(&NodeKey::Sink).unwrap();
+
+        // The edge that would have closed the cycle is gone, replaced by one
+        // into the new node.
+        assert!(!g.has_edge(n2, n1), "the cycle-closing edge was removed");
+        assert!(
+            g.has_edge(n2, alt),
+            "and replaced by an edge into the new node"
+        );
+
+        // And here is the defect: the new node is a dead end, while the read's
+        // path continues out of the node whose in-edge was just removed.
+        assert_eq!(
+            g.out_degree(alt),
+            0,
+            "the routed-to node has no outgoing edge"
+        );
+        assert!(
+            g.has_edge(n1, t),
+            "read 2's path continues from the OLD node"
+        );
+        assert!(!g.has_edge(alt, t));
+    }
+
+    #[test]
+    fn fixing_the_cycle_continuation_moves_the_outgoing_edge() {
+        let (intervals, r) = cycle_fixture();
+        let input = BuildInput {
+            k: 4,
+            delta_len: 5,
+            intervals: &intervals,
+            reads: &r,
+            read_len: &[(1, 120), (2, 120)],
+        };
+        let (g, _) = generate_graph_from_intervals(
+            &input,
+            BuildOpts {
+                fix_cycle_continuation: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let n1 = g
+            .lookup(&NodeKey::Interval {
+                start: 10,
+                end: 20,
+                r_id: 1,
+            })
+            .unwrap();
+        let alt = g
+            .lookup(&NodeKey::Interval {
+                start: 54,
+                end: 60,
+                r_id: 2,
+            })
+            .unwrap();
+        let t = g.lookup(&NodeKey::Sink).unwrap();
+        assert!(
+            g.has_edge(alt, t),
+            "the path now continues from the new node"
+        );
+        assert!(!g.has_edge(n1, t));
+        assert_eq!(g.out_degree(alt), 1);
     }
 
     #[test]
@@ -629,6 +808,7 @@ mod tests {
             &input,
             BuildOpts {
                 fix_stale_seq: true,
+                ..Default::default()
             },
         )
         .unwrap();

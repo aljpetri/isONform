@@ -49,7 +49,11 @@ Done so far:
   488 edges, and it is a gate in CI. Two more reference defects came out of it, findings 8 and 9.
 - **Bubble detection ported** (`rust/src/simplify.rs`) — the pure, order-sensitive front of
   `SimplifyGraph.py`: candidate starts and ends, the start × end combination enumeration, and the
-  two distance helpers. 67 unit tests across the crate.
+  two distance helpers. 69 unit tests across the crate.
+- **The oracle passes on real data**: 72 recorded graph-construction calls across `sirv_small`,
+  `sirv_real` and 40 `droso` clusters — **47 963 reference nodes and 59 320 edges** — matching node
+  for node, edge for edge, attribute for attribute. It found one genuine reference defect on the way,
+  finding 11, which no amount of reading had turned up.
 
 Not done: bubble *popping* (`new_bubble_popping_routine`, ~270 lines of in-place mutation plus spoa
 calls), and everything downstream of it. The front half of `main` is also still owed, which is why
@@ -705,6 +709,62 @@ reproduces it by default and fixes it under `BuildOpts::fix_stale_seq`, so the c
 re-run on any future corpus.
 
 The fix is one line — bind `seq = all_reads[r_id][1]` on that path, as every sibling branch does.
+
+### Finding 11 — the cycle-avoidance node is a dead end, and the read's path is severed
+
+**Found by the oracle, not by reading**, which is the point of having one. On real Drosophila data
+one edge in one of 40 recorded graphs disagreed: the reference drew it from `"104, 142, 133"` where
+the port drew it from `"727, 765, 324"`.
+
+When adding an edge would close a cycle, `GraphGeneration.py:391` calls `cycle_added`, which removes
+the offending edge and creates a read-private node to route the *incoming* edge through. It then
+rebinds its own local `name` to that new node — and `name` is a Python string, passed by value, so
+**the caller never sees it**. `previous_node = name` at `:458` therefore continues the read's path
+from the node whose incoming edge was just removed.
+
+The result, visible in the dump:
+
+```text
+E 817, 841, 97 -> 727, 765, 324   39   324      # the new node: in-edge...
+                                                 # ...and no out-edge at all
+E 104, 142, 133 -> 1000, 1050, 2  80   324      # the path continues from the OLD node
+N 104, 142, 133  ...  133:104:142:1,324:727:765:1
+```
+
+So read 324's path through the graph is in **two disconnected pieces**, and the node created to fix
+the cycle contributes nothing but a node count. The reference's own comment admits discomfort here —
+"TODO: add alt_cyc_node instead of adding a new node to reduce overall nr nodes in our graph" — but
+not this.
+
+Measured before deciding it mattered:
+
+| | |
+| --- | --- |
+| graphs examined | 70 (`sirv_real` 30, `droso` 40) |
+| nodes examined | 47 963 |
+| dead-end nodes (in-degree > 0, out-degree 0, not the sink) | **1** |
+| fully isolated nodes | 0 |
+| `transcriptome.fasta` with the fix, `droso` | **byte-identical**, 505 isoforms |
+
+So: a genuine structural defect that fires **once in ~48 000 nodes** and changes no output on the
+corpora we have. Worth fixing, worth not overselling. The one-line fix is to `return name` from
+`cycle_added` and assign it at the call site; the port reproduces the reference by default and fixes
+it under `BuildOpts::fix_cycle_continuation`, with unit tests for both.
+
+It is also the clearest argument so far for the oracle existing at all. Nothing about the emitted
+isoforms would have revealed this, on any corpus.
+
+#### One reference behaviour that looks like a defect and is not reachable
+
+`convert_array_to_hash` drops the interval's own `(r_id, p1, p2)` triple before hashing, so an
+interval supported by **no other read** hashes as the empty tuple — and any two such intervals in one
+read collide, forcing the second to be judged `is_repetitive` and sending it down a different branch.
+That cost a debugging round on a hand-built fixture.
+
+It cannot happen through the real pipeline: `find_most_supported_span` only emits an interval when
+`len(relevant_reads) // 3 >= 3`, so every interval reaching the graph carries at least three
+occurrences and a non-empty tail. Measured across 188 454 real intervals: **zero** with an empty
+tail. Recorded so the next person does not chase it.
 
 ### Finding 10 — smaller things, recorded and not acted on
 

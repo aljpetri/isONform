@@ -62,9 +62,15 @@ struct Case {
     exp_edges: BTreeMap<(String, String), (i64, Vec<u32>)>,
     exp_reads_for_isoforms: Vec<u32>,
     exp_counts: (usize, usize),
-    /// `nx.topological_sort` order, by node name. `None` when the reference
-    /// reported a cycle.
-    exp_topo: Option<Vec<String>>,
+    /// `nx.topological_sort` order, by node name.
+    ///
+    /// Three states, and conflating any two of them is a bug this file has
+    /// already had: `None` means the dump carries no `T` record at all (it
+    /// predates the record, so the order is simply unchecked), `Some(None)` means
+    /// the reference reported a cycle, `Some(Some(order))` is an order to
+    /// compare. Reading "absent" as "cyclic" made 30 of 30 real cases fail with
+    /// a message that pointed nowhere.
+    exp_topo: Option<Option<Vec<String>>>,
 }
 
 fn parse_reads_attr(field: &str) -> Vec<(u32, ReadInfo)> {
@@ -187,11 +193,11 @@ fn parse_case(path: &Path) -> Case {
                 c.exp_edges.insert((u, v), (length, supp));
             }
             "T" => {
-                c.exp_topo = if rest.starts_with("CYCLIC") {
+                c.exp_topo = Some(if rest.starts_with("CYCLIC") {
                     None
                 } else {
                     Some(rest.split('|').map(|s| s.to_string()).collect())
-                };
+                });
             }
             "F" => {
                 c.exp_reads_for_isoforms = if rest.trim().is_empty() {
@@ -332,8 +338,21 @@ fn check(c: &Case) -> Vec<String> {
     // Compared exactly, not just checked for validity. A topological order is
     // not unique and the reference compares the resulting indices to pick
     // candidate bubbles, so producing *a* valid order is not enough.
-    match (&c.exp_topo, g.topological_sort()) {
-        (Some(exp), Some(got)) => {
+    let got_topo = g.topological_sort();
+    match (&c.exp_topo, &got_topo) {
+        // No `T` record: the dump predates it, so the order is simply unchecked.
+        // Not silently ignored --- the caller counts these and reports how many.
+        (None, _) => {}
+        (Some(None), None) => {
+            // Both agree the graph is cyclic. Worth knowing, but not a mismatch.
+        }
+        (Some(None), Some(_)) => {
+            problems.push("reference reported a cycle, port found a topological order".to_string())
+        }
+        (Some(Some(_)), None) => {
+            problems.push("port reported a cycle, reference found a topological order".to_string())
+        }
+        (Some(Some(exp)), Some(got)) => {
             let got_names: Vec<String> = got.iter().map(|&n| g.key(n).to_string()).collect();
             if *exp != got_names {
                 let first = exp
@@ -351,13 +370,6 @@ fn check(c: &Case) -> Vec<String> {
                 ));
             }
         }
-        (None, Some(_)) => {
-            problems.push("reference reported a cycle, port found a topological order".to_string())
-        }
-        (Some(_), None) => {
-            problems.push("port reported a cycle, reference found a topological order".to_string())
-        }
-        (None, None) => {}
     }
 
     // -- the rest ----------------------------------------------------------
@@ -414,11 +426,15 @@ fn graph_construction_matches_the_reference() {
     let mut failed = 0usize;
     let mut n_nodes = 0usize;
     let mut n_edges = 0usize;
+    let mut n_topo_unchecked = 0usize;
 
     for path in &cases {
         let c = parse_case(path);
         n_nodes += c.exp_counts.0;
         n_edges += c.exp_counts.1;
+        if c.exp_topo.is_none() {
+            n_topo_unchecked += 1;
+        }
         let problems = check(&c);
         if !problems.is_empty() {
             failed += 1;
@@ -440,6 +456,13 @@ fn graph_construction_matches_the_reference() {
         n_nodes,
         n_edges
     );
+    if n_topo_unchecked > 0 {
+        eprintln!(
+            "  NOTE: {n_topo_unchecked} case(s) carry no T record, so their \
+             topological order was NOT compared. Re-run bench/dump_reference.py \
+             to record it."
+        );
+    }
     assert!(
         failed == 0,
         "{failed} of {} case(s) disagree with the reference:{report}",
