@@ -1,0 +1,26 @@
+# Rust port build output. Cargo.lock is *not* ignored: these are binaries, and
+# the lock file is what makes a release build reproducible.
+rust/target/
+
+# Evaluation corpora are derived and large — gigabytes of fastq — and live
+# outside the repository under $ISONFORM_WORK. bench/corpus/README.md says how to
+# rebuild each one.
+#
+# `sirv_small` is the exception and is tracked: 82 KB, and CI's determinism gate
+# needs it. A gate that silently skips because its input is absent is worse than
+# no gate.
+bench/corpus/*/
+!bench/corpus/sirv_small/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/

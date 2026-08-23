@@ -1,0 +1,36 @@
+[package]
+name = "isonform"
+# Matches the Python's advertised version, which is what `--version` prints and
+# what setup.py declares. Keep the two in step: the CLI string lives in
+# `cli::VERSION`.
+version = "0.3.9"
+edition = "2021"
+# Raised from 1.74 by spoars, which requires 1.85. Kept in step with the
+# isONcorrect port so the shared modules move between the two unchanged.
+rust-version = "1.85"
+description = "De novo construction of isoforms from long-read data"
+repository = "https://github.com/aljpetri/isONform"
+license = "GPL-3.0-only"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+
+[lib]
+name = "isonform"
+path = "src/lib.rs"
+
+# Binary names must match the Python entry points exactly; existing pipelines
+# (and isON_pipeline.sh) invoke them by these names. `main` is an odd name for a
+# binary, but setup.py ships `scripts=['isONform_parallel','main']` and that is
+# the contract.
+[[bin]]
+name = "main"
+path = "src/bin/main.rs"
+
+[[bin]]
+name = "isONform_parallel"
+path = "src/bin/isonform_parallel.rs"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

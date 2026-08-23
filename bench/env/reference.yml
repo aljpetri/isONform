@@ -1,0 +1,54 @@
+# Pinned reference environment for the isONform Python implementation.
+#
+# This environment defines the *normative* behaviour the Rust port must
+# reproduce. Do not float these versions casually: spoa decides every isoform
+# consensus, so a spoa upgrade can legitimately change output and invalidate
+# every recorded golden.
+#
+# Version notes, all of them deliberate:
+#
+#  * python=3.10 — networkx 2.8.4 (June 2022) predates 3.11 and declares
+#    `Requires-Python >=3.8`; 3.10 is the newest interpreter it was released
+#    against.
+#  * networkx=2.8.4 — the pin in requirements.txt. setup.py says `>=2.7.1`;
+#    the tighter pin wins for goldens.
+#  * parasail-python=1.3.4 — requirements.txt pins `parasail==1.2` but setup.py
+#    demands `parasail>=1.3.3`, so the repository contradicts itself. 1.2 (2018)
+#    has no osx-arm64 build at all, and the only API used is
+#    `matrix_create` + `sg_trace_scan_16/32`, stable across both. 1.3.4 is also
+#    what the isONcorrect reference env resolved, which keeps the two ports'
+#    goldens comparable. See PORTING.md.
+#  * spoa=4.1.5 — same floor as isONcorrect: spoa is only published for
+#    osx-arm64 / linux-aarch64 from 4.1.4 onward.
+#
+# NOT included as a *reference* dependency, and that is the finding: numpy (the
+# code never imports it), recordclass (listed in setup.py, imported nowhere), and
+# minimap2 / racon / medaka (their wrappers in modules/consensus.py are
+# unreachable from both entry points). See PORTING.md "Reconnaissance
+# corrections".
+#
+# edlib is here for a different reason. isONform never imports it either --- it is
+# listed in setup.py and used nowhere --- but bench/accuracy_isoforms.py needs it
+# to align reconstructed isoforms against reference transcripts. It is an
+# **evaluation** dependency, and it cannot influence reference behaviour, because
+# nothing on any code path imports it. Kept in this file so the bench works out
+# of the box rather than failing on the first accuracy run.
+#
+# minimap2 likewise: bench/accuracy_isoforms_genome.py shells out to it for
+# spliced alignment against a genome. Evaluation only; the reference never calls
+# it, since modules/consensus.py's run_racon is unreachable.
+name: isonform-ref
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  # --- reference: what isONform itself imports or execs ---
+  - python=3.10
+  - pip
+  - spoa=4.1.5
+  - networkx=2.8.4
+  - parasail-python=1.3.4
+  # --- evaluation only: bench/accuracy_isoforms*.py ---
+  - minimap2
+  - pip:
+      - edlib==1.3.9.post1

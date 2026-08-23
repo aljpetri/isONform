@@ -1,0 +1,158 @@
+# CI for the Rust port.
+#
+# Deliberately a matrix from the first commit, not "once it settles". Three of
+# the nine defects in the isONcorrect port existed only because every local
+# check ran on one machine — an aarch64-only build that did not compile on
+# x86_64 at all, a C dependency hidden behind a default cargo feature, and
+# glibc-2.34-only release binaries that exclude CentOS 7, RHEL 8 and Ubuntu
+# 20.04. See PORTING.md method point 7.
+#
+# The `equivalence` job needs the Python reference *and* spoa, so it runs in the
+# pinned conda environment. It is the differential check against the reference,
+# and it is what makes the matrix worth having: `cargo test` alone cannot notice
+# that the reference disagrees.
+
+name: rust
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'rust/**'
+      - 'bench/**'
+      - '.github/workflows/rust.yml'
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'rust/**'
+      - 'bench/**'
+      - '.github/workflows/rust.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Belt and braces. The reference no longer depends on the hash seed (minimizer
+  # selection is lexicographic --- PORTING.md finding 1), and the determinism job
+  # below is what asserts that. Pinning it here means a failure elsewhere is a
+  # real disagreement rather than a different draw.
+  PYTHONHASHSEED: '0'
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # x86_64 Linux — the commonest deployment target, and the one an
+          # arm64-only development machine never exercises.
+          - { os: ubuntu-latest,  name: 'linux x86_64' }
+          # arm64 Linux.
+          - { os: ubuntu-24.04-arm, name: 'linux aarch64' }
+          # arm64 macOS — the development machine.
+          - { os: macos-latest,   name: 'macos arm64' }
+          # x86_64 macOS, still in wide use.
+          - { os: macos-13,       name: 'macos x86_64' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Build
+        run: cargo build --release --manifest-path rust/Cargo.toml
+
+      - name: Test
+        run: cargo test --manifest-path rust/Cargo.toml
+
+      # Warnings-as-errors from the start: the alternative is a backlog nobody
+      # reads.
+      - name: Clippy
+        run: cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+
+      - name: Formatting
+        run: cargo fmt --manifest-path rust/Cargo.toml --check
+
+      # The entry point names are part of the contract; existing pipelines and
+      # isON_pipeline.sh invoke them by name. A rename would otherwise only
+      # surface at install time.
+      - name: Entry points exist under their contract names
+        run: |
+          test -x rust/target/release/main
+          test -x rust/target/release/isONform_parallel
+          rust/target/release/main --version | grep -qx 'main 0.3.9'
+          rust/target/release/isONform_parallel --version | grep -qx 'isONform_parallel 0.3.9'
+
+  equivalence:
+    name: differential vs the Python reference (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, name: 'linux x86_64' }
+          - { os: macos-latest,  name: 'macos arm64' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          activate-environment: isonform-ref
+          environment-file: bench/env/reference.yml
+          auto-activate-base: false
+
+      - name: Record what actually resolved
+        shell: bash -el {0}
+        run: |
+          python -c "import networkx, parasail, sys; \
+            print('python', sys.version.split()[0]); \
+            print('networkx', networkx.__version__); \
+            print('parasail', parasail.__version__)"
+          spoa --version || true
+
+      # sirv_small is committed precisely so this cannot skip. It has to be
+      # *corrected* reads: on raw isONclust output every read is skipped for low
+      # interval abundance and the graph comes out 2 nodes and 0 edges, which
+      # would make the determinism gate below pass trivially on empty output.
+      - name: Smoke corpus is present
+        run: |
+          test -s bench/corpus/sirv_small/0.fastq
+          test -s bench/corpus/sirv_small/1.fastq
+
+      - name: CLI equivalence
+        shell: bash -el {0}
+        run: bench/equivalence.sh cli
+
+      # A real gate, not informational: minimizer selection is lexicographic now,
+      # so the reference must agree with itself across seeds. If this fails,
+      # something whose iteration order reaches results has crept back in and no
+      # golden recorded after that point means anything. See PORTING.md finding 1.
+      - name: Determinism check
+        shell: bash -el {0}
+        run: |
+          python bench/check_seed_sensitivity.py --fastq-folder bench/corpus/sirv_small --seeds 8
+
+      # The SQANTI classifier's self-tests. Pure logic over a toy annotation --
+      # no genome, no minimap2, no corpus -- so they are cheap and they guard a
+      # part of the harness that has already been wrong once: a span-based
+      # fusion test reported 13% fusions on real Drosophila data and emptied the
+      # NIC category. Both conditions of the fix are asserted here.
+      - name: Isoform classifier self-tests
+        shell: bash -el {0}
+        run: python bench/annotation.py

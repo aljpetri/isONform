@@ -81,9 +81,17 @@ def rindex(lst, value):
 def get_kmer_minimizers(seq, k_size, w_size):
     # kmers = [seq[i:i+k_size] for i in range(len(seq)-k_size) ]
     w = w_size - k_size
-    #save the window as a deque and instead of the sequence itself we use its hash value
-    window_kmers = deque([hash(seq[i:i+k_size]) for i in range(w +1)])
-    #the smallest kmer (or to be precise the smallest hash) we have found in the window
+    #compare the k-mers themselves, lexicographically. NOT hash(): Python's
+    #str.__hash__ is SipHash keyed by PYTHONHASHSEED, which is random per
+    #process, so hashing here made every minimizer -- and so every isoform --
+    #depend on the seed. Measured before this change: over 8 seeds, all 9 of
+    #isONform_parallel's output files varied and transcriptome.fasta took 5
+    #distinct values. This matches isONcorrect's get_kmer_minimizers_lex, which
+    #is otherwise the same function, and makes the hash_fcn == "lex" branch
+    #name true again (get_kmer_maximizers on the "rev_lex" branch already
+    #compared strings, so the two were inconsistent).
+    window_kmers = deque([seq[i:i+k_size] for i in range(w +1)])
+    #the smallest kmer we have found in the window
     curr_min = min(window_kmers)
     #we now want the last occurrence of the smallest kmer not the first anymore
     minimizer_pos = rindex(list(window_kmers), curr_min)
@@ -91,7 +99,7 @@ def get_kmer_minimizers(seq, k_size, w_size):
     minimizers = [ (seq[minimizer_pos: minimizer_pos+k_size], minimizer_pos) ] # get the last element if ties in window
     #iterate over the remaining read and find all minimizers therein
     for i in range(w+1, len(seq) - k_size):
-        new_kmer = hash(seq[i:i+k_size])
+        new_kmer = seq[i:i+k_size]
         # updating window
         discarded_kmer = window_kmers.popleft()
         window_kmers.append(new_kmer)
@@ -628,7 +636,10 @@ if __name__ == '__main__':
         parser.print_help()
         sys.exit()
 
-    os.environ['PYTHONHASHSEED'] = '0'
+    # Do not set os.environ['PYTHONHASHSEED'] here: CPython reads it once, at
+    # interpreter startup, so assigning it in a running process affects only
+    # children. The seed-dependence it was meant to contain is fixed at its
+    # source, in get_kmer_minimizers above.
     if args.outfolder and not os.path.exists(args.outfolder):
         os.makedirs(args.outfolder)
 

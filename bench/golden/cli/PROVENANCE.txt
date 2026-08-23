@@ -1,0 +1,32 @@
+CLI goldens — the reference's own output, recorded verbatim.
+
+Recorded on 2026-08-23 at f0cd3c7, in the `isonform-ref` environment described
+by bench/env/resolved-macosx-11.0-arm64.txt, with COLUMNS=80 and
+PYTHONHASHSEED=0.
+
+    export COLUMNS=80
+    for e in main isONform_parallel; do
+      PYTHONHASHSEED=0 python $e --help    >bench/golden/cli/$e.help.stdout   2>bench/golden/cli/$e.help.stderr
+      PYTHONHASHSEED=0 python $e --version >bench/golden/cli/$e.version.stdout 2>bench/golden/cli/$e.version.stderr
+      PYTHONHASHSEED=0 python $e           >bench/golden/cli/$e.noargs.stdout  2>bench/golden/cli/$e.noargs.stderr
+    done
+
+Empty files were deleted rather than committed, so an absent `.stderr` means the
+reference wrote nothing there.
+
+These are NOT asserted byte for byte by bench/equivalence.sh, and that is
+deliberate: clap and argparse lay help text out differently, nothing downstream
+parses it, and the isONcorrect port made the same call. What the harness does
+assert is exit codes, the reference's own diagnostics verbatim, the stray stdout
+prints, and the full resolved argument set via the `ARGS Namespace(...)` line.
+
+These files are here so that a change to a flag's name, default or help text is
+visible on inspection, and so the two entry points' surfaces can be diffed
+against each other. Two things worth knowing when reading them:
+
+  * main.noargs.stderr contains `xmin set to 40`. The reference raises xmin to
+    2*k *before* noticing there were no arguments, so it announces the
+    adjustment and then prints help.
+  * isONform_parallel.noargs.stdout begins with `1`. That is
+    `print(len(sys.argv))` at isONform_parallel:370, a debug leftover that is
+    nonetheless observable. PORTING.md finding 4.
