@@ -156,3 +156,20 @@ jobs:
       - name: Isoform classifier self-tests
         shell: bash -el {0}
         run: python bench/annotation.py
+
+      # The graph-construction oracle: record the stage's inputs and outputs from
+      # the live reference, then replay them through the port and diff node set,
+      # attributes, edges, edge support and the exact topological order. This is
+      # the only check that says the ported algorithm agrees with the reference on
+      # real data; `cargo test` alone covers hand-built fixtures.
+      #
+      # The test skips loudly without ISONFORM_GRAPH_DUMPS, so setting it here is
+      # what makes it a gate rather than a no-op.
+      - name: Graph-construction oracle
+        shell: bash -el {0}
+        run: |
+          python bench/dump_reference.py --fastq-folder bench/corpus/sirv_small \
+              --outdir "$RUNNER_TEMP/graph_dumps"
+          test -n "$(ls "$RUNNER_TEMP/graph_dumps"/graph_*.txt 2>/dev/null)"
+          ISONFORM_GRAPH_DUMPS="$RUNNER_TEMP/graph_dumps" \
+              cargo test --manifest-path rust/Cargo.toml --test graph_oracle -- --nocapture

@@ -13,3 +13,4 @@
 pub mod cli;
 pub mod graph;
 pub mod graph_build;
+pub mod simplify;

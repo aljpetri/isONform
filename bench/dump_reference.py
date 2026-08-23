@@ -25,16 +25,23 @@ through `runpy`. Two consequences that matter:
 
 # Format
 
-One text file per call, `graph_<batch>_<call>.txt`, with sectioned records so a
-diff points at a line rather than a byte offset in a pickle. All sections are
-sorted deterministically; nothing here depends on dict iteration order.
+One text file per call, `graph_<call>.txt`, with sectioned records so a diff
+points at a line rather than a byte offset in a pickle. Records are ordered
+deterministically, and *within* a record, read lists and edge-support lists keep
+their **insertion** order rather than being sorted. That is stricter than the
+reference currently requires — the order is not observable downstream, see
+`rust/src/graph.rs` — but a stricter dump costs nothing and catches a divergence
+the moment one matters.
 
     # params k=<k> delta_len=<d>
     R <r_id> <sequence>                     one per read the graph sees
     L <r_id> <length>                       read_len_dict
     I <r_id> <pos> <start> <end> <weight> <a,b,c,...>    intervals, in call order
-    N <node> <end_mini_seq> <r_id:start:end:orig,...>    nodes, sorted
-    E <u> -> <v> <length> <r_id,...>                     edges, sorted
+    N <node> <end_mini_seq> <r_id:start:end:orig,...>    nodes sorted by name;
+                                                         reads in INSERTION order
+    E <u> -> <v> <length> <r_id,...>                     edges sorted by (u,v);
+                                                         support in INSERTION order
+    T <node>|<node>|...                     nx.topological_sort order (see below)
     F <r_id,...>                            reads_for_isoforms
     S <n_nodes> <n_edges>
 
@@ -74,14 +81,21 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def fmt_reads_attr(reads):
-    """A node's `reads` dict -> a stable string.
+    """A node's `reads` dict -> a string, **in insertion order**.
+
+    Not sorted, deliberately — but for a weaker reason than first claimed here.
+    Insertion order of this map turns out **not** to be observable in the current
+    reference: every consumer either sorts it or aggregates commutatively (see
+    `rust/src/graph.rs` for the audit of all five). Recording it unsorted is kept
+    anyway, because it makes the oracle strictly stricter at no cost, and because
+    a stricter dump catches a divergence early if a future consumer does start
+    depending on the order.
 
     `Read_infos` is a namedtuple `(start_mini_end, end_mini_start,
     original_support)`.
     """
     parts = []
-    for r_id in sorted(reads):
-        ri = reads[r_id]
+    for r_id, ri in reads.items():
         parts.append(f"{r_id}:{ri.start_mini_end}:{ri.end_mini_start}:{int(bool(ri.original_support))}")
     return ",".join(parts) if parts else "-"
 
@@ -113,7 +127,23 @@ def dump_call(path, k, delta_len, intervals, read_len_dict, all_reads, dg, reads
             d = dg[u][v]
             length = d.get("length", "NA")
             supp = d.get("edge_supp", []) or []
-            fh.write(f"E {u} -> {v} {length} {','.join(str(x) for x in sorted(supp))}\n")
+            # Insertion order again, not sorted, for the same reason as above:
+            # stricter than currently necessary, and free.
+            fh.write(f"E {u} -> {v} {length} {','.join(str(x) for x in supp)}\n")
+
+        # The topological order the simplification stage will actually use. It
+        # is recorded because a topological order is NOT unique and the reference
+        # compares the resulting indices to decide which node pairs are candidate
+        # bubbles (SimplifyGraph.py:115) --- so a port that produces a different
+        # valid order finds different bubbles. networkx 2.8.4's order is
+        # generation-based Kahn seeded in node insertion order; this line is what
+        # proves the port reproduces it rather than merely producing *a* valid
+        # order.
+        try:
+            import networkx as _nx
+            fh.write("T " + "|".join(_nx.topological_sort(dg)) + "\n")
+        except Exception as exc:  # noqa: BLE001 --- a cycle is informative, not fatal
+            fh.write(f"T CYCLIC {exc}\n")
 
         fh.write("F " + ",".join(str(x) for x in reads_for_isoforms) + "\n")
         fh.write(f"S {dg.number_of_nodes()} {dg.number_of_edges()}\n")

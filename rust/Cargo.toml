@@ -19,6 +19,10 @@ clap = { version = "4", features = ["derive"] }
 # measurably; this is the same choice the isONcorrect port made.
 rustc-hash = "2.1.3"
 
+[dev-dependencies]
+# The graph oracle builds the same maps the port does.
+rustc-hash = "2.1.3"
+
 [lib]
 name = "isonform"
 path = "src/lib.rs"

@@ -41,14 +41,20 @@ Done so far:
   about how good isONform is — 89.7% recall on simulated reads, 70.6% on real ones — which is the
   entire reason there are three. See *Evaluating isONform*.
 
-- **Graph construction ported** (`rust/src/graph.rs`, `rust/src/graph_build.rs`) — the interval
-  graph and `generateGraphfromIntervals`, with the stage's differential oracle
-  (`bench/dump_reference.py`) recording inputs and outputs from the live driver. 52 unit tests.
-  Two more reference defects came out of it, findings 8 and 9.
+- **Graph construction ported and verified against the reference.** `rust/src/graph.rs` and
+  `rust/src/graph_build.rs` port `generateGraphfromIntervals`; `bench/dump_reference.py` records the
+  stage's inputs and outputs from the live driver and `rust/tests/graph_oracle.rs` replays them and
+  diffs node set, `end_mini_seq`, read maps, edges, lengths, edge support and the **exact
+  `nx.topological_sort` order**. Passes on `bench/corpus/sirv_small` over 324 reference nodes and
+  488 edges, and it is a gate in CI. Two more reference defects came out of it, findings 8 and 9.
+- **Bubble detection ported** (`rust/src/simplify.rs`) — the pure, order-sensitive front of
+  `SimplifyGraph.py`: candidate starts and ends, the start × end combination enumeration, and the
+  two distance helpers. 67 unit tests across the crate.
 
-Not done: the Rust side of the oracle (parsing a dump and diffing a rebuilt graph against it) is the
-immediate next step, followed by graph simplification. Nothing downstream of construction is ported,
-so the binaries still stop at argument handling.
+Not done: bubble *popping* (`new_bubble_popping_routine`, ~270 lines of in-place mutation plus spoa
+calls), and everything downstream of it. The front half of `main` is also still owed, which is why
+the binaries stop at argument handling and the oracle replays recorded inputs rather than running the
+port end to end.
 
 ### The argument-parity oracle, for free
 
@@ -958,6 +964,41 @@ in that repository's `PORTING.md`; this is the short form.
 8. **Fix reference bugs upstream once measured, rather than reproducing them.** The largest accuracy
    win in the isONcorrect port was a one-character fix to the *Python*, worth more than both
    deliberate divergences combined. Each such fix is its own commit, with goldens re-recorded.
+
+### Two order dependencies, one real and one not — and why both are written down
+
+Both were asserted before being checked, and one of the assertions was wrong. Recording the outcome
+of the check, not just the conclusion, because "is this order observable" is a question that will
+come up again at every stage.
+
+**Not observable: a node's `reads` map insertion order.** Claimed at first to reach results via
+`SimplifyGraph.py:84`'s `tuple(DG.nodes[node]['reads'])`. It does not. All five consumers are
+order-independent: `:84` and `:103` convert to a `set` and then sort; `get_dist_to_prev` (`:218`) and
+`get_avg_interval_length` (`:295`) sum and divide, which commutes; `additional_node_support` (`:311`)
+writes one independent value per read id; `:491` merges dicts whose result only feeds the others. The
+port still keeps a `Vec` and the dump still records the order unsorted — a linear scan over a
+few-entry list beats hashing anyway, and a stricter oracle costs nothing — but the *reason* is
+"free and faithful", not "load-bearing".
+
+**Observable: the topological order, and the candidate-bubble enumeration order.** `nx.topological_sort`
+returns one of many valid orders, and `SimplifyGraph.py:115` compares the resulting *indices* to
+decide which node pairs are candidate bubbles — so a port producing a different valid order finds
+different bubbles. networkx 2.8.4's `topological_sort` yields from `topological_generations`, making
+it **generation-by-generation Kahn** (not the LIFO variant), seeded in node insertion order and
+advancing in parent-order × successor-order. Reproduced in `Graph::topological_sort`, and the oracle
+compares the order element by element rather than merely checking it is a valid topological order.
+
+The enumeration order of candidate bubbles matters too, but narrowly: `SimplifyGraph.py:946` sorts
+candidates by bubble span, and Python's `sorted` is stable, so the generation order survives only as
+the tie-break among equal-span bubbles. That is enough to make a cheaper enumeration a behaviour
+change rather than a free win — worth knowing before anyone optimises the quadratic start × end loop.
+
+### Dead code found in the simplification stage
+
+- `filter_combinations` (`SimplifyGraph.py:122`) is **never called**;
+  `new_bubble_popping_routine` inlines the same filter as a comprehension at `:939`.
+- `find_possible_ends`'s docstring is a copy of `find_possible_starts`'s and says "at least 2 out
+  nodes"; the code uses `in_degree`. The code is right.
 
 ## The reference is expected to change, and that changes the method
 

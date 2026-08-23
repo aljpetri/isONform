@@ -22,13 +22,20 @@
 //!
 //! * a node's read list, and an edge's support list, are `Vec`s searched
 //!   linearly. They hold a handful to a few tens of entries, so a linear scan
-//!   beats hashing, and — the load-bearing reason — **it preserves insertion
-//!   order for free**. That is not cosmetic: `SimplifyGraph.py:84` and `:103` do
-//!   `tuple(DG.nodes[node]['reads'])`, so Python dict insertion order reaches
-//!   results and has to be reproduced.
+//!   beats hashing, and it preserves insertion order for free.
+//!
+//!   **Is that order observable? Checked, and as the code stands: no.** All five
+//!   consumers of `DG.nodes[node]['reads']` in `SimplifyGraph.py` are
+//!   order-independent — `:84` and `:103` convert to a `set` and then sort;
+//!   `get_dist_to_prev` (`:218`) and `get_avg_interval_length` (`:295`) sum and
+//!   divide, which commutes; `additional_node_support` (`:311`) writes one
+//!   independent value per read id; `:491` merges dicts whose result only feeds
+//!   the above. So order is preserved because it is free and faithful, **not**
+//!   because it is known to reach results. An earlier version of this comment
+//!   claimed the latter and was wrong.
 //! * adjacency is `Vec<Vec<NodeId>>` rather than CSR, because construction is
 //!   incremental and one branch *removes* an edge. CSR is the right shape for the
-//!   simplification stage, which only reads; [`Graph::freeze`] is where that
+//!   simplification stage, which only reads; freezing to CSR is where that
 //!   conversion belongs when it is written.
 
 use std::collections::VecDeque;
@@ -98,6 +105,9 @@ pub struct Graph {
     end_mini_seq: Vec<Vec<u8>>,
     reads: Vec<Vec<(u32, ReadInfo)>>,
     succ: Vec<Vec<NodeId>>,
+    /// In-degree, maintained incrementally. networkx's topological sort reads
+    /// `G.in_degree()`, and reproducing its order needs this cheaply.
+    in_deg: Vec<u32>,
 
     /// Edges. `edge_index` maps `(u, v)` to a slot in the three parallel arrays.
     edge_index: FxHashMap<(NodeId, NodeId), EdgeId>,
@@ -143,6 +153,7 @@ impl Graph {
         self.end_mini_seq.push(Vec::new());
         self.reads.push(Vec::new());
         self.succ.push(Vec::new());
+        self.in_deg.push(0);
         n
     }
 
@@ -158,8 +169,9 @@ impl Graph {
     /// `nodes_for_graph[name][r_id] = r_infos`.
     ///
     /// Python dict assignment: an existing key keeps its position and takes the
-    /// new value; a new key is appended. Reproduced exactly, because iteration
-    /// order over this map reaches results (see the module docs).
+    /// new value; a new key is appended. Reproduced exactly — see the module
+    /// docs for whether that order is observable (as the code stands, it is
+    /// not; it is kept because it is free and faithful).
     pub fn set_read(&mut self, n: NodeId, r_id: u32, info: ReadInfo) {
         let list = &mut self.reads[n as usize];
         if let Some(slot) = list.iter_mut().find(|(r, _)| *r == r_id) {
@@ -233,6 +245,7 @@ impl Graph {
         };
         self.edge_index.insert((u, v), e);
         self.succ[u as usize].push(v);
+        self.in_deg[v as usize] += 1;
         e
     }
 
@@ -245,6 +258,7 @@ impl Graph {
                 if let Some(pos) = self.succ[u as usize].iter().position(|&w| w == v) {
                     self.succ[u as usize].remove(pos);
                 }
+                self.in_deg[v as usize] -= 1;
                 self.edge_supp[e as usize].clear();
                 self.free_edges.push(e);
                 true
@@ -274,6 +288,85 @@ impl Graph {
                 s.push(r_id);
             }
         }
+    }
+
+    pub fn out_degree(&self, n: NodeId) -> usize {
+        self.succ[n as usize].len()
+    }
+
+    pub fn in_degree(&self, n: NodeId) -> usize {
+        self.in_deg[n as usize] as usize
+    }
+
+    // -- topological order ------------------------------------------------
+
+    /// Reproduces `networkx.topological_sort` as of 2.8.4 — which matters,
+    /// because a topological order is **not unique** and the reference compares
+    /// the resulting *indices* to decide which node pairs are candidate bubbles
+    /// (`SimplifyGraph.py:115`). A different valid order finds different bubbles.
+    ///
+    /// In 2.8.4 `topological_sort` simply yields from `topological_generations`,
+    /// so it is generation-by-generation Kahn, **not** the LIFO variant:
+    ///
+    /// ```text
+    /// zero_indegree = [v for v, d in G.in_degree() if d == 0]
+    /// while zero_indegree:
+    ///     this_generation, zero_indegree = zero_indegree, []
+    ///     for node in this_generation:
+    ///         for child in G.neighbors(node):
+    ///             indegree_map[child] -= 1
+    ///             if indegree_map[child] == 0:
+    ///                 zero_indegree.append(child)
+    ///     yield this_generation
+    /// ```
+    ///
+    /// The order within a generation therefore comes from **node insertion
+    /// order** for the first generation and from parent-order × successor-order
+    /// after that. Both are preserved here: `keys` is in insertion order and
+    /// `succ[u]` is in edge-insertion order. This is the place where keeping
+    /// insertion order genuinely reaches results.
+    ///
+    /// Returns `None` if the graph has a cycle, as networkx raises
+    /// `NetworkXUnfeasible`.
+    pub fn topological_sort(&self) -> Option<Vec<NodeId>> {
+        let n = self.keys.len();
+        let mut indegree: Vec<u32> = self.in_deg.clone();
+        let mut this_generation: Vec<NodeId> = (0..n as NodeId)
+            .filter(|&v| indegree[v as usize] == 0)
+            .collect();
+        let mut out: Vec<NodeId> = Vec::with_capacity(n);
+
+        while !this_generation.is_empty() {
+            let mut next: Vec<NodeId> = Vec::new();
+            for &node in &this_generation {
+                for &child in &self.succ[node as usize] {
+                    let d = &mut indegree[child as usize];
+                    *d -= 1;
+                    if *d == 0 {
+                        next.push(child);
+                    }
+                }
+            }
+            out.extend_from_slice(&this_generation);
+            this_generation = next;
+        }
+
+        if out.len() == n {
+            Some(out)
+        } else {
+            None // a cycle: some nodes never reached in-degree zero
+        }
+    }
+
+    /// `{node: index}` over [`Graph::topological_sort`], which is what the
+    /// reference actually uses (`topo_nodes_dict`).
+    pub fn topological_index(&self) -> Option<Vec<u32>> {
+        let order = self.topological_sort()?;
+        let mut idx = vec![u32::MAX; self.keys.len()];
+        for (i, &n) in order.iter().enumerate() {
+            idx[n as usize] = i as u32;
+        }
+        Some(idx)
     }
 
     // -- cycle detection --------------------------------------------------
@@ -521,6 +614,99 @@ mod tests {
     #[test]
     fn occurrence_hash_of_a_lone_occurrence_is_the_empty_hash() {
         assert_eq!(occurrence_hash(&[1, 2, 3]), occurrence_hash(&[]));
+    }
+
+    #[test]
+    fn degrees_track_edges() {
+        let mut g = Graph::new();
+        let k = |i| NodeKey::Interval {
+            start: i,
+            end: i,
+            r_id: 0,
+        };
+        let (a, b, c) = (g.add_node(k(1)), g.add_node(k(2)), g.add_node(k(3)));
+        g.add_edge(a, c, 0);
+        g.add_edge(b, c, 0);
+        assert_eq!((g.out_degree(a), g.in_degree(a)), (1, 0));
+        assert_eq!((g.out_degree(c), g.in_degree(c)), (0, 2));
+        g.add_edge(a, c, 7); // idempotent: must not double-count
+        assert_eq!(g.in_degree(c), 2);
+        g.remove_edge(b, c);
+        assert_eq!(g.in_degree(c), 1);
+    }
+
+    #[test]
+    fn topological_sort_is_generation_based_not_lifo() {
+        // The distinction is the whole point. Graph: a->c, b->c, c->d, plus an
+        // isolated-source e added last.
+        //   generation 0 = [a, b, e]  (node insertion order among in-degree 0)
+        //   generation 1 = [c]
+        //   generation 2 = [d]
+        // A LIFO Kahn would emit e, b, a, ... instead.
+        let mut g = Graph::new();
+        let k = |i| NodeKey::Interval {
+            start: i,
+            end: i,
+            r_id: 0,
+        };
+        let a = g.add_node(k(1));
+        let b = g.add_node(k(2));
+        let c = g.add_node(k(3));
+        let d = g.add_node(k(4));
+        let e = g.add_node(k(5));
+        g.add_edge(a, c, 0);
+        g.add_edge(b, c, 0);
+        g.add_edge(c, d, 0);
+        let order = g.topological_sort().expect("acyclic");
+        assert_eq!(order, vec![a, b, e, c, d]);
+    }
+
+    #[test]
+    fn within_a_generation_order_follows_parent_then_successor_order() {
+        // s has successors x then y; both become ready in that order.
+        let mut g = Graph::new();
+        let k = |i| NodeKey::Interval {
+            start: i,
+            end: i,
+            r_id: 0,
+        };
+        let s = g.add_node(k(0));
+        // Add y as a node BEFORE x, so node insertion order and successor order
+        // disagree --- successor order must win for generation 1.
+        let y = g.add_node(k(2));
+        let x = g.add_node(k(1));
+        g.add_edge(s, x, 0);
+        g.add_edge(s, y, 0);
+        let order = g.topological_sort().expect("acyclic");
+        assert_eq!(order, vec![s, x, y], "successor insertion order decides");
+    }
+
+    #[test]
+    fn topological_sort_reports_a_cycle_as_none() {
+        let mut g = Graph::new();
+        let k = |i| NodeKey::Interval {
+            start: i,
+            end: i,
+            r_id: 0,
+        };
+        let (a, b) = (g.add_node(k(1)), g.add_node(k(2)));
+        g.add_edge(a, b, 0);
+        g.add_edge(b, a, 0);
+        assert!(g.topological_sort().is_none());
+    }
+
+    #[test]
+    fn topological_index_maps_node_to_position() {
+        let mut g = Graph::new();
+        let k = |i| NodeKey::Interval {
+            start: i,
+            end: i,
+            r_id: 0,
+        };
+        let (a, b) = (g.add_node(k(1)), g.add_node(k(2)));
+        g.add_edge(a, b, 0);
+        let idx = g.topological_index().unwrap();
+        assert!(idx[a as usize] < idx[b as usize]);
     }
 
     #[test]
