@@ -112,7 +112,15 @@ pub struct Graph {
     /// Edges. `edge_index` maps `(u, v)` to a slot in the three parallel arrays.
     edge_index: FxHashMap<(NodeId, NodeId), EdgeId>,
     edge_uv: Vec<(NodeId, NodeId)>,
-    edge_len: Vec<i64>,
+    /// `None` means the edge carries no `length` attribute at all.
+    ///
+    /// Not hypothetical: `prepare_adding_edges` re-adds bubble edges with
+    /// `DG.add_edge(u, v, edge_supp=value)` and no `length`, so after
+    /// simplification a large share of edges simply lack it — measured at 97 of
+    /// 231 on one recorded Drosophila graph. Nothing reads `length` after
+    /// construction (`GraphGeneration.py:402` is its only consumer), so this is
+    /// harmless, but it *is* observable and the dump records it as `NA`.
+    edge_len: Vec<Option<i64>>,
     edge_supp: Vec<Vec<u32>>,
     /// Slots freed by `remove_edge`, reused so ids stay dense.
     free_edges: Vec<EdgeId>,
@@ -196,6 +204,11 @@ impl Graph {
         list.push((r_id, info));
     }
 
+    /// Drop every read from a node, for `set_node_attributes` with an empty map.
+    pub fn clear_reads(&mut self, n: NodeId) {
+        self.reads[n as usize].clear();
+    }
+
     pub fn reads(&self, n: NodeId) -> &[(u32, ReadInfo)] {
         &self.reads[n as usize]
     }
@@ -210,10 +223,12 @@ impl Graph {
         self.edge_index.contains_key(&(u, v))
     }
 
+    /// The edge's `length`, or `None` if the edge is absent **or** carries no
+    /// `length`. Use [`Graph::has_edge`] to tell those apart.
     pub fn edge_length(&self, u: NodeId, v: NodeId) -> Option<i64> {
         self.edge_index
             .get(&(u, v))
-            .map(|&e| self.edge_len[e as usize])
+            .and_then(|&e| self.edge_len[e as usize])
     }
 
     pub fn edge_support(&self, u: NodeId, v: NodeId) -> Option<&[u32]> {
@@ -225,6 +240,25 @@ impl Graph {
     /// `DG.add_edge(u, v, length=length)`. Idempotent on `(u, v)`, overwriting
     /// `length`, as networkx is.
     pub fn add_edge(&mut self, u: NodeId, v: NodeId, length: i64) -> EdgeId {
+        self.add_edge_inner(u, v, Some(length))
+    }
+
+    /// `DG.add_edge(u, v, edge_supp=...)` — no `length` argument.
+    ///
+    /// networkx merges attribute dicts, so this **creates** an edge with no
+    /// `length` when the pair is absent and **preserves** the existing `length`
+    /// when it is present. `prepare_adding_edges` relies on both halves.
+    /// `support` replaces whatever support the edge had.
+    pub fn upsert_edge_support(&mut self, u: NodeId, v: NodeId, support: Vec<u32>) -> EdgeId {
+        let e = match self.edge_index.get(&(u, v)) {
+            Some(&e) => e, // existing edge: length untouched
+            None => self.add_edge_inner(u, v, None),
+        };
+        self.edge_supp[e as usize] = support;
+        e
+    }
+
+    fn add_edge_inner(&mut self, u: NodeId, v: NodeId, length: Option<i64>) -> EdgeId {
         if let Some(&e) = self.edge_index.get(&(u, v)) {
             self.edge_len[e as usize] = length;
             return e;
@@ -534,6 +568,41 @@ mod tests {
         assert_eq!(g.edge_count(), 1);
         assert_eq!(g.edge_length(a, b), Some(9));
         assert_eq!(g.successors(a), &[b]); // adjacency must not gain a duplicate
+    }
+
+    #[test]
+    fn upsert_edge_support_creates_without_a_length_and_preserves_an_existing_one() {
+        let mut g = Graph::new();
+        let a = g.add_node(NodeKey::Source);
+        let b = g.add_node(NodeKey::Sink);
+        // Absent: created with no length at all --- what `prepare_adding_edges`
+        // does to every bubble edge it re-adds.
+        g.upsert_edge_support(a, b, vec![1, 2]);
+        assert!(g.has_edge(a, b));
+        assert_eq!(g.edge_length(a, b), None, "no length attribute");
+        assert_eq!(g.edge_support(a, b), Some(&[1u32, 2][..]));
+
+        // Present with a length: networkx merges attribute dicts, so the length
+        // survives and only the support is replaced.
+        let mut g2 = Graph::new();
+        let a = g2.add_node(NodeKey::Source);
+        let b = g2.add_node(NodeKey::Sink);
+        g2.add_edge(a, b, 42);
+        g2.upsert_edge_support(a, b, vec![7]);
+        assert_eq!(g2.edge_length(a, b), Some(42), "existing length preserved");
+        assert_eq!(g2.edge_support(a, b), Some(&[7u32][..]));
+    }
+
+    #[test]
+    fn edge_length_none_means_absent_or_unlabelled_and_has_edge_tells_them_apart() {
+        let mut g = Graph::new();
+        let a = g.add_node(NodeKey::Source);
+        let b = g.add_node(NodeKey::Sink);
+        assert_eq!(g.edge_length(a, b), None);
+        assert!(!g.has_edge(a, b), "absent");
+        g.upsert_edge_support(a, b, vec![]);
+        assert_eq!(g.edge_length(a, b), None);
+        assert!(g.has_edge(a, b), "present but unlabelled");
     }
 
     #[test]

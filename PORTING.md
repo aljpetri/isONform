@@ -63,10 +63,12 @@ Done so far:
   paths in CPython `set.pop()` order, which decided which path survives a bubble. Replacing it with a
   defined order raised `sirv_real` recall from 70.6% to 72.1% and cut Drosophila `NNC` isoforms from
   12 to 10. Finding 12.
-- **Bubble popping, first half ported**: `find_paths` and `remove_edges` in `rust/src/simplify.rs`,
-  with the reference's destructive `pop(0)` on the caller's paths and its two dead branches
-  reproduced and pinned by tests. 82 unit tests across the crate. `prepare_adding_edges` is next and
-  is the last piece before the stage can be diffed end to end.
+- **Bubble popping ported** — `find_paths`, `remove_edges`, `prepare_adding_edges` and the
+  `linearize_bubble` wrapper, in `rust/src/simplify.rs`. The reference's destructive `pop(0)` on the
+  caller's paths, its dead branches, its stale-variable hazards and the fact that relinked edges
+  carry **no `length` attribute** are all reproduced and pinned by tests. 91 unit tests across the
+  crate. What remains before the stage can be diffed end to end is the driver loop
+  (`new_bubble_popping_routine`) and the consensus generation it calls, which is where spoa enters.
 
 Not done: bubble *popping* (`new_bubble_popping_routine`, ~270 lines of in-place mutation plus spoa
 calls), and everything downstream of it. The front half of `main` is also still owed, which is why
@@ -898,6 +900,23 @@ statement about graph construction and almost nothing about simplification. Re-r
 Drosophila clusters that pop tens of edges each, it is still clean — all 30 output files stable across
 8 seeds — but that was luck rather than evidence until it was checked. **A determinism check is only
 as good as the paths its corpus reaches**, which is worth remembering for every stage still to come.
+
+### Finding 16 — simplification strips the `length` attribute from 42% of edges
+
+`prepare_adding_edges` re-adds every bubble edge with `DG.add_edge(u, v, edge_supp=value)`, naming
+only the support. networkx merges attribute dicts, so an edge that survived keeps its `length` — but
+the bubble edges were *removed* first, so they come back as new edges with **no `length` at all**.
+
+Measured on one recorded Drosophila graph: **97 of 231 edges after simplification carry no `length`**,
+against 0 of 380 before. So the graph's attribute schema changes halfway through the pipeline.
+
+Harmless, as it happens: `GraphGeneration.py:402` is the only reader of `length` anywhere, and it runs
+during construction. But it is observable, the dump records it as `NA`, and the port has to model it —
+which is why `Graph`'s edge length is an `Option`, with `upsert_edge_support` reproducing networkx's
+create-without-it / preserve-if-present behaviour exactly.
+
+Not worth fixing on its own. Worth knowing before anyone writes code downstream that assumes every
+edge has a length.
 
 ### Finding 15 — smaller things, recorded and not acted on
 
