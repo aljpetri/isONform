@@ -10,7 +10,10 @@
 //! the interval graph and its construction, ported from
 //! `modules/GraphGeneration.py`.
 
+pub mod align;
 pub mod cli;
 pub mod graph;
 pub mod graph_build;
+pub mod parasail;
+pub mod poa;
 pub mod simplify;

@@ -852,6 +852,40 @@ pub trait Consensus {
     fn align(&mut self, s1: &[u8], s2: &[u8]) -> Vec<(u32, u8)>;
 }
 
+/// The real thing: spoa via [`crate::poa`] and parasail via [`crate::parasail`].
+///
+/// Both are pure Rust. [`crate::poa::consensus`] wraps `spoars`, a
+/// reimplementation of spoa, and [`crate::parasail::semiglobal`] reproduces
+/// `parasail.sg_trace_scan_16` exactly — both carried across from the isONcorrect
+/// port with their verification.
+///
+/// **One of those verifications has not been repeated here.** `poa.rs` matched the
+/// `spoa` binary on 505 of 505 real isONcorrect correction intervals; isONform
+/// calls spoa on different sequences from a different stage (bubble path
+/// consensus, not correction intervals), so that number does not transfer. Until
+/// it is re-measured, a simplification oracle that disagrees could be either
+/// side. The parasail side needs no such caveat: it is exact by construction and
+/// checked at the CIGAR level.
+#[derive(Debug, Default)]
+pub struct SpoaParasail;
+
+impl Consensus for SpoaParasail {
+    fn spoa(&mut self, seqs: &[&[u8]]) -> Vec<u8> {
+        // The reference writes a fasta and shells out to
+        // `spoa <file> -l 0 -r 0 -g -2`; `poa::consensus` is that invocation.
+        crate::poa::consensus(seqs)
+            .map(|s| s.into_bytes())
+            .unwrap_or_default()
+    }
+
+    fn align(&mut self, s1: &[u8], s2: &[u8]) -> Vec<(u32, u8)> {
+        // `Scoring::BUBBLE` is the poppability scoring: match 2, mismatch -8,
+        // open 12, ext 1. Not MERGE (-2), which belongs to isoform merging.
+        let a = crate::parasail::semiglobal(s1, s2, crate::parasail::Scoring::BUBBLE);
+        a.ops.iter().map(|&(len, op)| (len as u32, op)).collect()
+    }
+}
+
 /// One read's span across a bubble: `(r_id, start, end)`.
 pub type ConsensusAttr = (u32, u32, u32);
 
@@ -2647,6 +2681,52 @@ mod tests {
         let attrs = vec![(1u32, 0, 1), (2, 0, 1), (3, 0, 1)];
         let con = a.consensus_for((0, 1), &attrs, false);
         assert!(con.is_empty(), "too short to be a consensus");
+    }
+
+    #[test]
+    fn the_real_engine_produces_a_consensus_and_a_cigar() {
+        // Smoke test that spoa and parasail are wired up and behave. Not a
+        // verification of either --- parasail's own tests do that, and the spoa
+        // side still owes a differential check against the binary on isONform's
+        // inputs.
+        let mut e = SpoaParasail;
+        let a = b"ACGTACGTACGTACGTACGT".to_vec();
+        let b = b"ACGTACGTACGTACGTACGT".to_vec();
+        let con = e.spoa(&[&a, &b]);
+        assert!(!con.is_empty(), "spoa returned something");
+
+        let cigar = e.align(&a, &b);
+        assert!(!cigar.is_empty());
+        // Identical sequences: one run of matches covering both.
+        assert_eq!(cigar.len(), 1);
+        assert_eq!(cigar[0], (a.len() as u32, b'='));
+    }
+
+    #[test]
+    fn spoa_on_an_empty_input_gives_an_empty_consensus() {
+        // `poa::consensus` returns None for no sequences, which the wrapper turns
+        // into an empty consensus --- and the caller then treats anything under
+        // three bases as no consensus at all.
+        let mut e = SpoaParasail;
+        assert!(e.spoa(&[]).is_empty());
+    }
+
+    #[test]
+    fn the_real_engine_decides_a_bubble_end_to_end() {
+        // A whole bubble through the real consensus and alignment path: two
+        // near-identical branches should merge, two unrelated ones should not.
+        let reads = reads_map(&[
+            (1, "ACGTACGTACGTACGTACGTACGTACGTACGT"),
+            (2, "ACGTACGTACGTACGTACGTACGTACGTACGT"),
+            (3, "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"),
+        ]);
+        let mut a = RealAligner::new(SpoaParasail, &reads, 4, 5);
+        // Reads 1 and 2 are identical over the same span.
+        let same = a.decide(&reads[&1][0..24], &reads[&2][0..24]);
+        assert!(same, "identical branches merge");
+        // Read 3 is unrelated over the same length.
+        let different = a.decide(&reads[&1][0..24], &reads[&3][0..24]);
+        assert!(!different, "unrelated branches do not");
     }
 
     #[test]

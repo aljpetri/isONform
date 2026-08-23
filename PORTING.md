@@ -79,9 +79,14 @@ Done so far:
   verbatim. That is where a simplification oracle can start without reproducing spoa at all, and it
   is fully ported and tested.
 
-Not done: wiring spoars and `parasail.rs` into this crate, and the driver that walks a whole graph
-through the stage so the `simplify_*.txt` dumps can be replayed. Nothing downstream of simplification
-(isoform generation, batch merging) is started.
+- **`parasail.rs`, `poa.rs` and `align.rs` carried across from isONcorrect**, so `SpoaParasail`
+  provides the real consensus and alignment. 147 unit tests. What came across, and what was left
+  behind, is recorded below.
+
+Not done: the driver that walks a whole graph through the simplification stage so the
+`simplify_*.txt` dumps can be replayed, and re-verifying spoa's consensus against the binary on
+isONform's own inputs. Nothing downstream of simplification (isoform generation, batch merging) is
+started.
 
 Not done: bubble *popping* (`new_bubble_popping_routine`, ~270 lines of in-place mutation plus spoa
 calls), and everything downstream of it. The front half of `main` is also still owed, which is why
@@ -1061,6 +1066,65 @@ return values, which would have made the bug impossible to write. The port's
   to port; reproduced faithfully until then.
 - A nonexistent `--fastq` crashes with a `FileNotFoundError` traceback (exit 1) rather than a
   diagnostic.
+
+## What came across from isONcorrect, and what was left behind
+
+Three modules were copied in rather than rewritten. Recording the trim, because "we reused the
+alignment code" is not the same claim as "we reused all of it", and the difference is where the next
+person will look for something that is not there.
+
+| module | lines there | lines here | what changed |
+| --- | --- | --- | --- |
+| `poa.rs` | 179 | 179 | verbatim |
+| `parasail.rs` | 1 709 | 1 221 | research scaffolding removed |
+| `align.rs` | 604 | 351 | edlib-adjacent code removed |
+
+**Removed from `parasail.rs`:** `global_affine` plus `global_check`/`global_check_report` and their
+counters, and `band_check`/`band_check_report`. All of it existed to answer two isONcorrect
+questions — could exact affine *global* alignment replace the semi-global one, and was banding safe —
+and both were judged by whether `guard::fix_correction` landed on the same corrected sequence.
+isONform has no guard, so there is nothing to compare. Both blocks ran only under an `ISONCORRECT_*`
+environment variable, so dropping them changes nothing on a normal run. Also removed: the
+`blockalign` and `one_case` test modules, which compared against `block-aligner` — a dependency
+isONform therefore does not need.
+
+**Removed from `align.rs`:** the `oracle` and `block_option` test modules, and
+`speed_and_optimality_at_segment_lengths`. They timed and cross-checked a SIMD edit-distance path
+against recorded edlib CIGARs. **isONform never imports edlib** (*Reconnaissance corrections* 3), so
+there is no edit-distance path here to accelerate and no decision to make. `Alignment` and `global`
+are kept — they are self-contained and cost nothing — but nothing calls them yet.
+
+**Changed:** `Scoring::GUARD` (`match=4, mismatch=-8`) is gone, replaced by isONform's two:
+
+| constant | scoring | call site |
+| --- | --- | --- |
+| `Scoring::BUBBLE` | `2, -8, 12, 1` | `align_bubble_nodes` — are these two bubble paths the same? |
+| `Scoring::MERGE` | `2, -2, 12, 1` | `IsoformGeneration.align_to_merge` — are these two isoforms the same? |
+
+They differ only in the mismatch penalty, and that difference is the whole distinction between the
+two questions, so they are separate constants with a test asserting they stay distinct. `-2` is also
+`parasail_alignment`'s own default, which `SimplifyGraph` overrides and `IsoformGeneration` does not.
+
+The parasail semantics tests keep the scoring they were **originally verified against** (`match=4`)
+rather than being re-derived under `BUBBLE`. Those expected scores were read off the parasail library
+itself; recomputing them arithmetically at a new scoring would turn a measurement into an assumption.
+What they establish — free end gaps on both sequences, a one-base gap costing `open`, longer gaps
+costing `open + (L-1) * ext` — is a property of parasail's semi-global mode and holds at any scoring.
+
+### One verification did not transfer, and it matters
+
+`poa.rs` came with a strong claim: identical consensus to the `spoa` binary on **505 of 505** real
+isONcorrect correction intervals. **That number does not carry over.** isONform calls spoa on
+different sequences from a different stage — bubble-path consensus, not correction intervals — so the
+check has to be repeated here before a simplification oracle can attribute a disagreement to one
+side or the other. It has not been.
+
+The parasail side needs no such caveat: it is exact by construction and verified at the CIGAR level,
+and its tests came with it.
+
+Worth knowing for sequencing the work: the **two-supporting-read** path never calls spoa at all — it
+takes whichever read's span is longer, verbatim. So the first simplification-oracle results can come
+from those bubbles alone, with spoa out of the picture entirely.
 
 ## Evaluating isONform
 

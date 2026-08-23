@@ -18,10 +18,34 @@ clap = { version = "4", features = ["derive"] }
 # tuples, so the cryptographic strength of SipHash buys nothing and costs
 # measurably; this is the same choice the isONcorrect port made.
 rustc-hash = "2.1.3"
+# Consensus by partial-order alignment: a pure-Rust reimplementation of spoa,
+# which the reference shells out to as `spoa <reads> -l 0 -r 0 -g -2`. Carried
+# across from the isONcorrect port, where a differential oracle showed it
+# matching the `spoa` binary on 505 of 505 real intervals --- that check has NOT
+# yet been repeated on isONform's own inputs, which are different sequences from
+# a different stage. See src/poa.rs.
+#
+# `default-features = false` drops spoars's `cli` feature, which pulls needletail
+# and with it bzip2, liblzma and zstd, all compiled through cc-rs. That silently
+# makes the dependency tree non-pure-Rust and breaks musl builds. Only the
+# library is needed.
+spoars = { version = "0.1.3", default-features = false }
 
 [dev-dependencies]
 # The graph oracle builds the same maps the port does.
 rustc-hash = "2.1.3"
+# Consensus by partial-order alignment: a pure-Rust reimplementation of spoa,
+# which the reference shells out to as `spoa <reads> -l 0 -r 0 -g -2`. Carried
+# across from the isONcorrect port, where a differential oracle showed it
+# matching the `spoa` binary on 505 of 505 real intervals --- that check has NOT
+# yet been repeated on isONform's own inputs, which are different sequences from
+# a different stage. See src/poa.rs.
+#
+# `default-features = false` drops spoars's `cli` feature, which pulls needletail
+# and with it bzip2, liblzma and zstd, all compiled through cc-rs. That silently
+# makes the dependency tree non-pure-Rust and breaks musl builds. Only the
+# library is needed.
+spoars = { version = "0.1.3", default-features = false }
 
 [lib]
 name = "isonform"
