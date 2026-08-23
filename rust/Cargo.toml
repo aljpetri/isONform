@@ -14,6 +14,10 @@ license = "GPL-3.0-only"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+# Node and edge lookup during graph construction. The keys are small integer
+# tuples, so the cryptographic strength of SipHash buys nothing and costs
+# measurably; this is the same choice the isONcorrect port made.
+rustc-hash = "2.1.3"
 
 [lib]
 name = "isonform"

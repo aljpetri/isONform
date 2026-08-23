@@ -41,8 +41,14 @@ Done so far:
   about how good isONform is — 89.7% recall on simulated reads, 70.6% on real ones — which is the
   entire reason there are three. See *Evaluating isONform*.
 
-Not done: no isoform-generating Rust code yet. Stage goldens are now recordable and are the next
-step.
+- **Graph construction ported** (`rust/src/graph.rs`, `rust/src/graph_build.rs`) — the interval
+  graph and `generateGraphfromIntervals`, with the stage's differential oracle
+  (`bench/dump_reference.py`) recording inputs and outputs from the live driver. 52 unit tests.
+  Two more reference defects came out of it, findings 8 and 9.
+
+Not done: the Rust side of the oracle (parsing a dump and diffing a rebuilt graph against it) is the
+immediate next step, followed by graph simplification. Nothing downstream of construction is ported,
+so the binaries still stop at argument handling.
 
 ### The argument-parity oracle, for free
 
@@ -616,7 +622,85 @@ preference for an exact match — that is what keeps the driver's `--k` from col
 `--keep_old`. Ambiguous prefixes stay rejected on both sides: `main --delta` prefixes three flags
 and `main --m` prefixes two.
 
-### Finding 7 — smaller things, recorded and not acted on
+### Finding 8 — `known_old_node_action` cannot run: it crashes networkx
+
+`modules/GraphGeneration.py:159`:
+
+```python
+if not DG.has_edge(previous_node, name):
+    DG.add_edge(previous_node, name, this_len)
+```
+
+`DiGraph.add_edge` takes `(u, v, **attr)`. A third *positional* argument raises
+`TypeError: DiGraph.add_edge() takes 3 positional arguments but 4 were given` — verified directly
+against networkx 2.8.4. Every other `add_edge` in the file passes `length=...` by keyword; this one
+does not, so it would also have left the edge without the `length` attribute that downstream code
+reads.
+
+**It never fires, and it takes some work to see why.** The branch is guarded by `alternatives_filtered`
+being non-empty, and `alternatives_filtered` comes from `alternative_nodes[old_node]` — a list that
+the *first* visit to `old_node` initialises to `[]` and never appends to (`GraphGeneration.py:427`).
+Only `no_node_to_add_to_action`, reached on the second visit, appends. So the crash needs a **third**
+visit to the same `old_node`, with a matching predecessor and a length within `delta_len`.
+
+Measured by instrumenting a copy of the reference and running all three corpora:
+
+| | |
+| --- | --- |
+| times `alternatives_filtered` was computed | **4 541** (2 857 `sirv_real`, 1 684 `droso`) |
+| times it was non-empty | **0** |
+
+So it is a latent crash with a narrow trigger, not an active one. The port returns
+`BuildError::ReferenceWouldCrash` on that path rather than inventing behaviour the reference does not
+have; if a real dataset ever reaches it, the port says so instead of silently differing.
+
+### Finding 9 — a node attribute is computed from the wrong read's sequence
+
+`GraphGeneration.py:431` reads `seq` on a path that never binds it:
+
+```python
+if not (old_node in alternative_nodes):
+    ...
+    end_mini_seq = seq[inter[1]:inter[1] + k]      # `seq` is not assigned on this path
+```
+
+`seq` is function-scoped in Python, so it holds whatever the *previous loop iteration* left there.
+Within one read that is harmless — same value. Across reads it is **the previous read's sequence**,
+and the k-mer taken from it becomes the node's `end_mini_seq` attribute. On the first read to reach
+this path before any other branch has run, it would be an outright `UnboundLocalError`.
+
+Measured, by instrumenting the reference to compare the leaked `seq` against `all_reads[r_id][1]`:
+
+| corpus | times the path ran | used a stale sequence |
+| --- | --- | --- |
+| `sirv_real` | 255 | **252 (98.8%)** |
+| `droso` | 941 | **913 (97.0%)** |
+
+`end_mini_seq` is consumed in exactly one place, `SimplifyGraph.new_distance_to_start`, as
+`consensus.find(node_seq)` — so a k-mer from the wrong read is simply not found, returning `-1`, and
+that bogus position feeds node distances during bubble linearisation.
+
+**The decisive test was to fix it and re-measure**, rather than reason about the consequence:
+
+| | reference | with `seq` bound correctly |
+| --- | --- | --- |
+| stale-sequence occurrences (`sirv_real`) | 252 | **0** |
+| `new_distance_to_start` returning −1 (`sirv_real`) | 2 233 | 2 154 |
+| `new_distance_to_start` returning −1 (`droso`) | 1 803 | 1 668 |
+| `transcriptome.fasta` (`sirv_real`) | 106 isoforms | **byte-identical** |
+| `transcriptome.fasta` (`droso`) | 505 isoforms | 505, **7 sequences differ** |
+| every SQANTI category (`droso`) | FSM 443, ISM 13, NIC 0, NNC 12 | **identical** |
+
+So: a real bug, and a small one. Only 3.5% of the `-1` results were caused by it — most are
+legitimate. It changes 7 of 505 Drosophila isoform sequences and moves no structural category at
+all, and on real SIRV it changes nothing observable. Worth fixing for correctness and to stop it
+confusing the next reader, as its own commit; **not** worth describing as an accuracy win. The port
+reproduces it by default and fixes it under `BuildOpts::fix_stale_seq`, so the comparison can be
+re-run on any future corpus.
+
+The fix is one line — bind `seq = all_reads[r_id][1]` on that path, as every sibling branch does.
+
+### Finding 10 — smaller things, recorded and not acted on
 
 - `main`'s window check is `if 100 < args.w or args.w < args.k` but its message reads "smaller than
   100"; `--w 100` is accepted. Off-by-one between check and message.
@@ -628,6 +712,13 @@ and `main --m` prefixes two.
   and absent entirely on systems that only ship `python3`.
 - `--xmin 200 --xmax 80` (xmin > xmax) is not validated and crashes with a traceback rather than a
   message.
+- **The sink node's read set is larger than the graph.** `read_len_dict` is built in `main` over
+  `all_reads` rather than `new_all_reads`, so node `"t"` gets a `reads` entry for every input read
+  including those the interval filter skipped: 100 entries against 84 reads with a path, on
+  `sirv_small`. The source node is keyed correctly (`graph_id` starts at 1, so there is *no*
+  off-by-one there — checked, because there looked like one). Whether the phantom entries matter
+  depends on how `SimplifyGraph` uses `DG.nodes[node]['reads']` for the sink, which is the next stage
+  to port; reproduced faithfully until then.
 - A nonexistent `--fastq` crashes with a `FileNotFoundError` traceback (exit 1) rather than a
   diagnostic.
 
@@ -937,10 +1028,12 @@ does it, and it now has a measurement to be judged against.
    the driver `--split_wrt_batches`, `--iso_abundance`, `--write_fastq`, `--t`, `--keep_old`. Skip
    the four inert flags (finding 3) beyond one test each proving they stay inert. `--record` checks
    the reference agrees with itself across two seeds before writing anything.
-5. Port the CLI (**in progress** — `rust/src/cli.rs`, tested against `bench/golden/cli/`), then
-   fastq I/O, then work outward from the leaves — the graph construction before the simplification,
-   the simplification before isoform generation. The front half of `main` comes across from
-   isONcorrect rather than being written (*Reconnaissance corrections* 4).
+5. ~~Port the CLI~~ (**done** — `rust/src/cli.rs`, 39 differential cases), then work outward from
+   the leaves — **graph construction is ported** (`rust/src/graph.rs`, `graph_build.rs`) with its
+   dump-based oracle recorded; simplification next, then isoform generation. The front half of `main`
+   comes across from isONcorrect rather than being written (*Reconnaissance corrections* 4), and is
+   still owed: without it the Rust binaries cannot reach the graph stage on their own, which is why
+   the oracle replays recorded inputs for now.
 6. CI on Linux and macOS, x86_64 and arm64, on day one — method point 7, and the reason three
    isONcorrect defects existed at all.
 
@@ -965,7 +1058,7 @@ change output need a measurement first.
 - **`--exact` is passed on every child invocation and does nothing**, and the parallel driver's
   `--exact_instance_limit` default of 50 therefore also does nothing. Once `--exact` means something
   again — if it should — these defaults need revisiting.
-- **Stray debug prints** (finding 4) and the unused `from ast import Param` (finding 7): one-line
+- **Stray debug prints** (finding 4) and the unused `from ast import Param` (finding 10): one-line
   deletions, but the prints are on stdout so goldens move with them.
 - **`["python", ...]`** → `[sys.executable, ...]` in `isONform_parallel:79`. Pure bug fix; in the
   Rust port the equivalent is to re-exec the running binary by its own path, not by name on `PATH`.

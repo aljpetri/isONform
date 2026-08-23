@@ -5,7 +5,11 @@
 //! root for the method, the reconnaissance, and the reference defects found so
 //! far.
 //!
-//! Only [`cli`] exists yet. It is deliberately first: the plan's method point 1
-//! is CLI parity locked by unit tests, before any algorithm.
+//! [`cli`] came first: the plan's method point 1 is CLI parity locked by unit
+//! tests, before any algorithm. [`graph`] is the first algorithm stage —
+//! the interval graph and its construction, ported from
+//! `modules/GraphGeneration.py`.
 
 pub mod cli;
+pub mod graph;
+pub mod graph_build;
