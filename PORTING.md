@@ -69,14 +69,19 @@ Done so far:
   `pop(0)`, its dead branches, its stale-variable hazards, its operator-precedence bug, its
   undercounted pop total and the fact that relinked edges carry **no `length` attribute** are all
   reproduced and pinned by tests. 101 unit tests across the crate.
-- **The consensus step is stubbed behind a trait** (`BubbleAligner`), so the driver is testable
-  without spoa. That is deliberate: spoa decides which bubbles are poppable, so a real oracle for the
-  stage needs it reproduced, and stubbing lets the state machine be verified first. Two stubs:
-  `NeverPop` exercises the bookkeeping alone, `AlwaysPop` the mutation path.
+- **The poppability decision ported too** — `align_bubble_nodes`,
+  `generate_consensus_path`, `get_consensus_positions` and `parse_cigar_diversity`, with the
+  megabubble memo. 114 unit tests. spoa and parasail sit behind a `Consensus` trait with two
+  methods, so everything around them is tested now and wiring them in is mechanical: the spoa
+  invocation is the one isONcorrect's `poa.rs` already reproduces, and the alignment is the
+  `sg_trace_scan_16` its `parasail.rs` already reproduces.
+- **The two-supporting-read path skips spoa entirely** — it takes whichever read's span is longer,
+  verbatim. That is where a simplification oracle can start without reproducing spoa at all, and it
+  is fully ported and tested.
 
-Not done: `align_bubble_nodes` and `generate_consensus_path` — the consensus and CIGAR comparison that
-decide poppability, and the only part of the stage that calls spoa. Until they are ported, the
-simplification dumps cannot be replayed end to end.
+Not done: wiring spoars and `parasail.rs` into this crate, and the driver that walks a whole graph
+through the stage so the `simplify_*.txt` dumps can be replayed. Nothing downstream of simplification
+(isoform generation, batch merging) is started.
 
 Not done: bubble *popping* (`new_bubble_popping_routine`, ~270 lines of in-place mutation plus spoa
 calls), and everything downstream of it. The front half of `main` is also still owed, which is why
@@ -998,7 +1003,44 @@ It is never reached on real input. Worth knowing before anyone changes the
 aligner's acceptance criteria, because a more permissive aligner is exactly what
 would expose this.
 
-### Finding 20 — smaller things, recorded and not acted on
+### Finding 21 — `generate_consensus_path` files a span under the wrong read, harmlessly
+
+`SimplifyGraph.py:582` and `:585`, the two-supporting-read branch:
+
+```python
+if fdist > edist:
+    consensus = reads[f_id][1][fstart: (fend + k_size)]
+    seq_infos[f_id] = (fstart, fend + k_size, consensus)
+else:
+    consensus = reads[e_id][1][estart: (eend + k_size)]
+    seq_infos[f_id] = (estart, eend + k_size, consensus)   # f_id, not e_id
+```
+
+When the second read's span wins, its coordinates are recorded against the
+*first* read's id and the second read gets no entry at all.
+
+**It cannot matter, because `seq_infos` is never read.** That took checking, and
+the checking turned up more than the bug: `align_bubble_nodes` returns
+`(is_poppable, cigar, seq_infos, consensus_log, spoa_count)` and the caller uses
+**two of the five**.
+
+| return value | read by the caller? |
+| --- | --- |
+| `is_poppable` | yes |
+| `consensus_log` | yes |
+| `cigar` | **no** — unpacked at both call sites, never referenced |
+| `seq_infos` | **no** — same |
+| `spoa_count` | **no** — threaded back in, incremented, never printed or compared |
+
+The `multi_consensuses` memo stores `seq_infos` too, and its read path takes
+elements 0 and 2 only. So the mis-filed entry, the CIGAR, and the spoa counter are
+all dead.
+
+Not worth fixing the assignment on its own; worth deleting three of the five
+return values, which would have made the bug impossible to write. The port's
+`AlignVerdict` carries only the two live ones.
+
+### Finding 22 — smaller things, recorded and not acted on
 
 - `main`'s window check is `if 100 < args.w or args.w < args.k` but its message reads "smaller than
   100"; `--w 100` is accepted. Off-by-one between check and message.
@@ -1391,7 +1433,7 @@ change output need a measurement first.
 - **`--exact` is passed on every child invocation and does nothing**, and the parallel driver's
   `--exact_instance_limit` default of 50 therefore also does nothing. Once `--exact` means something
   again — if it should — these defaults need revisiting.
-- **Stray debug prints** (finding 4) and the unused `from ast import Param` (finding 20): one-line
+- **Stray debug prints** (finding 4) and the unused `from ast import Param` (finding 22): one-line
   deletions, but the prints are on stdout so goldens move with them.
 - **`["python", ...]`** → `[sys.executable, ...]` in `isONform_parallel:79`. Pure bug fix; in the
   Rust port the equivalent is to re-exec the running binary by its own path, not by name on `PATH`.

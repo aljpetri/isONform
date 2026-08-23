@@ -829,6 +829,330 @@ pub fn linearize_bubble(
 }
 
 // ===========================================================================
+// Consensus and the poppability decision
+// ===========================================================================
+
+/// The two external tools the poppability decision needs.
+///
+/// Kept behind a trait because they are the last pieces of this stage that are
+/// not pure Rust: spoa is a subprocess in the reference (`spoa <reads> -l 0 -r 0
+/// -g -2`, the invocation isONcorrect's `poa.rs` already reproduces via spoars),
+/// and the alignment is `parasail.sg_trace_scan_16`, which isONcorrect's
+/// `parasail.rs` reproduces exactly. Wiring those in is mechanical; separating
+/// them means everything else here is testable now.
+pub trait Consensus {
+    /// spoa over the given sequences, returning the consensus.
+    fn spoa(&mut self, seqs: &[&[u8]]) -> Vec<u8>;
+
+    /// `parasail.sg_trace_scan_16(s1, s2, match=2, mismatch=-8, open=12, ext=1)`,
+    /// returning the CIGAR as `(length, op)` pairs.
+    ///
+    /// Note the mismatch penalty: −8 here, where `modules/consensus.py`'s own
+    /// default is −2 and isONcorrect uses −8. The call site overrides it.
+    fn align(&mut self, s1: &[u8], s2: &[u8]) -> Vec<(u32, u8)>;
+}
+
+/// One read's span across a bubble: `(r_id, start, end)`.
+pub type ConsensusAttr = (u32, u32, u32);
+
+/// `get_consensus_positions`: where each shared read enters and leaves a bubble.
+///
+/// Both ends come from `end_mini_start`, so a "position" here is the end of the
+/// read's minimizer at that node, not the interval start.
+///
+/// The reference indexes the reads maps directly, so a read in `shared_reads` but
+/// absent from either node is a `KeyError`. `generate_combinations` builds the
+/// support as the intersection of the two nodes' reads, so it cannot happen from
+/// that path; reads missing here are skipped rather than invented.
+pub fn get_consensus_positions(
+    g: &Graph,
+    bubble_start: NodeId,
+    bubble_end: NodeId,
+    shared_reads: &[u32],
+) -> Vec<ConsensusAttr> {
+    let mut out = Vec::new();
+    for &r_id in shared_reads {
+        let start = g.reads(bubble_start).iter().find(|(r, _)| *r == r_id);
+        let end = g.reads(bubble_end).iter().find(|(r, _)| *r == r_id);
+        if let (Some((_, s)), Some((_, e))) = (start, end) {
+            out.push((r_id, s.end_mini_start, e.end_mini_start));
+        }
+    }
+    out
+}
+
+/// `generate_consensus_path`: one consensus sequence for a bubble path.
+///
+/// Two quite different routes depending on how many reads support the path:
+///
+/// * **more than two** — cut each read's span out, write the ones at least `k`
+///   long to a fasta, and run spoa over them. If none reached `k`, return
+///   `"X" * max_len` instead, a placeholder the caller then rejects for being
+///   too short.
+/// * **exactly two** — no spoa at all: take whichever read's span is longer and
+///   use that subsequence verbatim. This is the case a port can verify without
+///   reproducing spoa, which is why it is worth calling out.
+///
+/// Called only with two or more attributes (`align_bubble_nodes` handles one
+/// separately), so the two-attribute arm cannot index past the end.
+pub fn generate_consensus_path<C: Consensus>(
+    engine: &mut C,
+    reads: &FxHashMap<u32, Vec<u8>>,
+    attrs: &[ConsensusAttr],
+    k: usize,
+) -> Vec<u8> {
+    if attrs.len() > 2 {
+        let mut to_spoa: Vec<Vec<u8>> = Vec::new();
+        let mut max_len = 0usize;
+        for &(q_id, pos1, pos2) in attrs {
+            let Some(read) = reads.get(&q_id) else {
+                continue;
+            };
+            let mut pos1 = pos1 as i64;
+            let mut pos2 = pos2 as i64;
+            if pos2 == 0 {
+                // `pos2 == 0` means "no end recorded"; fall back to the read's
+                // own end. Can go negative for a read shorter than k, which the
+                // slice below then clamps.
+                pos2 = read.len() as i64 - k as i64;
+            }
+            let seq: Vec<u8> = if pos1 < pos2 + k as i64 {
+                if pos1 < 0 {
+                    pos1 = 0;
+                }
+                let lo = (pos1.max(0) as usize).min(read.len());
+                let hi = ((pos2 + k as i64).max(0) as usize).min(read.len());
+                read[lo..hi.max(lo)].to_vec()
+            } else {
+                Vec::new()
+            };
+            // `endseqlist` in the reference is built here and never read.
+            if seq.len() < k {
+                if seq.len() > max_len {
+                    max_len = seq.len();
+                } else if seq.is_empty() {
+                    max_len = 1;
+                }
+            } else {
+                to_spoa.push(seq);
+            }
+        }
+        if to_spoa.is_empty() {
+            return vec![b'X'; max_len];
+        }
+        let refs: Vec<&[u8]> = to_spoa.iter().map(|v| v.as_slice()).collect();
+        return engine.spoa(&refs);
+    }
+
+    // Exactly two: the longer span wins, no spoa.
+    let (f_id, fstart, fend) = attrs[0];
+    let (e_id, estart, eend) = attrs[1];
+    let fdist = fend as i64 - fstart as i64;
+    let edist = eend as i64 - estart as i64;
+    let (id, lo, hi) = if fdist > edist {
+        (f_id, fstart as usize, fend as usize + k)
+    } else {
+        (e_id, estart as usize, eend as usize + k)
+    };
+    // FINDING 21 lives in the line the reference writes next to this one: it
+    // files the chosen span under `seq_infos[f_id]` in *both* branches, so when
+    // e_id wins, e_id's coordinates are recorded against f_id and e_id gets no
+    // entry at all. Harmless, and not reproduced, because `seq_infos` is never
+    // read --- see the note on `align_bubble_nodes`.
+    match reads.get(&id) {
+        Some(read) => {
+            let lo = lo.min(read.len());
+            let hi = hi.min(read.len());
+            read[lo..hi.max(lo)].to_vec()
+        }
+        None => Vec::new(),
+    }
+}
+
+/// `parse_cigar_diversity`: are two consensus sequences close enough to merge?
+///
+/// Rejects outright if any single non-match CIGAR run is longer than `delta_len`
+/// — that is a structural difference, an exon, not an error. Otherwise compares
+/// the total mismatch fraction against `max(delta_perc * len, delta_len) / len`.
+///
+/// `delta_perc` is the hard-coded 0.20 at `SimplifyGraph.py:653`, **not** the
+/// `--delta` flag, which never reaches this stage.
+pub fn parse_cigar_diversity(cigar: &[(u32, u8)], delta_perc: f64, delta_len: i64) -> bool {
+    let mut mismatch = 0i64;
+    let mut alignment_len = 0i64;
+    for &(len, op) in cigar {
+        alignment_len += len as i64;
+        if op != b'=' && op != b'M' {
+            mismatch += len as i64;
+            if len as i64 > delta_len {
+                return false;
+            }
+        }
+    }
+    if alignment_len == 0 {
+        // The reference divides by this unguarded. An empty CIGAR needs an empty
+        // input, which the length gate above already excluded.
+        return false;
+    }
+    let diversity = mismatch as f64 / alignment_len as f64;
+    let max_bp_diff = (delta_perc * alignment_len as f64).max(delta_len as f64);
+    diversity <= max_bp_diff / alignment_len as f64
+}
+
+/// The hard-coded diversity threshold at `SimplifyGraph.py:653`.
+pub const DIVERSITY_DELTA: f64 = 0.20;
+
+/// `align_bubble_nodes`: build both paths' consensus and decide poppability.
+///
+/// # Three of the reference's five return values are dead
+///
+/// It returns `(is_poppable, cigar, seq_infos, consensus_log, spoa_count)`. The
+/// caller unpacks all five and uses **two**: `is_poppable` and `consensus_log`.
+/// `cigar` and `seq_infos` are never read, and `spoa_count` is only ever
+/// incremented and passed back in — never printed, never compared. The cached
+/// `multi_consensuses` tuple stores `seq_infos` too, and the cache-hit path reads
+/// only elements 0 and 2. So [`AlignVerdict`] carries just the two live values.
+///
+/// That is what makes finding 21 harmless: `generate_consensus_path` mis-files a
+/// `seq_infos` entry, and nothing reads it.
+///
+/// # The decision
+///
+/// Purely on the two consensus lengths, then on the alignment:
+///
+/// * both longer than `delta_len`: reject if their lengths differ by 20% or more,
+///   otherwise align and ask [`parse_cigar_diversity`];
+/// * both shorter: pop, unconditionally;
+/// * one of each: pop when the difference is under `delta_len`.
+///
+/// Note the strict comparisons leave `shorter_len == delta_len` falling to the
+/// third case rather than the second; it gives the same answer, so it is not a
+/// defect, only surprising.
+pub struct RealAligner<'a, C: Consensus> {
+    pub engine: C,
+    pub reads: &'a FxHashMap<u32, Vec<u8>>,
+    pub k: usize,
+    pub delta_len: i64,
+    /// `multi_consensuses`: a memo used **only** for megabubbles, keyed by
+    /// `(start, end, the path's read set)`. Written only when `is_megabubble`,
+    /// read only when `is_megabubble`.
+    cache: FxHashMap<(NodeId, NodeId, Vec<u32>), Vec<u8>>,
+    graph_snapshot: Option<()>,
+}
+
+impl<'a, C: Consensus> RealAligner<'a, C> {
+    pub fn new(engine: C, reads: &'a FxHashMap<u32, Vec<u8>>, k: usize, delta_len: i64) -> Self {
+        Self {
+            engine,
+            reads,
+            k,
+            delta_len,
+            cache: FxHashMap::default(),
+            graph_snapshot: None,
+        }
+    }
+
+    /// The consensus for one path, with the megabubble memo applied.
+    fn consensus_for(
+        &mut self,
+        bubble: (NodeId, NodeId),
+        attrs: &[ConsensusAttr],
+        is_megabubble: bool,
+    ) -> Vec<u8> {
+        let mut key_reads: Vec<u32> = attrs.iter().map(|a| a.0).collect();
+        key_reads.sort_unstable();
+        key_reads.dedup();
+        let key = (bubble.0, bubble.1, key_reads);
+
+        if is_megabubble {
+            if let Some(hit) = self.cache.get(&key) {
+                return hit.clone();
+            }
+        }
+        let con = if attrs.len() > 1 {
+            let c = generate_consensus_path(&mut self.engine, self.reads, attrs, self.k);
+            if is_megabubble {
+                self.cache.insert(key, c.clone());
+            }
+            // A consensus under 3 bases is treated as no consensus at all.
+            if c.len() < 3 {
+                Vec::new()
+            } else {
+                c
+            }
+        } else if attrs.len() == 1 {
+            let (q_id, pos1, pos2) = attrs[0];
+            let too_short = (pos2 as i64 - pos1 as i64).abs() < 3;
+            if too_short || pos2 < pos1 {
+                Vec::new()
+            } else {
+                match self.reads.get(&q_id) {
+                    Some(read) => {
+                        let lo = (pos1 as usize).min(read.len());
+                        let hi = (pos2 as usize + self.k).min(read.len());
+                        read[lo..hi.max(lo)].to_vec()
+                    }
+                    None => Vec::new(),
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        con
+    }
+
+    /// The length-and-alignment gate, given both consensus sequences.
+    fn decide(&mut self, c1: &[u8], c2: &[u8]) -> bool {
+        let (s1, s2) = (c1.len() as i64, c2.len() as i64);
+        let (longer, shorter) = if s1 > s2 { (s1, s2) } else { (s2, s1) };
+        if shorter > self.delta_len && longer > self.delta_len {
+            if longer == 0 {
+                return false;
+            }
+            if ((longer - shorter) as f64 / longer as f64) < DIVERSITY_DELTA {
+                let cigar = self.engine.align(c1, c2);
+                parse_cigar_diversity(&cigar, DIVERSITY_DELTA, self.delta_len)
+            } else {
+                false
+            }
+        } else if shorter < self.delta_len && longer < self.delta_len {
+            true
+        } else {
+            (longer - shorter) < self.delta_len
+        }
+    }
+}
+
+impl<C: Consensus> BubbleAligner for RealAligner<'_, C> {
+    fn align(&mut self, req: &AlignRequest) -> AlignVerdict {
+        let _ = self.graph_snapshot;
+        // `consensus_infos` is a dict keyed by the path-defining node, so two
+        // paths sharing that node would collapse to one entry and the reference
+        // would then IndexError on `consensus_list[1]`. It cannot happen: equal
+        // path nodes mean the paths share their first interior node, which the
+        // caller's intersection check rejects before getting here.
+        debug_assert_ne!(req.path_nodes[0], req.path_nodes[1]);
+
+        let bubble = (req.bubble_start, req.bubble_end);
+        let mut consensus = FxHashMap::default();
+        let mut list: [Vec<u8>; 2] = [Vec::new(), Vec::new()];
+        for (slot, (attrs, &node)) in list
+            .iter_mut()
+            .zip(req.attrs.iter().zip(req.path_nodes.iter()))
+        {
+            let con = self.consensus_for(bubble, attrs, req.is_megabubble);
+            consensus.insert(node, con.clone());
+            *slot = con;
+        }
+        let poppable = self.decide(&list[0], &list[1]);
+        AlignVerdict {
+            poppable,
+            consensus,
+        }
+    }
+}
+
+// ===========================================================================
 // The popping driver
 // ===========================================================================
 
@@ -847,6 +1171,9 @@ pub struct AlignRequest {
     /// supporting that path.
     pub path_nodes: [NodeId; 2],
     pub path_support: [Vec<u32>; 2],
+    /// `get_consensus_positions` for each path: where each supporting read enters
+    /// and leaves the bubble. This is what the consensus is built from.
+    pub attrs: [Vec<ConsensusAttr>; 2],
     /// True when the bubble had more than two paths before filtering.
     pub is_megabubble: bool,
 }
@@ -1081,6 +1408,20 @@ pub fn pop_bubbles<A: BubbleAligner>(g: &mut Graph, aligner: &mut A, opts: PopOp
                     bubble_end: combination.end,
                     path_nodes: [pathnode1, pathnode2],
                     path_support: [all_paths[0].support.clone(), all_paths[1].support.clone()],
+                    attrs: [
+                        get_consensus_positions(
+                            g,
+                            combination.start,
+                            combination.end,
+                            &all_paths[0].support,
+                        ),
+                        get_consensus_positions(
+                            g,
+                            combination.start,
+                            combination.end,
+                            &all_paths[1].support,
+                        ),
+                    ],
                     is_megabubble,
                 };
                 let verdict = aligner.align(&req);
@@ -1166,6 +1507,20 @@ pub fn pop_bubbles<A: BubbleAligner>(g: &mut Graph, aligner: &mut A, opts: PopOp
                             get_next_node(&all_paths[j].nodes, combination.end),
                         ],
                         path_support: [all_paths[i].support.clone(), all_paths[j].support.clone()],
+                        attrs: [
+                            get_consensus_positions(
+                                g,
+                                combination.start,
+                                combination.end,
+                                &all_paths[i].support,
+                            ),
+                            get_consensus_positions(
+                                g,
+                                combination.start,
+                                combination.end,
+                                &all_paths[j].support,
+                            ),
+                        ],
                         // The reference hard-codes True here.
                         is_megabubble: true,
                     };
@@ -2090,6 +2445,208 @@ mod tests {
         assert!(!stats.hit_iteration_cap, "terminated on its own");
         assert_eq!(g.node_count(), 5, "the node set never changes");
         let _ = mids;
+    }
+
+    /// A `Consensus` that records what it was asked and answers predictably:
+    /// spoa returns the first sequence, the aligner returns a caller-set CIGAR.
+    struct StubConsensus {
+        cigar: Vec<(u32, u8)>,
+        spoa_calls: usize,
+        align_calls: usize,
+    }
+
+    impl StubConsensus {
+        fn new() -> Self {
+            Self {
+                cigar: vec![(100, b'=')],
+                spoa_calls: 0,
+                align_calls: 0,
+            }
+        }
+    }
+
+    impl Consensus for StubConsensus {
+        fn spoa(&mut self, seqs: &[&[u8]]) -> Vec<u8> {
+            self.spoa_calls += 1;
+            seqs.first().map(|s| s.to_vec()).unwrap_or_default()
+        }
+        fn align(&mut self, _s1: &[u8], _s2: &[u8]) -> Vec<(u32, u8)> {
+            self.align_calls += 1;
+            self.cigar.clone()
+        }
+    }
+
+    fn reads_map(pairs: &[(u32, &str)]) -> FxHashMap<u32, Vec<u8>> {
+        pairs
+            .iter()
+            .map(|(r, s)| (*r, s.as_bytes().to_vec()))
+            .collect()
+    }
+
+    #[test]
+    fn two_supporting_reads_take_the_longer_span_and_never_call_spoa() {
+        // The case a port can verify without reproducing spoa at all.
+        let reads = reads_map(&[(1, "AAAACCCCGGGGTTTT"), (2, "TTTTGGGGCCCCAAAA")]);
+        let mut engine = StubConsensus::new();
+        // read 1 spans 0..4 (dist 4); read 2 spans 0..8 (dist 8) --- read 2 wins.
+        let attrs = vec![(1u32, 0, 4), (2u32, 0, 8)];
+        let con = generate_consensus_path(&mut engine, &reads, &attrs, 2);
+        assert_eq!(con, b"TTTTGGGGCC".to_vec(), "read 2's span plus k");
+        assert_eq!(engine.spoa_calls, 0, "two reads never reach spoa");
+    }
+
+    #[test]
+    fn more_than_two_supporting_reads_go_to_spoa() {
+        let reads = reads_map(&[(1, "AAAAAAAAAA"), (2, "CCCCCCCCCC"), (3, "GGGGGGGGGG")]);
+        let mut engine = StubConsensus::new();
+        let attrs = vec![(1u32, 0, 6), (2, 0, 6), (3, 0, 6)];
+        let con = generate_consensus_path(&mut engine, &reads, &attrs, 2);
+        assert_eq!(engine.spoa_calls, 1);
+        assert_eq!(
+            con,
+            b"AAAAAAAA".to_vec(),
+            "the stub returns the first sequence"
+        );
+    }
+
+    #[test]
+    fn spans_shorter_than_k_are_withheld_from_spoa_and_yield_an_x_placeholder() {
+        // A span runs pos1..pos2 + k, so it is only shorter than k when the read
+        // itself is --- the slice clamps. (A first draft used 10-base reads with
+        // k = 8 and got 9-base spans, i.e. long enough for spoa, so it measured
+        // the opposite of what it claimed.) Here the reads are 3 bases and k is 8,
+        // so nothing is written and the reference returns "X" * max_len, which the
+        // caller then rejects for being under 3 long.
+        let reads = reads_map(&[(1, "AAA"), (2, "CCC"), (3, "GGG")]);
+        let mut engine = StubConsensus::new();
+        let attrs = vec![(1u32, 0, 1), (2, 0, 1), (3, 0, 1)];
+        let con = generate_consensus_path(&mut engine, &reads, &attrs, 8);
+        assert_eq!(engine.spoa_calls, 0);
+        assert!(
+            con.iter().all(|&b| b == b'X'),
+            "placeholder, not a consensus"
+        );
+    }
+
+    #[test]
+    fn cigar_diversity_rejects_one_long_indel_but_tolerates_scattered_errors() {
+        // A single non-match run longer than delta_len is structure, not error.
+        assert!(!parse_cigar_diversity(&[(90, b'='), (10, b'I')], 0.20, 5));
+        // The same total mismatch spread thinly is tolerated.
+        let mut scattered = Vec::new();
+        for _ in 0..5 {
+            scattered.push((18, b'='));
+            scattered.push((2, b'X'));
+        }
+        assert!(parse_cigar_diversity(&scattered, 0.20, 5));
+    }
+
+    #[test]
+    fn cigar_diversity_uses_the_larger_of_the_two_thresholds() {
+        // max(delta_perc * len, delta_len): on a short alignment delta_len wins,
+        // so a proportionally large mismatch still passes.
+        // len 20, mismatch 4 -> diversity 0.20; threshold max(0.20*20, 5)=5 -> 0.25.
+        assert!(parse_cigar_diversity(&[(16, b'='), (4, b'X')], 0.20, 5));
+        // Same shape, longer alignment: the percentage wins and 0.30 > 0.20.
+        assert!(!parse_cigar_diversity(
+            &[(70, b'='), (3, b'X'), (27, b'M')],
+            0.20,
+            2
+        ));
+        // An empty CIGAR: the reference divides by zero here; we refuse instead.
+        assert!(!parse_cigar_diversity(&[], 0.20, 5));
+    }
+
+    #[test]
+    fn m_counts_as_a_match_alongside_eq() {
+        // Both '=' and 'M' are matches; only other ops count as mismatch.
+        assert!(parse_cigar_diversity(&[(50, b'M'), (50, b'=')], 0.20, 5));
+    }
+
+    #[test]
+    fn two_short_consensuses_pop_unconditionally() {
+        let reads = reads_map(&[(1, "AAAA")]);
+        let mut a = RealAligner::new(StubConsensus::new(), &reads, 2, 10);
+        // Both under delta_len = 10.
+        assert!(a.decide(b"AAA", b"AAAAA"), "both short -> pop");
+        assert_eq!(a.engine.align_calls, 0, "no alignment needed");
+    }
+
+    #[test]
+    fn a_big_length_difference_is_rejected_without_aligning() {
+        let reads = reads_map(&[(1, "A")]);
+        let mut a = RealAligner::new(StubConsensus::new(), &reads, 2, 5);
+        // 100 vs 50: 50% difference, well over the 20% gate.
+        let long = vec![b'A'; 100];
+        let short = vec![b'A'; 50];
+        assert!(!a.decide(&long, &short));
+        assert_eq!(a.engine.align_calls, 0, "rejected on length alone");
+    }
+
+    #[test]
+    fn similar_lengths_are_settled_by_the_alignment() {
+        let reads = reads_map(&[(1, "A")]);
+        let mut a = RealAligner::new(StubConsensus::new(), &reads, 2, 5);
+        let s1 = vec![b'A'; 100];
+        let s2 = vec![b'A'; 95];
+        assert!(a.decide(&s1, &s2), "a clean CIGAR pops");
+        assert_eq!(a.engine.align_calls, 1);
+        // Now make the aligner report one long indel.
+        a.engine.cigar = vec![(90, b'='), (10, b'D')];
+        assert!(!a.decide(&s1, &s2), "a long indel does not");
+    }
+
+    #[test]
+    fn one_short_one_long_pops_only_within_delta_len() {
+        let reads = reads_map(&[(1, "A")]);
+        let mut a = RealAligner::new(StubConsensus::new(), &reads, 2, 10);
+        // shorter under delta_len, longer over: the third branch, comparing the
+        // raw difference.
+        assert!(a.decide(&[b'A'; 9], &[b'A'; 12]), "difference 3 < 10");
+        assert!(!a.decide(&[b'A'; 5], &[b'A'; 40]), "difference 35 >= 10");
+    }
+
+    #[test]
+    fn get_consensus_positions_reads_both_ends_and_skips_absent_reads() {
+        let (mut g, s, _a, _b, t) = two_path_bubble();
+        g.replace_reads(s, 1, ri(0, 5));
+        g.set_read(s, 2, ri(0, 7));
+        g.replace_reads(t, 1, ri(0, 90));
+        g.set_read(t, 2, ri(0, 95));
+        // Read 3 is asked for but absent from both ends.
+        let attrs = get_consensus_positions(&g, s, t, &[1, 2, 3]);
+        assert_eq!(attrs, vec![(1, 5, 90), (2, 7, 95)]);
+    }
+
+    #[test]
+    fn the_megabubble_memo_only_applies_to_megabubbles() {
+        let reads = reads_map(&[
+            (1, "AAAAAAAAAAAAAAAAAAAA"),
+            (2, "CCCCCCCCCCCCCCCCCCCC"),
+            (3, "GGGGGGGGGGGGGGGGGGGG"),
+        ]);
+        let mut a = RealAligner::new(StubConsensus::new(), &reads, 2, 5);
+        let attrs = vec![(1u32, 0, 6), (2, 0, 6), (3, 0, 6)];
+        // Not a megabubble: no caching, so spoa runs each time.
+        a.consensus_for((0, 1), &attrs, false);
+        a.consensus_for((0, 1), &attrs, false);
+        assert_eq!(a.engine.spoa_calls, 2);
+        // A megabubble: the second call is served from the memo.
+        a.consensus_for((0, 1), &attrs, true);
+        let after_first = a.engine.spoa_calls;
+        a.consensus_for((0, 1), &attrs, true);
+        assert_eq!(a.engine.spoa_calls, after_first, "memoised");
+    }
+
+    #[test]
+    fn a_consensus_under_three_bases_counts_as_none() {
+        let reads = reads_map(&[(1, "AAAAAAAAAA"), (2, "CC"), (3, "GG")]);
+        let mut a = RealAligner::new(StubConsensus::new(), &reads, 1, 5);
+        // Spans of length 1 with k = 1 give 2-base sequences: under k, so the
+        // placeholder path, and the result is shorter than 3.
+        let attrs = vec![(1u32, 0, 1), (2, 0, 1), (3, 0, 1)];
+        let con = a.consensus_for((0, 1), &attrs, false);
+        assert!(con.is_empty(), "too short to be a consensus");
     }
 
     #[test]
