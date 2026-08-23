@@ -1,10 +1,10 @@
 //! Graph simplification: bubble detection.
 //!
 //! Ports the front of `modules/SimplifyGraph.py` — the part that decides *which*
-//! bubbles exist. Popping them (`new_bubble_popping_routine`, ~270 lines of
-//! in-place mutation plus spoa calls) is not ported yet, deliberately: the
-//! detection side is pure, order-sensitive and testable in isolation, which makes
-//! it the right thing to nail down first.
+//! bubbles exist and *what paths* run through them. The mutation that pops them
+//! (`prepare_adding_edges`, `remove_edges`, `linearize_bubble`) comes next; it is
+//! kept separate because everything here is pure and testable in isolation, and
+//! because the popping side calls spoa while none of this does.
 //!
 //! # Bubble detection, and where the order comes from
 //!
@@ -27,7 +27,9 @@
 //! support tuples are built from insertion-ordered dicts, but
 //! `generate_combinations` immediately sorts the intersection.
 
-use rustc_hash::FxHashSet;
+use std::collections::BTreeSet;
+
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::graph::{Graph, NodeId};
 
@@ -188,6 +190,276 @@ pub fn get_avg_interval_length(g: &Graph, node: NodeId) -> i64 {
         .map(|(_, i)| i.end_mini_start as i64 - i.start_mini_end as i64)
         .sum();
     (sum as f64 / reads.len() as f64).trunc() as i64
+}
+
+/// One path through a bubble: the nodes walked, and the reads that walk it.
+///
+/// The reference's tuple is `(visited_nodes, tuple(sorted(support)),
+/// final_add_support)`. The third element is **dead** — computed on every path and
+/// read nowhere — so it is not carried here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BubblePath {
+    /// `visited_nodes`: the bubble start, then each interior node. The bubble
+    /// *end* is not included, because the reference appends before testing.
+    pub nodes: Vec<NodeId>,
+    /// Reads whose edge support survives the whole walk, sorted.
+    pub support: Vec<u32>,
+}
+
+/// `find_paths`: enumerate the paths through a bubble, one per group of reads.
+///
+/// Takes the lowest unallocated read, walks the graph following edges that read
+/// supports, and attributes the whole intersected support of that walk to one
+/// path. Repeats until the support is exhausted or a walk fails.
+///
+/// # Order, and one aliasing subtlety worth recording
+///
+/// Two orders reach results and both are reproduced:
+///
+/// * **which read is taken next.** The reference used `set.pop()`; it now takes
+///   the minimum (`PORTING.md` finding 12), which is why a `BTreeSet` is the
+///   natural container here rather than a hash set.
+/// * **which successor is followed.** The walk takes the *first* successor whose
+///   `edge_supp` contains the read and stops looking, so adjacency insertion
+///   order decides the path when a read supports more than one outgoing edge.
+///
+/// The subtlety: the reference writes `current_node_support = node_support_left`,
+/// which **aliases** rather than copies, and then `.add(read)` — so the read it
+/// just removed goes straight back into `node_support_left`. The pop is
+/// effectively undone. That is reproduced by simply not removing it. The alias
+/// itself cannot leak further, because the first `intersection()` rebinds
+/// `current_node_support` to a fresh set, and `next_found` can only be true if at
+/// least one intersection happened — so the later `node_support_left -=
+/// current_node_support` is never a set minus itself. Checked rather than
+/// assumed; it would be a silent infinite loop if it were wrong.
+pub fn find_paths(
+    g: &Graph,
+    start: NodeId,
+    end: NodeId,
+    support: &[u32],
+    marked: &FxHashSet<NodeId>,
+) -> Vec<BubblePath> {
+    // The reference would raise `UnboundLocalError` on `next_found` if the walk
+    // loop never ran. `generate_combinations` guarantees `start != end` (strictly
+    // increasing topological index), so no caller can produce it.
+    debug_assert_ne!(
+        start, end,
+        "the reference raises NameError for start == end"
+    );
+    if start == end {
+        return Vec::new();
+    }
+
+    let mut node_support_left: BTreeSet<u32> = support.iter().copied().collect();
+    let mut out: Vec<BubblePath> = Vec::new();
+
+    while let Some(&read) = node_support_left.iter().next() {
+        // Not removed: see the aliasing note above.
+        let mut current: FxHashSet<u32> = node_support_left.iter().copied().collect();
+        let mut node = start;
+        let mut visited: Vec<NodeId> = Vec::new();
+        let mut next_found = false;
+
+        while node != end {
+            visited.push(node);
+            next_found = false;
+            if marked.contains(&node) {
+                break;
+            }
+            let mut advanced = None;
+            for &nb in g.successors(node) {
+                if let Some(supp) = g.edge_support(node, nb) {
+                    if supp.contains(&read) {
+                        advanced = Some((nb, supp.to_vec()));
+                        break;
+                    }
+                }
+            }
+            match advanced {
+                Some((nb, supp)) => {
+                    let keep: FxHashSet<u32> = supp.into_iter().collect();
+                    current.retain(|r| keep.contains(r));
+                    node = nb;
+                    next_found = true;
+                }
+                None => break,
+            }
+        }
+
+        if !current.is_empty() && next_found {
+            for r in &current {
+                node_support_left.remove(r);
+            }
+            let mut supp: Vec<u32> = current.into_iter().collect();
+            supp.sort_unstable();
+            out.push(BubblePath {
+                nodes: visited,
+                support: supp,
+            });
+        } else {
+            // The reference breaks out entirely rather than trying the next read.
+            break;
+        }
+    }
+    out
+}
+
+/// An edge lifted out of the graph, with the attributes needed to re-add it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiftedEdge {
+    pub u: NodeId,
+    pub v: NodeId,
+    pub length: i64,
+    pub support: Vec<u32>,
+}
+
+/// What [`remove_edges`] hands to the edge-adding step.
+#[derive(Debug, Default)]
+pub struct Lifted {
+    /// In insertion order, keyed by `(u, v)` — a later write to the same pair
+    /// overwrites, as the reference's dict does.
+    pub edges: Vec<LiftedEdge>,
+    /// `node_distances`: interior node -> distance from the bubble start.
+    pub node_distances: Vec<(NodeId, f64)>,
+}
+
+impl Lifted {
+    fn put_edge(&mut self, e: LiftedEdge) {
+        match self.edges.iter_mut().find(|x| x.u == e.u && x.v == e.v) {
+            Some(slot) => *slot = e,
+            None => self.edges.push(e),
+        }
+    }
+
+    fn put_dist(&mut self, n: NodeId, d: f64) {
+        match self.node_distances.iter_mut().find(|(x, _)| *x == n) {
+            Some(slot) => slot.1 = d,
+            None => self.node_distances.push((n, d)),
+        }
+    }
+
+    pub fn dist(&self, n: NodeId) -> Option<f64> {
+        self.node_distances
+            .iter()
+            .find(|(x, _)| *x == n)
+            .map(|(_, d)| *d)
+    }
+}
+
+/// `new_distance_to_start`: where a node's end-minimizer sits in the path's
+/// consensus.
+///
+/// `consensus.find(node_seq)`, i.e. the first byte offset of `node_seq` in
+/// `consensus`, or `-1`. The `-1` is not rare — 16% of calls on `sirv_real` —
+/// and the caller has a fallback for it.
+pub fn new_distance_to_start(consensus: &[u8], node_seq: &[u8]) -> i64 {
+    if node_seq.is_empty() {
+        // Python's `"abc".find("")` is 0, not -1.
+        return 0;
+    }
+    if node_seq.len() > consensus.len() {
+        return -1;
+    }
+    for i in 0..=(consensus.len() - node_seq.len()) {
+        if &consensus[i..i + node_seq.len()] == node_seq {
+            return i as i64;
+        }
+    }
+    -1
+}
+
+/// `remove_edges`: lift every edge inside the bubble out of the graph, recording
+/// each node's distance from the bubble start on the way.
+///
+/// `paths` is **mutated**: the reference does `path_node_list.pop(0)` on the
+/// caller's own list, dropping the bubble start from each path. Reproduced,
+/// because the caller reads the shortened lists afterwards.
+///
+/// `consensus` maps a path's *first* node to that path's consensus sequence —
+/// the reference's `consensus_log`.
+///
+/// # Two reference quirks reproduced here
+///
+/// * **`prev_node` never advances** (`SimplifyGraph.py:279`). It is set to the
+///   bubble start once per path and never reassigned, so `get_dist_to_prev` always
+///   measures from the bubble start and `prev_to_start_dist` is always 0 — which
+///   makes the `node_distances[prev_node]` branch beside it unreachable. The
+///   comment there ("we are still missing the distance of the previous node to
+///   s") describes chaining that does not happen. `PORTING.md` finding 13.
+/// * **`pnl_start` is computed twice**, identically, either side of the first
+///   `edges_to_delete` write. The second computation is dead.
+pub fn remove_edges(
+    g: &mut Graph,
+    bubble_start: NodeId,
+    bubble_end: NodeId,
+    paths: &mut [BubblePath],
+    consensus: &FxHashMap<NodeId, Vec<u8>>,
+) -> Lifted {
+    let mut lifted = Lifted::default();
+
+    for path in paths.iter_mut() {
+        // Destructive, and the caller depends on it.
+        if !path.nodes.is_empty() {
+            path.nodes.remove(0);
+        }
+        let pnl_start = path.nodes.first().copied().unwrap_or(bubble_end);
+
+        // The edge from the bubble start into the path.
+        let prev_node = bubble_start;
+        if let Some(length) = g.edge_length(prev_node, pnl_start) {
+            lifted.put_edge(LiftedEdge {
+                u: prev_node,
+                v: pnl_start,
+                length,
+                support: g.edge_support(prev_node, pnl_start).unwrap_or(&[]).to_vec(),
+            });
+        } else {
+            // `DG.get_edge_data` returns None for a missing edge and the
+            // reference stores that None, then calls `DG.remove_edge` on it
+            // anyway --- which raises NetworkXError. Recording the pair with no
+            // attributes would be inventing behaviour, so it is skipped and
+            // noted; if a corpus ever reaches it the oracle will disagree and
+            // that is the right outcome.
+        }
+
+        let n = path.nodes.len();
+        for index in 0..n {
+            let path_node = path.nodes[index];
+
+            let inter_dist = consensus
+                .get(&pnl_start)
+                .map(|c| new_distance_to_start(c, g.end_mini_seq(path_node)))
+                .unwrap_or(-1);
+
+            let dist = if inter_dist == -1 {
+                // prev_node is the bubble start, always --- see the note above,
+                // which is why there is no accumulator here.
+                get_dist_to_prev(g, prev_node, path_node)
+            } else {
+                inter_dist as f64
+            };
+            lifted.put_dist(path_node, dist);
+
+            let target = if index + 1 < n {
+                path.nodes[index + 1]
+            } else {
+                bubble_end
+            };
+            if let Some(length) = g.edge_length(path_node, target) {
+                lifted.put_edge(LiftedEdge {
+                    u: path_node,
+                    v: target,
+                    length,
+                    support: g.edge_support(path_node, target).unwrap_or(&[]).to_vec(),
+                });
+            }
+        }
+    }
+
+    for e in &lifted.edges {
+        g.remove_edge(e.u, e.v);
+    }
+    lifted
 }
 
 #[cfg(test)]
@@ -356,6 +628,328 @@ mod tests {
         not_viable.insert(c1.clone());
         let kept = filter_combinations(&[c1, c2.clone()], &not_viable);
         assert_eq!(kept, vec![c2]);
+    }
+
+    /// `s -> a -> t` carrying reads 1,2 and `s -> b -> t` carrying read 3.
+    fn two_path_bubble() -> (Graph, NodeId, NodeId, NodeId, NodeId) {
+        let mut g = Graph::new();
+        let k = |i| NodeKey::Interval {
+            start: i,
+            end: i,
+            r_id: 0,
+        };
+        let s = g.add_node(NodeKey::Source);
+        let a = g.add_node(k(1));
+        let b = g.add_node(k(2));
+        let t = g.add_node(NodeKey::Sink);
+        g.add_edge(s, a, 0);
+        g.set_edge_support(s, a, 1);
+        g.push_edge_support(s, a, 2);
+        g.add_edge(a, t, 0);
+        g.set_edge_support(a, t, 1);
+        g.push_edge_support(a, t, 2);
+        g.add_edge(s, b, 0);
+        g.set_edge_support(s, b, 3);
+        g.add_edge(b, t, 0);
+        g.set_edge_support(b, t, 3);
+        (g, s, a, b, t)
+    }
+
+    #[test]
+    fn find_paths_splits_reads_by_the_route_they_take() {
+        let (g, s, a, b, t) = two_path_bubble();
+        let paths = find_paths(&g, s, t, &[1, 2, 3], &FxHashSet::default());
+        assert_eq!(paths.len(), 2);
+        // Lowest read first, so the 1,2 path comes out before the 3 path.
+        assert_eq!(paths[0].nodes, vec![s, a]);
+        assert_eq!(paths[0].support, vec![1, 2]);
+        assert_eq!(paths[1].nodes, vec![s, b]);
+        assert_eq!(paths[1].support, vec![3]);
+    }
+
+    #[test]
+    fn the_bubble_end_is_not_part_of_a_path() {
+        // `visited_nodes.append(node)` happens before the `node != endnode` test,
+        // so the end node is never appended.
+        let (g, s, a, _b, t) = two_path_bubble();
+        let paths = find_paths(&g, s, t, &[1, 2], &FxHashSet::default());
+        assert_eq!(paths[0].nodes, vec![s, a]);
+        assert!(!paths[0].nodes.contains(&t));
+    }
+
+    #[test]
+    fn path_order_follows_the_lowest_read_not_the_support_order() {
+        // Support given in descending order; the 3-path must still come second,
+        // because allocation takes the minimum read id. This is finding 12: the
+        // reference used set.pop() here and the order decided which path became
+        // path1.
+        let (g, s, a, b, t) = two_path_bubble();
+        let paths = find_paths(&g, s, t, &[3, 2, 1], &FxHashSet::default());
+        assert_eq!(paths[0].nodes, vec![s, a], "reads 1,2 first");
+        assert_eq!(paths[1].nodes, vec![s, b]);
+    }
+
+    #[test]
+    fn a_marked_node_stops_the_walk_and_ends_enumeration() {
+        // Hitting a marked node sets next_found = false, which makes the
+        // reference break out of the *outer* loop too --- so no further paths are
+        // enumerated, not merely this one skipped.
+        let (g, s, a, b, t) = two_path_bubble();
+        let mut marked = FxHashSet::default();
+        marked.insert(a);
+        let paths = find_paths(&g, s, t, &[1, 2, 3], &marked);
+        assert!(
+            paths.is_empty(),
+            "read 1 walks into the marked node, which abandons the whole bubble"
+        );
+        let _ = (b, t);
+    }
+
+    #[test]
+    fn a_read_with_no_supporting_edge_ends_enumeration() {
+        let (g, s, _a, _b, t) = two_path_bubble();
+        // Read 9 supports nothing, and it is the highest, so the two real paths
+        // are found first and then the walk for 9 fails.
+        let paths = find_paths(&g, s, t, &[1, 2, 3, 9], &FxHashSet::default());
+        assert_eq!(paths.len(), 2, "the two real paths survive");
+        // And when the failing read is the lowest, nothing is found at all.
+        let paths = find_paths(&g, s, t, &[0, 1, 2, 3], &FxHashSet::default());
+        assert!(paths.is_empty(), "read 0 fails first and aborts the bubble");
+    }
+
+    #[test]
+    fn the_first_matching_successor_wins() {
+        // A read supported by two outgoing edges follows whichever edge was added
+        // first, because the reference breaks out of the successor loop.
+        let mut g = Graph::new();
+        let k = |i| NodeKey::Interval {
+            start: i,
+            end: i,
+            r_id: 0,
+        };
+        let s = g.add_node(NodeKey::Source);
+        let first = g.add_node(k(1));
+        let second = g.add_node(k(2));
+        let t = g.add_node(NodeKey::Sink);
+        // Both edges out of s carry read 1; `first` was added first.
+        g.add_edge(s, first, 0);
+        g.set_edge_support(s, first, 1);
+        g.add_edge(s, second, 0);
+        g.set_edge_support(s, second, 1);
+        g.add_edge(first, t, 0);
+        g.set_edge_support(first, t, 1);
+        g.add_edge(second, t, 0);
+        g.set_edge_support(second, t, 1);
+        let paths = find_paths(&g, s, t, &[1, 2], &FxHashSet::default());
+        assert_eq!(paths[0].nodes, vec![s, first], "adjacency order decides");
+    }
+
+    #[test]
+    fn support_is_intersected_along_the_whole_walk() {
+        // Read 1 and 2 leave `s` together but only 1 continues past `a`, so the
+        // path's support is the intersection, not the starting set.
+        let mut g = Graph::new();
+        let k = |i| NodeKey::Interval {
+            start: i,
+            end: i,
+            r_id: 0,
+        };
+        let s = g.add_node(NodeKey::Source);
+        let a = g.add_node(k(1));
+        let t = g.add_node(NodeKey::Sink);
+        g.add_edge(s, a, 0);
+        g.set_edge_support(s, a, 1);
+        g.push_edge_support(s, a, 2);
+        g.add_edge(a, t, 0);
+        g.set_edge_support(a, t, 1);
+        let paths = find_paths(&g, s, t, &[1, 2], &FxHashSet::default());
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].support, vec![1], "2 is dropped at the second edge");
+    }
+
+    #[test]
+    fn new_distance_to_start_is_pythons_str_find() {
+        assert_eq!(new_distance_to_start(b"ACGTACGT", b"GTA"), 2);
+        assert_eq!(
+            new_distance_to_start(b"ACGTACGT", b"ACGT"),
+            0,
+            "first match wins"
+        );
+        assert_eq!(new_distance_to_start(b"ACGTACGT", b"TTT"), -1);
+        assert_eq!(
+            new_distance_to_start(b"AC", b"ACGT"),
+            -1,
+            "needle longer than haystack"
+        );
+        // Python: "abc".find("") == 0
+        assert_eq!(new_distance_to_start(b"ACGT", b""), 0);
+        assert_eq!(new_distance_to_start(b"", b""), 0);
+    }
+
+    #[test]
+    fn remove_edges_lifts_the_whole_bubble_and_drops_the_start_from_each_path() {
+        let (mut g, s, a, b, t) = two_path_bubble();
+        let mut paths = find_paths(&g, s, t, &[1, 2, 3], &FxHashSet::default());
+        assert_eq!(paths[0].nodes, vec![s, a], "before: the start is present");
+
+        let lifted = remove_edges(&mut g, s, t, &mut paths, &FxHashMap::default());
+
+        // Destructive: the bubble start is gone from every path.
+        assert_eq!(paths[0].nodes, vec![a]);
+        assert_eq!(paths[1].nodes, vec![b]);
+
+        // All four bubble edges lifted, and gone from the graph.
+        assert_eq!(lifted.edges.len(), 4);
+        for (u, v) in [(s, a), (a, t), (s, b), (b, t)] {
+            assert!(!g.has_edge(u, v), "edge should have been removed");
+            assert!(
+                lifted.edges.iter().any(|e| e.u == u && e.v == v),
+                "edge should have been recorded"
+            );
+        }
+        // Node set untouched --- the invariant the dumps show holds for the whole
+        // stage.
+        assert_eq!(g.node_count(), 4);
+    }
+
+    #[test]
+    fn lifted_edges_keep_their_length_and_support() {
+        let (mut g, s, a, _b, t) = two_path_bubble();
+        let mut paths = find_paths(&g, s, t, &[1, 2, 3], &FxHashSet::default());
+        let lifted = remove_edges(&mut g, s, t, &mut paths, &FxHashMap::default());
+        let e = lifted.edges.iter().find(|e| e.u == s && e.v == a).unwrap();
+        assert_eq!(e.length, 0);
+        assert_eq!(e.support, vec![1, 2]);
+    }
+
+    #[test]
+    fn a_consensus_hit_gives_the_offset_and_a_miss_falls_back_to_the_read_distance() {
+        let (mut g, s, a, b, t) = two_path_bubble();
+        // Give the nodes end-minimizers and read positions so both branches can
+        // be told apart.
+        g.set_end_mini_seq(a, b"GGGG");
+        g.set_end_mini_seq(b, b"CCCC");
+        g.replace_reads(s, 1, ri(0, 100));
+        g.set_read(s, 2, ri(0, 100));
+        g.set_read(s, 3, ri(0, 100));
+        g.replace_reads(a, 1, ri(0, 140));
+        g.set_read(a, 2, ri(0, 140));
+
+        let mut consensus = FxHashMap::default();
+        // Path 1 starts at `a`: its consensus contains a's minimizer at offset 7.
+        consensus.insert(a, b"TTTTTTTGGGG".to_vec());
+        // Path 2 starts at `b`: consensus lacks b's minimizer, forcing -1.
+        consensus.insert(b, b"TTTTTTT".to_vec());
+
+        let mut paths = find_paths(&g, s, t, &[1, 2, 3], &FxHashSet::default());
+        let lifted = remove_edges(&mut g, s, t, &mut paths, &consensus);
+
+        assert_eq!(
+            lifted.dist(a),
+            Some(7.0),
+            "found in the consensus -> the offset"
+        );
+        // b was not found, so the distance comes from get_dist_to_prev(s, b) ---
+        // and b shares no read position with s beyond read 3, whose positions are
+        // both 100, so the mean shift is 0.
+        assert_eq!(
+            lifted.dist(b),
+            Some(0.0),
+            "-1 -> measured from the bubble start"
+        );
+    }
+
+    #[test]
+    fn the_fallback_always_measures_from_the_bubble_start() {
+        // Finding 13. On a three-node path the second interior node's fallback
+        // distance is measured from the bubble START, not from the node before
+        // it, because `prev_node` never advances. If it chained, the value would
+        // be the sum of the two hops.
+        let mut g = Graph::new();
+        let k = |i| NodeKey::Interval {
+            start: i,
+            end: i,
+            r_id: 0,
+        };
+        let s = g.add_node(NodeKey::Source);
+        let x = g.add_node(k(1));
+        let y = g.add_node(k(2));
+        let other = g.add_node(k(3));
+        let t = g.add_node(NodeKey::Sink);
+        for (u, v, supp) in [
+            (s, x, &[1u32, 2][..]),
+            (x, y, &[1, 2]),
+            (y, t, &[1, 2]),
+            (s, other, &[3]),
+            (other, t, &[3]),
+        ] {
+            g.add_edge(u, v, 0);
+            let mut first = true;
+            for &r in supp {
+                if first {
+                    g.set_edge_support(u, v, r);
+                    first = false;
+                } else {
+                    g.push_edge_support(u, v, r);
+                }
+            }
+        }
+        // Positions: s at 0, x at 10, y at 30. Chaining would give y = 10 + 20;
+        // measuring from the start gives y = 30. Same here --- so make the read
+        // sets differ, which is where the two disagree: read 2 is absent from x.
+        g.set_read(s, 1, ri(0, 0));
+        g.set_read(s, 2, ri(0, 0));
+        g.set_read(x, 1, ri(0, 10));
+        g.set_read(y, 1, ri(0, 30));
+        g.set_read(y, 2, ri(0, 50));
+
+        let mut paths = find_paths(&g, s, t, &[1, 2, 3], &FxHashSet::default());
+        // No consensus at all, so every distance takes the -1 fallback.
+        let lifted = remove_edges(&mut g, s, t, &mut paths, &FxHashMap::default());
+
+        // get_dist_to_prev(s, y) over reads 1 and 2: (30-0) and (50-0) -> mean 40.
+        // Chaining would have given dist(x) + get_dist_to_prev(x, y) = 10 + 20 = 30.
+        assert_eq!(lifted.dist(x), Some(10.0));
+        assert_eq!(
+            lifted.dist(y),
+            Some(40.0),
+            "measured from the bubble start, not chained from x"
+        );
+    }
+
+    #[test]
+    fn a_one_edge_path_records_the_start_to_end_edge() {
+        // A path with no interior node: `pnl_start` falls back to the bubble end.
+        let mut g = Graph::new();
+        let k = |i| NodeKey::Interval {
+            start: i,
+            end: i,
+            r_id: 0,
+        };
+        let s = g.add_node(NodeKey::Source);
+        let a = g.add_node(k(1));
+        let t = g.add_node(NodeKey::Sink);
+        g.add_edge(s, a, 0);
+        g.set_edge_support(s, a, 1);
+        g.add_edge(a, t, 0);
+        g.set_edge_support(a, t, 1);
+        g.add_edge(s, t, 5); // the direct path, read 2
+        g.set_edge_support(s, t, 2);
+
+        let mut paths = find_paths(&g, s, t, &[1, 2], &FxHashSet::default());
+        assert_eq!(paths.len(), 2);
+        let lifted = remove_edges(&mut g, s, t, &mut paths, &FxHashMap::default());
+        assert!(
+            lifted
+                .edges
+                .iter()
+                .any(|e| e.u == s && e.v == t && e.length == 5),
+            "the direct start->end edge is lifted too"
+        );
+        assert!(
+            paths[1].nodes.is_empty(),
+            "the direct path has no interior node"
+        );
     }
 
     #[test]

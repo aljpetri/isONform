@@ -63,6 +63,10 @@ Done so far:
   paths in CPython `set.pop()` order, which decided which path survives a bubble. Replacing it with a
   defined order raised `sirv_real` recall from 70.6% to 72.1% and cut Drosophila `NNC` isoforms from
   12 to 10. Finding 12.
+- **Bubble popping, first half ported**: `find_paths` and `remove_edges` in `rust/src/simplify.rs`,
+  with the reference's destructive `pop(0)` on the caller's paths and its two dead branches
+  reproduced and pinned by tests. 82 unit tests across the crate. `prepare_adding_edges` is next and
+  is the last piece before the stage can be diffed end to end.
 
 Not done: bubble *popping* (`new_bubble_popping_routine`, ~270 lines of in-place mutation plus spoa
 calls), and everything downstream of it. The front half of `main` is also still owed, which is why
@@ -820,7 +824,82 @@ been much harder to diagnose, because unlike the hash seed it does not vary betw
 The port therefore targets the fixed behaviour. Reproducing the old one would have meant
 reimplementing CPython's set table, probing and pop finger in Rust, and then deleting it.
 
-### Finding 10 — smaller things, recorded and not acted on
+### Finding 13 — `remove_edges` never advances `prev_node`, so one branch is unreachable
+
+`remove_edges` (`SimplifyGraph.py:279`) sets `prev_node = bubble_start` once per path and never
+reassigns it. Inside the loop over the path's nodes:
+
+```python
+dist_to_prev = get_dist_to_prev(DG, prev_node, path_node)
+if prev_node == bubble_start:          # always true
+    prev_to_start_dist = 0
+else:
+    prev_to_start_dist = node_distances[prev_node]   # unreachable
+dist = prev_to_start_dist + dist_to_prev
+```
+
+So every node's fallback distance is measured **directly from the bubble start**, never accumulated
+hop by hop, and the `else` branch cannot execute. The comment beside it — "we found the distance to
+the previous node, however we are still missing the distance of the previous node to s" — describes
+chaining that does not happen. The variable, the comment and the dead branch together are strong
+evidence the omission is unintended.
+
+Measured by advancing `prev_node` and comparing:
+
+| `sirv_real`, strict | from the start (current) | chained |
+| --- | --- | --- |
+| isoforms | 108 | 109 |
+| recall | 72.1% (49/68) | 72.1% (49/68) |
+| precision | 83.3% | 83.5% |
+| F1 | 0.773 | 0.774 |
+| redundancy | **1.84** | 1.86 |
+
+| `droso` | from the start | chained |
+| --- | --- | --- |
+| isoforms | 504 | 503 |
+| `FSM` | 443 | 443 |
+| canonical | 0.983 | 0.983 |
+| distinct chains | 357 | 357 |
+
+A wash. Recall identical on SIRV, every SQANTI figure identical on Drosophila, and redundancy
+marginally worse chained. **So the recommendation is not to change the behaviour** — measuring from
+the bubble start accumulates no error and is arguably the better rule — but to delete the dead branch
+and fix the comment, which is a pure no-op cleanup. The port reproduces the current behaviour and
+says so in `simplify.rs`.
+
+Worth noting what this run also settled: the two rules coincide whenever every read supports every
+node on the path (the distances telescope), and diverge only where the read sets differ. That is why
+the effect is small rather than absent.
+
+### Finding 14 — a latent seed dependency in bubble linearisation, and a gap in how it was checked
+
+`find_connecting_edges` returns a **`set` of `(node, node)` tuples**, and node names are *strings*, so
+its iteration order depends on `PYTHONHASHSEED`. `test_conn_end` filters that set into a list and
+`prepare_adding_edges` then takes `conn_list[0]` — so if two connecting edges ever ended at the same
+node, which one is picked would be seed-dependent, and finding 1's fix would be incomplete.
+
+Two things came out of chasing it, and the second is the more useful.
+
+**It is latent, not live.** Instrumented across both real corpora:
+
+| | `sirv_real` | `droso` |
+| --- | --- | --- |
+| `test_conn_end` calls | 14 908 | 21 119 |
+| calls where `conn_edges` was non-empty | 132 | 211 |
+| calls where `conn_list` had **more than one** entry | **0** | **0** |
+
+So the pick is unambiguous on real data and the port can use any order. Recorded because it is a
+one-line change away from mattering, and because a corpus that did reach it would produce
+seed-dependent isoforms with nothing to warn you.
+
+**The gap: the determinism check had been running on a corpus that barely exercises this stage.**
+`bench/corpus/sirv_small` pops a single edge (244 → 243), so "deterministic across 24 seeds" was a
+statement about graph construction and almost nothing about simplification. Re-run on 16 medium
+Drosophila clusters that pop tens of edges each, it is still clean — all 30 output files stable across
+8 seeds — but that was luck rather than evidence until it was checked. **A determinism check is only
+as good as the paths its corpus reaches**, which is worth remembering for every stage still to come.
+
+### Finding 15 — smaller things, recorded and not acted on
 
 - `main`'s window check is `if 100 < args.w or args.w < args.k` but its message reads "smaller than
   100"; `--w 100` is accepted. Off-by-one between check and message.
@@ -1213,7 +1292,7 @@ change output need a measurement first.
 - **`--exact` is passed on every child invocation and does nothing**, and the parallel driver's
   `--exact_instance_limit` default of 50 therefore also does nothing. Once `--exact` means something
   again — if it should — these defaults need revisiting.
-- **Stray debug prints** (finding 4) and the unused `from ast import Param` (finding 10): one-line
+- **Stray debug prints** (finding 4) and the unused `from ast import Param` (finding 15): one-line
   deletions, but the prints are on stdout so goldens move with them.
 - **`["python", ...]`** → `[sys.executable, ...]` in `isONform_parallel:79`. Pure bug fix; in the
   Rust port the equivalent is to re-exec the running binary by its own path, not by name on `PATH`.
