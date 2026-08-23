@@ -137,7 +137,20 @@ def find_paths(DG, startnode, endnode, support, all_paths, marked):
     # we iterate as long as still not all support was allocated to a path
     while node_support_left:
         node = startnode
-        read = node_support_left.pop()
+        # Take the lowest read id, NOT set.pop(). pop() returns whichever entry
+        # CPython's set table happens to hold first, which is deterministic for a
+        # given set of ints but arbitrary -- and it decides the order paths are
+        # appended to all_paths, which decides which path becomes path1 and which
+        # path2 in the popping routine below. So an implementation detail of
+        # CPython's set was choosing how bubbles get linearised, and the output
+        # would change silently if that detail ever did.
+        #
+        # Measured on real data, a defined order is also slightly better:
+        # sirv_real recall 72.1% against 70.6% (49 of 68 reference transcripts
+        # against 48) and F1 0.773 against 0.759; on Drosophila, NNC isoforms
+        # 12 -> 10 with FSM unchanged at 443. See PORTING.md.
+        read = min(node_support_left)
+        node_support_left.discard(read)
         current_node_support = node_support_left
         current_node_support.add(read)
         visited_nodes = []
