@@ -207,6 +207,35 @@ jobs:
               cargo test --manifest-path rust/Cargo.toml --release \
               --test batch_merge_oracle -- --nocapture
 
+      # The end-to-end check. Every step above replays *recorded* reference
+      # inputs through one Rust function, so none of them covers the code that
+      # turns one stage's output into the next stage's input. This runs both
+      # whole programs and diffs all four output files. PORTING.md finding 33 is
+      # a bug that passed all seven stage oracles and every corpus, and only this
+      # caught it.
+      - name: End-to-end vs the reference
+        shell: bash -el {0}
+        run: |
+          cargo build --manifest-path rust/Cargo.toml --release
+          # Single batch: must agree exactly. sirv_small is small enough that
+          # finding 28's set-order divergence does not arise on it.
+          python bench/compare_end_to_end.py \
+              --fastq-folder bench/corpus/sirv_small \
+              --workdir "$RUNNER_TEMP/e2e" --parallel
+          # Several batches. --max_seqs defaults to 1000, so every cluster in
+          # every corpus here is one batch --- and a single batch cannot tell a
+          # per-batch quantity from a per-file one, which is exactly the mistake
+          # finding 33 was. Forcing four batches is the whole point of this step.
+          #
+          # One cluster is allowed to disagree: batch 1 renames a single isoform
+          # id under finding 28's set-order divergence, with every consensus
+          # sequence identical. Anything beyond that is a wiring bug, not a
+          # known divergence --- do not raise this number without a PORTING.md
+          # entry justifying it.
+          python bench/compare_end_to_end.py \
+              --fastq-folder bench/corpus/sirv_small \
+              --workdir "$RUNNER_TEMP/e2e4" --limit 1 --max-disagreeing 1 \
+              --extra --max_seqs 25
       - name: Stage oracles (graph, simplification, spoa, parasail)
         shell: bash -el {0}
         run: |

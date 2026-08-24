@@ -82,7 +82,9 @@ feels necessary.
 
 ## The oracles
 
-Seven, all replaying recorded reference behaviour through the Rust port:
+Seven replay recorded reference behaviour through one Rust function each. An
+eighth, `compare_end_to_end.py`, runs both whole programs and diffs what lands on
+disk — see below; it is the only one that tests the *wiring between* stages.
 
 ```bash
 bench/dump_reference.py --fastq-folder bench/corpus/sirv_small --outdir /tmp/d \
@@ -206,6 +208,62 @@ iterates `curr_best_seqs.items()`, so `equal_reads`' insertion order decides how
 equal-length consensuses tie-break in the merge scan. Sorting them in the dump
 made the oracle replay an order the reference never used — and hid two real
 merging disagreements until it was fixed.
+
+## `compare_end_to_end.py` — the one that tests the wiring
+
+```bash
+bench/compare_end_to_end.py --fastq-folder bench/corpus/sirv_small \
+    --workdir /tmp/e2e --parallel
+```
+
+Runs `main` and `rust/target/release/main` on the same cluster and diffs all four
+outputs. Exits non-zero on any disagreement.
+
+**Why it exists, when seven oracles already pass.** Each stage oracle replays
+*recorded reference inputs* through one function. That makes them sharp — a
+failure localises to a single stage — but it means no oracle owns the code that
+computes one stage's input from the previous stage's output. A driver can pass
+every stage oracle and still be wrong. That is not hypothetical: finding 33 is
+exactly this, a driver that fed the graph the batch's read lengths where the
+reference feeds it the whole file's. Seven green oracles, every corpus green, and
+batches 1–3 of a split cluster collapsing to one isoform per read.
+
+**Run it on a cluster that splits.** The default `--max_seqs` is 1000, so every
+cluster in every corpus here is a single batch, and a single batch hides an entire
+class of bug — anything that confuses a per-batch quantity with a per-file one.
+Forcing several batches is one flag:
+
+```bash
+bench/compare_end_to_end.py --fastq-folder bench/corpus/sirv_small \
+    --workdir /tmp/e2e4 --limit 1 --extra --max_seqs 25
+```
+
+**Three of the four outputs are Python pickles** (`{id}_batch`, `spoa{id}`,
+`mapping{id}`); the port writes the same content as TSV, because a Rust binary has
+no business emitting pickles. The script unpickles the reference's side rather than
+comparing bytes. `skip{id}.fa` is text on both sides and *is* compared as bytes.
+
+**What a clean run looks like today.** `sirv_small` 2/2. The two Drosophila
+corpora disagree on 16 of 56 and 12 of 56 — and those are exactly the counts the
+isoform oracle attributes to finding 28's set-order divergence on the same corpora
+at the same `--k`/`--w`. Matching counts is the check that keeps this honest: it
+says the end-to-end divergence is entirely the one divergence already accepted and
+measured, with nothing unexplained hiding behind it. If that number ever exceeds
+the isoform oracle's, the excess is a wiring bug.
+
+## Regenerate dumps after touching the dumper
+
+A dump is a recording, so it does not go stale when the *port* changes — but it
+absolutely does when the *recorder* changes. The `Q`-record ordering fix below
+landed 40 minutes after a set of isoform dumps was written, and re-running the
+oracle against the old directory reported two merging failures that did not exist.
+The tell was that replaying the reference's own recorded input through the
+*reference* reproduced only 84 of its own 90 consensuses — when the reference
+cannot reproduce itself, the dump is wrong, not the port. That check costs one
+script and settles the question immediately; reach for it before reading any Rust.
+
+Delete and regenerate rather than reusing a directory whose provenance you are not
+sure of.
 
 ## One mistake this harness has made three times: sorting a dump
 

@@ -161,16 +161,38 @@ corpus_droso() {
 
 # `run_one CORPUS IMPL_DIR TAG [SEED]`
 #
-# IMPL_DIR is a directory holding `main` and `isONform_parallel` — the repository
-# root for the current code, or a `git archive` extraction of any commit to
-# compare against. That is how a before/after measurement is made without
-# touching the working tree.
+# IMPL_DIR is a directory holding `main` and the parallel driver — the repository
+# root for the Python reference, a `git archive` extraction of any commit, or
+# `rust/target/release` for the port. That is how a before/after measurement is
+# made without touching the working tree.
+#
+# Which of the two it is decided by *content*, not filename: macOS mounts a
+# case-insensitive filesystem by default, so `$impl/isonform_parallel` happily
+# resolves to the repository's `isONform_parallel` and a name test would call
+# the Python reference a native build. `impl_entry` reads the first two bytes
+# and looks for `#!` instead.
+impl_entry() {
+  local impl="$1" p
+  for p in "$impl/isONform_parallel" "$impl/isonform_parallel"; do
+    [[ -f "$p" ]] || continue
+    if head -c 2 "$p" 2>/dev/null | grep -q '#!'; then
+      printf 'python\t%s\n' "$p"
+    else
+      printf 'native\t%s\n' "$p"
+    fi
+    return 0
+  done
+  return 1
+}
+
 run_one() {
   local corpus="$1" impl="$2" tag="$3" seed="${4:-0}"
   local src="$WORK/$corpus/corrected"
   local out="$WORK/eval/${corpus}__${tag}"
   [[ -d "$src" ]] || die "corpus '$corpus' not built; run: bench/evaluate.sh corpora"
-  [[ -x "$impl/isONform_parallel" ]] || die "no isONform_parallel in $impl"
+  local kind entry
+  IFS=$'\t' read -r kind entry < <(impl_entry "$impl") \
+    || die "no isONform_parallel or isonform_parallel in $impl"
 
   rm -rf "$out"; mkdir -p "$out"
   # isONform_parallel's restructure_isoncorrect_output() MUTATES its input
@@ -179,12 +201,21 @@ run_one() {
   # private copy, or the second run would see a different input from the first.
   cp -R "$src" "$out/in"
 
-  note "$corpus / $tag  (impl=$impl seed=$seed)"
+  note "$corpus / $tag  (impl=$impl kind=$kind seed=$seed)"
   local start end
   start=$("$PY_BIN" -c 'import time;print(time.time())')
-  ( cd "$impl" && PYTHONHASHSEED="$seed" "$PY_BIN" isONform_parallel \
-      --fastq_folder "$out/in" --outfolder "$out/out" --t "$THREADS" \
-      --split_wrt_batches --iso_abundance "$ISO_ABUNDANCE" ) >"$out/log" 2>&1
+  if [[ "$kind" == python ]]; then
+    ( cd "$impl" && PYTHONHASHSEED="$seed" "$PY_BIN" "$entry" \
+        --fastq_folder "$out/in" --outfolder "$out/out" --t "$THREADS" \
+        --split_wrt_batches --iso_abundance "$ISO_ABUNDANCE" ) >"$out/log" 2>&1
+  else
+    # No PYTHONHASHSEED: the port has no seeded hash to pin, which is the
+    # point of finding 28's ascending order. `seed` is still recorded so the
+    # two implementations' rows line up in runs.tsv.
+    ( cd "$impl" && "$entry" \
+        --fastq_folder "$out/in" --outfolder "$out/out" --t "$THREADS" \
+        --split_wrt_batches --iso_abundance "$ISO_ABUNDANCE" ) >"$out/log" 2>&1
+  fi
   local ec=$?
   end=$("$PY_BIN" -c 'import time;print(time.time())')
 

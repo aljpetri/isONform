@@ -1588,6 +1588,112 @@ per-batch loop in `join_back_via_batch_merging`, and opens its output files with
 each rewriting the whole thing. The last write wins and the content is identical,
 so it is wasted work rather than a wrong answer.
 
+### Finding 33 — the sink's read lengths belong to the wrong reads, in every batch
+
+`main` builds the length table once, over the whole file:
+
+```python
+read_len_dict = get_read_lengths(all_reads)        # main:530, keys 1..N over the file
+DG, reads_for_isoforms = GraphGeneration.generateGraphfromIntervals(
+    all_intervals_for_graph, k_size, delta_len, read_len_dict, new_all_reads)
+```
+
+and `generateGraphfromIntervals` walks it densely and uses the counter as a *read
+id*:
+
+```python
+for i in range(1, len(read_len_dict) + 1):                      # GraphGeneration:282
+    reads_at_end_dict[i] = Read_infos(read_len_dict[i], read_len_dict[i], True)
+```
+
+But the graph does not speak in file read ids. It speaks in **graph ids**, which
+`main` restarts at 1 for every batch and assigns only to reads that survived the
+interval filter. So `i` is a graph id on the left of that assignment and a file read
+id on the right, and the two coincide only when the file has exactly one batch and
+no read was ever skipped.
+
+Measured on `sirv_small`'s 100-read cluster at `--max_seqs 25`, four batches:
+
+| batch | reads in the graph | entries on the sink | phantom | graph ids whose length is another read's |
+|---|---|---|---|---|
+| 0 | 17 | 100 | 83 | **17 of 17** |
+| 1 | 20 | 100 | 80 | **19 of 20** |
+| 2 | 19 | 100 | 81 | **17 of 19** |
+| 3 | 22 | 100 | 78 | **21 of 22** |
+
+In all four batches 100 of 100 sink entries equal the length of the *file's* read of
+that id, which is what pins the mechanism rather than merely fitting it. Note the
+first row: this is not a multi-batch bug that a single-batch corpus escapes. Batch 0
+is wrong too — 17 reads had intervals out of 25, so graph id 3 is already not file
+read 3. What a single batch escapes is only the *large* version, where the ids
+address a different part of the file entirely.
+
+Two separate consequences, and it is worth keeping them apart:
+
+* **phantom entries** — the sink carries a read set larger than the graph's, 100
+  against 17–22 here. This was already recorded under finding 22 from the
+  single-batch case;
+* **wrong lengths** — the entries that *do* correspond to a real graph id mostly
+  carry some other read's length. That is new, and it is the more serious half,
+  because `start_mini_end`/`end_mini_start` on the sink are positions.
+
+Reproduced, not repaired. Repairing it means choosing what the table was *meant* to
+be keyed by, and both candidates change output: keyed by graph id over
+`new_all_reads` the phantom entries vanish, keyed by file read id the sink stops
+being indexable by graph id at all. That is an upstream design decision.
+
+**This one bit the port.** The first version of the driver derived the lengths from
+the batch rather than the file — a reading of "all reads" that is right in English
+and wrong here. Every stage oracle still passed, because each replays *recorded*
+inputs and none of them owns this wiring; and every corpus passed, because each
+cluster fit in one batch, where the port's per-batch table and the reference's
+whole-file table agree on the keys that get looked up. It took running both programs
+end to end on a cluster forced into four batches to see it: batch 0 agreed, and
+batches 1–3 collapsed to roughly one isoform per read (reference 6, 9, 3 against the
+port's 16, 16, 17), because graph ids 1..20 were absent from a table keyed 26..50 and
+every lookup missed. `driver.rs`'s `read_lengths_span_the_whole_file_not_the_batch`
+pins it, and fails if the parameter is ever re-derived per batch.
+
+### Finding 34 — under `--parallel` every batch overwrites the previous batch's output
+
+`main` derives its output filenames from the *input filename* when `--parallel` is
+given, and from the loop index otherwise:
+
+```python
+if args.parallel:                                   # main:373-378, before the loop
+    p_batch_id = args.fastq.split("/")[-1].split("_")[-1].split(".")[0]
+    skipfilename = "skip" + p_batch_id + ".fa"
+
+for batch_id, reads in enumerate(batch(all_reads, args.max_seqs)):
+    if args.parallel:
+        batch_pickle = str(p_batch_id) + "_batch"   # constant across batches
+    else:
+        batch_pickle = str(batch_id) + "batch"
+        skipfilename = "skip" + str(batch_id) + ".fa"
+```
+
+and again for the isoform half, `batch_id = p_batch_id` at `main:572`. `p_batch_id`
+does not change as the loop runs, so all four output files — `{id}_batch`,
+`skip{id}.fa`, `spoa{id}`, `mapping{id}` — are the same four names on every
+iteration, opened with `'w'`. A cluster split into several batches keeps only the
+last one; the earlier batches are computed in full and then overwritten, silently.
+
+Measured on the same 100-read cluster at `--max_seqs 25`:
+
+```
+--parallel True   ->  0_batch  mapping0  skip0.fa  spoa0                     (4 files)
+(no --parallel)   ->  0batch..3batch  mapping0..3  skip0.fa..skip3.fa  spoa0..3  (16)
+```
+
+Four batches ran in both cases — the reference prints `Working on 25 reads in a
+batch` four times either way.
+
+This matters because `--parallel` is not an unusual mode: `isONform_parallel` passes
+it on every child invocation. It is invisible on the corpora anyone tests with,
+because `--max_seqs` defaults to 1000 and clusters that large are rare, and the loop
+then runs once. Reproduced: the port writes the batches in order and lets the last
+truncate the rest, which leaves the same files with the same contents.
+
 ### Finding 22 — smaller things, recorded and not acted on
 
 - `main`'s window check is `if 100 < args.w or args.w < args.k` but its message reads "smaller than
@@ -1606,7 +1712,9 @@ so it is wasted work rather than a wrong answer.
   `sirv_small`. The source node is keyed correctly (`graph_id` starts at 1, so there is *no*
   off-by-one there — checked, because there looked like one). Whether the phantom entries matter
   depends on how `SimplifyGraph` uses `DG.nodes[node]['reads']` for the sink, which is the next stage
-  to port; reproduced faithfully until then.
+  to port; reproduced faithfully until then. **Superseded by finding 33**, which shows the phantom
+  entries are the lesser half of this: the entries that *do* name a real graph id mostly carry a
+  different read's length.
 - A nonexistent `--fastq` crashes with a `FileNotFoundError` traceback (exit 1) rather than a
   diagnostic.
 
