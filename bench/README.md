@@ -243,7 +243,23 @@ bench/compare_end_to_end.py --fastq-folder bench/corpus/sirv_small \
 no business emitting pickles. The script unpickles the reference's side rather than
 comparing bytes. `skip{id}.fa` is text on both sides and *is* compared as bytes.
 
-**What a clean run looks like today.** `sirv_small` 2/2. The two Drosophila
+**Both entry points.** `--entry main` runs one process per cluster and diffs the
+four per-batch intermediates. `--entry parallel` runs `isONform_parallel` once
+over the whole folder and diffs every file it leaves behind — the per-cluster
+`cluster*_merged.fa`, `cluster*_mapping.txt` and `support_*.txt`, and the three
+concatenated `transcriptome*` files. All of those are plain text, so that one is a
+straight byte comparison with no unpickling. The per-batch intermediates do not
+survive a parallel run: `remove_folders` deletes every cluster subdirectory at the
+end.
+
+Worth running the parallel one with `--extra --split_wrt_batches --max_seqs 25`
+as well. That is the only path on which `--max_seqs` does anything at all
+(finding 37), and the only way a cluster ends up with more than one batch file to
+read back — which is also what exposes that record order is `readdir(3)` order
+(finding 38).
+
+**What a clean run looks like today.** `sirv_small` 2/2 on both entry points, and
+on the split parallel run. The two Drosophila
 corpora disagree on 16 of 56 and 12 of 56 — and those are exactly the counts the
 isoform oracle attributes to finding 28's set-order divergence on the same corpora
 at the same `--k`/`--w`. Matching counts is the check that keeps this honest: it

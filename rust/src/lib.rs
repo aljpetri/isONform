@@ -21,6 +21,7 @@ pub mod graph_build;
 pub mod intervals;
 pub mod isoforms;
 pub mod minimizers;
+pub mod parallel;
 pub mod parasail;
 pub mod poa;
 pub mod reads;

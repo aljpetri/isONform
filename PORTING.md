@@ -1694,6 +1694,125 @@ because `--max_seqs` defaults to 1000 and clusters that large are rare, and the 
 then runs once. Reproduced: the port writes the batches in order and lets the last
 truncate the rest, which leaves the same files with the same contents.
 
+### Finding 35 — `--iso_abundance` discards silently, because `write_low_abundance` is a local
+
+`isONform_parallel.main` opens with
+
+```python
+write_low_abundance = False
+```
+
+and never assigns it again. No command-line flag reaches it — there is no
+`--write_low_abundance` in the parser at all. It is then passed down to
+`join_back_via_batch_merging` and `generate_full_output`, so:
+
+* every isoform with fewer than `--iso_abundance` (default **5**) supporting reads
+  is written **nowhere** — not to a low-abundance file, not to a log, nothing;
+* the entire low-abundance half of `write_final_output` is unreachable from this
+  entry point, including finding 32's always-1 support count. That finding stands
+  — it is reachable through `batch_merging_parallel` directly — but it cannot be
+  triggered by running the tool.
+
+Measured on `sirv_small`: `main` produces 52 isoforms for cluster 0, and the
+default `--iso_abundance 5` leaves exactly **one** in `cluster0_merged.fa`. The
+other 51 leave no trace anywhere in the output folder. Whether that is the
+intended cutoff behaviour is a product question; that it is unconfigurable is not
+obvious from `--help`, which describes `--iso_abundance` as a cutoff without
+saying the remainder is dropped.
+
+Reproduced, flag and all.
+
+### Finding 36 — the parallel entry point rewrites its **input** folder in place
+
+`restructure_isoncorrect_output(args.fastq_folder)` is the first thing
+`main` calls. If the folder contains no files at the top level, it treats it as
+isONcorrect output and:
+
+```python
+shutil.move(source_file, target_file)      # subdir/corrected_reads.fastq -> subdir.fastq
+...
+Parallelization_side_functions.remove_folders(directory)   # rmtree every subdirectory
+```
+
+That is a **move**, not a copy, followed by `shutil.rmtree` on every subdirectory
+of the input folder — whatever else those subdirectories contained. The decision
+rests on a single test: "are there zero files at the top level". A folder of
+per-sample subdirectories that happens to have no loose files at the top qualifies,
+whether or not it has anything to do with isONcorrect.
+
+This is load-bearing — it is how isONcorrect's output is fed in — so it is
+reproduced. It is recorded here because "run the tool on a folder" reading as "the
+tool may delete that folder's subdirectories" is not something a `--help` line
+prepares anyone for, and because a port that quietly made it non-destructive would
+break the pipeline it exists for.
+
+### Finding 37 — seven of `isONform_parallel`'s flags do nothing
+
+The subprocess call is where most of them are lost. `isONform_algorithm_params`
+collects eleven settings, and the `subprocess.check_call` that follows passes only
+some of them; `--max_seqs` is present but **commented out**:
+
+```python
+["python", isONform_exec, "--fastq", read_fastq_file, "--outfolder", outfolder,
+ "--exact_instance_limit", ..., #"--max_seqs", str(isONform_algorithm_params["max_seqs"]),
+ "--k", ..., "--w", ..., "--xmin", ..., "--xmax", ..., "--delta_len", ...,
+ "--exact", "--parallel", "True", "--delta_iso_len_3", ..., "--delta_iso_len_5", ...]
+```
+
+Measured rather than read off — each run against the default on `sirv_small`,
+comparing every output file:
+
+| flag | effect on output | why |
+| --- | --- | --- |
+| `--max_seqs 10` | **none** *(unless `--split_wrt_batches`)* | commented out of the subprocess call, so `main` uses its own default of 1000. With `--split_wrt_batches` it *is* live — it controls file splitting: 20 instances against 2. |
+| `--set_w_dynamically` | **none** | collected into the params dict, never passed |
+| `--delta 0.9` | **none** | only reaches `actual_merging_process`, which is a no-op (finding 31) |
+| `--max_seqs_to_spoa 2` | **none** | same — only the no-op merging |
+| `--verbose` | **none** | never read by anything on this path |
+| `--keep_old` | **none** | see below |
+| `--exact_instance_limit 100000` | **none** | passed to `main`, which ignores it (finding 3) |
+
+`--keep_old` deserves its own line, because it is not merely unpassed — it is
+checked against a file that does not exist:
+
+```python
+candidate_corrected_file = os.path.join(outfolder, "isoforms.fastq")
+if os.path.isfile(candidate_corrected_file): ...
+```
+
+`isoforms.fastq` appears exactly once in the whole codebase: on that line. Nothing
+writes it. So `os.path.isfile` is always false, `compute` stays true, and
+`--keep_old` can never skip anything — the resume feature it advertises has never
+worked. The intended name was probably `corrected_reads.fastq` (what the isONcorrect
+script this was adapted from produced) or one of the `cluster*_merged.*` files.
+
+All seven reproduced, since a port that made them live would change results.
+
+### Finding 38 — output record order is filesystem directory order
+
+Two places read a directory and use the order they get, unsorted:
+
+```python
+for batchfile in os.listdir(cl_dir):                        # batch_merging_parallel:235
+subfolders = [f.path for f in os.scandir(outfolder) if f.is_dir()]   # side_functions
+```
+
+The first decides the insertion order of `all_infos_dict`, which is the order
+isoforms appear in `cluster{n}_merged.fa`; the second decides the order clusters
+are concatenated into `transcriptome.fasta`. Neither is sorted, so both are
+`readdir(3)` order.
+
+Visible as soon as a cluster has more than one batch. On `sirv_small` with
+`--split_wrt_batches --max_seqs 25`, cluster 0's four batches come out in the order
+`0_2_2, 0_0_2, 0_1_1, 0_3_1` — batch 2 first.
+
+The port uses `std::fs::read_dir`, which is the same `readdir(3)` order, and the
+two agree file-for-file on every corpus tested including that split run. They would
+not be guaranteed to agree across different filesystems, but neither would two runs
+of the reference. Recorded as a property of the tool rather than a port risk:
+`transcriptome.fasta`'s record order is not reproducible across machines, and
+anything downstream that diffs it needs to sort first.
+
 ### Finding 22 — smaller things, recorded and not acted on
 
 - `main`'s window check is `if 100 < args.w or args.w < args.k` but its message reads "smaller than

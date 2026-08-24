@@ -236,6 +236,21 @@ jobs:
               --fastq-folder bench/corpus/sirv_small \
               --workdir "$RUNNER_TEMP/e2e4" --limit 1 --max-disagreeing 1 \
               --extra --max_seqs 25
+          # The other entry point. isONform_parallel fans out over the folder,
+          # then reads every cluster back and concatenates it --- code that the
+          # per-cluster comparison above never touches. Everything it leaves on
+          # disk is plain text, so this is a byte comparison.
+          python bench/compare_end_to_end.py --entry parallel \
+              --fastq-folder bench/corpus/sirv_small \
+              --workdir "$RUNNER_TEMP/pe"
+          # And with the splitting path on, which is the only way --max_seqs
+          # does anything at all (PORTING.md finding 37) and the only way a
+          # cluster gets more than one batch file to read back.
+          python bench/compare_end_to_end.py --entry parallel \
+              --fastq-folder bench/corpus/sirv_small \
+              --workdir "$RUNNER_TEMP/pe_split" \
+              --extra --split_wrt_batches --max_seqs 25
+
       - name: Stage oracles (graph, simplification, spoa, parasail)
         shell: bash -el {0}
         run: |

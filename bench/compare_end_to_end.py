@@ -19,6 +19,7 @@ than comparing bytes. `skip{id}.fa` is text in both and *is* compared as bytes.
 """
 import argparse
 import os
+import re
 import pickle
 import subprocess
 import sys
@@ -107,6 +108,80 @@ def first_diff(a, b):
     return ""
 
 
+def compare_parallel(args, root):
+    """Run `isONform_parallel` both ways over one folder and diff the output.
+
+    Everything this entry point leaves behind is plain text --- the per-cluster
+    `cluster*_merged.fa`, `cluster*_mapping.txt` and `support_*.txt`, and the
+    three concatenated `transcriptome*` files --- so this is a straight byte
+    comparison. The per-batch intermediates do not survive: `remove_folders`
+    deletes every cluster subdirectory at the end of the run.
+    """
+    ref_dir = os.path.join(args.workdir, "ref")
+    port_dir = os.path.join(args.workdir, "port")
+    for d in (ref_dir, port_dir):
+        os.makedirs(d, exist_ok=True)
+
+    common = [
+        "--fastq_folder", os.path.abspath(args.fastq_folder),
+        "--k", str(args.k), "--w", str(args.w),
+    ] + list(args.extra)
+    port_exe = os.path.join(root, os.path.dirname(args.port), "isonform_parallel")
+
+    r1 = subprocess.run(
+        [args.python, os.path.join(root, "isONform_parallel"), *common,
+         "--outfolder", ref_dir],
+        capture_output=True, cwd=root,
+        env={**os.environ, "PYTHONHASHSEED": "0"},
+    )
+    r2 = subprocess.run(
+        [port_exe, *common, "--outfolder", port_dir], capture_output=True, cwd=root,
+    )
+    if r1.returncode or r2.returncode:
+        print(f"run failed: reference exit {r1.returncode}, port exit {r2.returncode}")
+        print(r2.stderr.decode()[-2000:])
+        return 1
+
+    ref_files = sorted(os.listdir(ref_dir))
+    port_files = sorted(os.listdir(port_dir))
+    problems = []
+    for name in sorted(set(ref_files) | set(port_files)):
+        a = os.path.join(ref_dir, name)
+        b = os.path.join(port_dir, name)
+        if not os.path.exists(a):
+            problems.append(f"{name}: only the port wrote it")
+        elif not os.path.exists(b):
+            problems.append(f"{name}: only the reference wrote it")
+        elif open(a, "rb").read() != open(b, "rb").read():
+            problems.append(f"{name}: contents differ")
+
+    print(
+        f"parallel end-to-end: {len(ref_files)} reference file(s), "
+        f"{len(ref_files) - len([p for p in problems])} identical, "
+        f"{len(problems)} differ"
+    )
+    for p in problems[:20]:
+        print(f"  {p}")
+    # A differing cluster shows up as several files (consensus, mapping,
+    # support) plus the three aggregates, so count clusters, not files.
+    clusters = set()
+    for p in problems:
+        m = re.match(r"(?:cluster|support_)(\d+)", p)
+        if m:
+            clusters.add(m.group(1))
+    if clusters:
+        print(f"  {len(clusters)} cluster(s) involved: {' '.join(sorted(clusters, key=int))}")
+    if len(clusters) > args.max_disagreeing:
+        print(
+            f"FAIL: {len(clusters)} disagreeing cluster(s), at most "
+            f"{args.max_disagreeing} expected", file=sys.stderr,
+        )
+        return 1
+    if clusters:
+        print(f"({len(clusters)} disagreeing, within the {args.max_disagreeing} allowed)")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fastq-folder", required=True)
@@ -114,7 +189,16 @@ def main():
     ap.add_argument("--port", default="rust/target/release/main")
     ap.add_argument("--python", default=sys.executable)
     ap.add_argument("--parallel", action="store_true",
-                    help="pass --parallel True, as isONform_parallel does")
+                    help="main entry only: pass --parallel True, as "
+                         "isONform_parallel does")
+    ap.add_argument(
+        "--entry", choices=("main", "parallel"), default="main",
+        help="which entry point to compare. `main` runs one process per cluster "
+             "and diffs the four per-batch intermediates. `parallel` runs "
+             "isONform_parallel once over the whole folder and diffs every file "
+             "it leaves behind --- all of which are plain text, so that is a "
+             "byte comparison with no unpickling.",
+    )
     ap.add_argument("--k", type=int, default=20)
     ap.add_argument("--w", type=int, default=31)
     ap.add_argument("--limit", type=int, default=0)
@@ -135,6 +219,8 @@ def main():
     args = ap.parse_args()
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if args.entry == "parallel":
+        sys.exit(compare_parallel(args, root))
 
     fastqs = sorted(
         f for f in os.listdir(args.fastq_folder) if f.endswith((".fastq", ".fq"))
