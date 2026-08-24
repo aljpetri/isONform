@@ -105,9 +105,19 @@ Done so far:
   orders the candidates lexicographically, matching finding 1's precedent. This also means finding 1's
   "fixed" was a claim about one cause, not about the tool.
 
-Not done: **1** failure left in the holdout corpus. `simplify_0051` shows many surplus synthetic
-reads, the signature of extra pops, so likely another poppability divergence — the same shape pre-fix
-`0054` had. Nothing downstream of simplification (isoform generation, batch merging) is started.
+- **parasail is now verified on isONform's inputs too, and that found finding 25.** `--record-parasail`
+  writes the cases; 54 884 unique calls from 56 Drosophila clusters. 12 outright **score** errors,
+  now 0 — the port's semi-global scan admitted an "align nothing" end cell that parasail excludes.
+  That also closed what finding 24 had called a *structural* residual. My earlier note that "the
+  parasail side needs no such caveat" was wrong on both counts.
+
+Not done: **1** failure left in the holdout corpus, and its cause is known rather than suspected.
+`simplify_0051` turns on a CIGAR the port reports differently from parasail — an equally *optimal*
+alignment, but `parse_cigar_diversity` reads the CIGAR and not the score, and the reference's
+`div = 0.2055` against a `0.2000` threshold flips. 112 of 54 884 CIGARs differ this way (2.1% on
+`sirv_small`), all of them provably optimal; two of them flip a poppability verdict. Closing it needs
+parasail's end-cell tie-break modelled exactly — see finding 25. Nothing downstream of simplification
+(isoform generation, batch merging) is started.
 
 ### The simplification port did not converge, and the oracle is what found it
 
@@ -1232,28 +1242,74 @@ involving the catch-all — and using it at all five scoring sites. The CIGAR *o
 from byte equality, which is not an inconsistency: parasail emits `=` for two identical characters
 even when the matrix scores them 0, so `X` against `X` is a zero-scoring `=`.
 
-**A residual, measured rather than waved off.** With every cell scoring 0 there is no unique optimal
-alignment, and the port's traceback does not reproduce parasail's choice: parasail keeps at least one
-diagonal, the port emits pure gaps (`17I18D` against `16I1=17D`). No setting of `TieBreak`
-reproduces it — all 24 combinations swept — so it is structural, not a parameter, and
-`TieBreak::PARASAIL`'s `column_first`/`last_max` stay unpinned because pinning them would not close
-it. Over all-`X` pairs of lengths 1..=30 against the real library, `delta_perc = 0.20` and
-`delta_len` in {1, 3, 5, 10, 18, 40}:
+**A residual, measured rather than waved off — and then found to be nothing of the kind.** With every
+cell scoring 0 there is no unique optimal alignment, and the port's traceback did not reproduce
+parasail's choice: `17I18D` against `16I1=17D`. No setting of `TieBreak` reproduced it (all 24 swept),
+so this was written up as **structural**. It was not: **finding 25 closed it**, and the missing piece
+was not in `TieBreak` at all but in the end-cell scan admitting cells that consume none of one
+sequence. The all-`X` comparison now matches parasail exactly.
 
-| | |
-| --- | --- |
-| score agrees | 900 / 900 |
-| CIGAR agrees | 0 / 900 |
-| `parse_cigar_diversity` **verdict** agrees | 5 282 / 5 400 |
-
-118 of 5 400 would decide a bubble differently, all with one side very short. Not zero, not claimed
-to be; bounded, pinned by tests
-(`degenerate_ties_do_not_reproduce_parasails_traceback`), and the simplification oracle is what
-would surface a case reaching it.
+The lesson is the same one finding 14 taught: "swept the parameter space and nothing fits" bounds the
+*parameter space*, not the problem. Concluding "structural" from it was a category error, and it sat
+in this file for one commit.
 
 Worth carrying elsewhere: **isONcorrect's port has the same aligner and may have the same bug.** It
 would only fire on non-`ACGT` input, so whether it is reachable there depends on whether anything
 upstream can emit one; that has not been checked.
+
+### Finding 25 — parasail's semi-global mode will not take the free all-gap path. **Port bug, score half fixed.**
+
+A second port defect in `parasail.rs`, found the same way as finding 24 and with the same shape: a
+reference behaviour nobody would guess, in a function described as needing no verification.
+
+`parasail_sg` scans the last row and last column for the best score and tracebacks from there. The
+port scanned **from index 0**, which admits end cell `(n, 0)` — reached by consuming all of `s1` as a
+free leading gap and none of `s2` — and its mirror `(0, m)`. Both score 0. parasail excludes them, so
+it insists on at least one diagonal step even when every real alignment scores below zero:
+
+```text
+m = parasail.matrix_create("ACGT", 2, -2)
+sg("A",    "C")    -> -2  "1X"          not 0
+sg("AAAA", "CCCC") -> -2  "3I1X3D"      not 0
+sg("AC",   "CA")   ->  2  "1I1=1D"      one pair does match
+```
+
+Only gaps in row 0 / column 0 and gaps after the end cell are free; gaps in between are charged,
+which is what makes one mismatch cheaper than walking the border. Fixed by starting both scans at 1.
+
+**Measured, on 54 884 unique parasail calls recorded from 56 real Drosophila clusters:**
+
+| | before | after |
+| --- | --- | --- |
+| score mismatches | **12** | **0** |
+| CIGAR mismatches | 136 | 112 |
+
+The score is now exact and gated as such. It also closed what finding 24 had recorded as a
+*structural* residual: the all-`X` placeholder comparison now gives parasail's `16I1=17D` rather than
+the port's pure-gap `17I18D`. One cause, both symptoms — and the "no `TieBreak` setting reproduces it,
+so it is structural" conclusion was premature, because the missing piece was not in `TieBreak` at all.
+
+**What remains, and it is not closed.** 112 of 54 884 CIGARs still differ, and the rate is
+corpus-dependent — 0.20% there, **2.1%** (35 of 1 665) on `sirv_small`. parasail resolves a tie among
+equally-scoring end cells by a rule this port does not reproduce, and none of the 48 `TieBreak`
+settings does either: swept over the full corpus, the best is the current
+`[Diagonal, Insert, Delete] / open=false / column_first=false / last_max=false` at 54 772 / 54 884.
+(A sweep over only the *failing* subset picks `column_first=true` at 112/112 and makes the whole
+corpus worse, 54 522 — a clean demonstration of why you do not tune on the cases you are trying to
+fix.)
+
+Because the rate cannot be gated by a threshold that means anything on an unseen corpus, the oracle
+gates the **property** instead: where the port reports a different CIGAR it must still report an
+*optimal* one, checked by re-scoring its own output. All 112 and all 35 pass that. So the port never
+returns a worse alignment, only a different equally-good one — which distinguishes the known residual
+from a real regression in a way no percentage can.
+
+**It is still observable downstream**, because `parse_cigar_diversity` reads the CIGAR and not the
+score. Of the 112, five use `Scoring::BUBBLE` (the poppability path) and **two flip the poppability
+verdict** at `delta_len = 5`. One of those two is why `simplify_0051` still fails: the reference gets
+`div = 0.2055` against a threshold of `0.2000` and refuses the bubble, the port's differing tail
+lowers the ratio and pops it. So closing this is what closes that case, and it needs parasail's
+end-cell rule modelled exactly rather than another sweep.
 
 ### Finding 22 — smaller things, recorded and not acted on
 
@@ -1361,8 +1417,12 @@ diverges, spoa is handed different sequences and faithfully returns a different 
 still a bug on the port's side, which is why the simplification oracle's gate is now unconditional
 rather than merely reclassified.
 
-The parasail side needs no such caveat: it is exact by construction and verified at the CIGAR level,
-and its tests came with it.
+**The parasail side was described here as needing no such caveat — "exact by construction and verified
+at the CIGAR level". That was wrong twice over, and finding 25 is the consequence.** The score is
+exact by construction; the CIGAR is not, because a semi-global alignment usually has several optimal
+paths and which one is reported is a tie-break. And "verified at the CIGAR level" was verified against
+*isONcorrect's* recorded calls, which is the same non-transfer this section is about. Recording
+isONform's own (`--record-parasail`) found 12 outright **score** errors in 54 884 calls.
 
 ### What closing it exposed: one bug wearing two disguises. **Fixed.**
 

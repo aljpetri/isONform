@@ -1136,6 +1136,17 @@ pub struct RealAligner<'a, C: Consensus> {
     /// read only when `is_megabubble`.
     cache: FxHashMap<(NodeId, NodeId, Vec<u32>), Vec<u8>>,
     graph_snapshot: Option<()>,
+    /// `ISONFORM_TRACE_DECIDE=<comma-separated read ids>`: dump the inputs, both
+    /// consensus sequences and the verdict for the bubble whose path has exactly
+    /// that read set.
+    ///
+    /// The companion to `ISONFORM_TRACE_POPS`, which says *which* bubbles popped;
+    /// this says *why* one did. Both earned a place: this is what showed findings
+    /// 24 and 25 --- in each case the two sides computed byte-identical consensus
+    /// sequences and disagreed anyway, which is what moved the search out of
+    /// `simplify.rs` and into the aligner. Read once at construction, not per
+    /// call, because `align` runs thousands of times per graph.
+    trace_decide: Option<String>,
 }
 
 impl<'a, C: Consensus> RealAligner<'a, C> {
@@ -1147,6 +1158,7 @@ impl<'a, C: Consensus> RealAligner<'a, C> {
             delta_len,
             cache: FxHashMap::default(),
             graph_snapshot: None,
+            trace_decide: std::env::var("ISONFORM_TRACE_DECIDE").ok(),
         }
     }
 
@@ -1240,6 +1252,30 @@ impl<C: Consensus> BubbleAligner for RealAligner<'_, C> {
             *slot = con;
         }
         let poppable = self.decide(&list[0], &list[1]);
+        if let Some(watch) = self.trace_decide.as_deref() {
+            let sig = |a: &[ConsensusAttr]| {
+                let mut v: Vec<u32> = a.iter().map(|x| x.0).collect();
+                v.sort_unstable();
+                v.iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            };
+            let (s0, s1) = (sig(&req.attrs[0]), sig(&req.attrs[1]));
+            if s0 == watch || s1 == watch {
+                eprintln!(
+                    "DECIDE mega={} p0=[{s0}] p1=[{s1}] len0={} len1={} poppable={}",
+                    req.is_megabubble,
+                    list[0].len(),
+                    list[1].len(),
+                    poppable
+                );
+                eprintln!("  attrs0={:?}", req.attrs[0]);
+                eprintln!("  attrs1={:?}", req.attrs[1]);
+                eprintln!("  c0={}", String::from_utf8_lossy(&list[0]));
+                eprintln!("  c1={}", String::from_utf8_lossy(&list[1]));
+            }
+        }
         AlignVerdict {
             poppable,
             consensus,

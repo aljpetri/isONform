@@ -327,6 +327,69 @@ def install_spoa(outdir):
     return state
 
 
+def install_parasail(outdir):
+    """Record every `parasail_alignment` call as a replayable case.
+
+    Writes `parasail_cases.tsv` in the format `rust/src/parasail.rs`'s `oracle`
+    module already reads (`PARASAIL_CASES`): one line per call,
+    `s1<TAB>s2<TAB>cigar<TAB>score<TAB>match<TAB>mismatch<TAB>open<TAB>ext`.
+
+    This exists because a claim in `PORTING.md` turned out to be wrong. The
+    parasail port was described as needing no re-verification on isONform's
+    inputs --- "exact by construction and verified at the CIGAR level" --- where
+    the spoa port did. The score is exact by construction; the **CIGAR is not**,
+    because a semi-global alignment usually has several optimal paths and which
+    one you get is a tie-break. `parse_cigar_diversity` reads the CIGAR, not the
+    score, so a tie-break difference changes whether a bubble pops. One did.
+
+    Patching `consensus.parasail_alignment` catches all three live call sites:
+    `SimplifyGraph.py:657` (bubble poppability, match=2/mismatch=-8),
+    `IsoformGeneration.py:381` (`align_to_merge`, 2/-2) and
+    `consensus.py:147` (2/-2 by default). The first two name the module, the
+    third calls the bare name inside `consensus` itself; both forms resolve
+    through the module dict at call time.
+    """
+    from modules import consensus as CONS
+
+    original = CONS.parasail_alignment
+    path = os.path.join(outdir, "parasail_cases.tsv")
+    fh = open(path, "w")
+    fh.write(
+        "# s1\ts2\tcigar\tscore\tmatch\tmismatch\topen\text --- one "
+        "parasail_alignment call per line\n"
+    )
+    state = {"path": path, "fh": fh, "calls": 0, "unique": 0,
+             "sites": {}, "seen": set()}
+
+    def wrapper(s1, s2, match_score=2, mismatch_penalty=-2,
+                opening_penalty=12, gap_ext=1):
+        res = original(s1, s2, match_score, mismatch_penalty,
+                       opening_penalty, gap_ext)
+        s1_aln, s2_aln, cigar_string, cigar_tuples, score = res
+        state["calls"] += 1
+
+        key = (s1, s2, match_score, mismatch_penalty, opening_penalty, gap_ext)
+        if key in state["seen"]:
+            return res
+        state["seen"].add(key)
+        state["unique"] += 1
+
+        frame = sys._getframe(1)
+        site = f"{os.path.basename(frame.f_code.co_filename)}:{frame.f_lineno}"
+        state["sites"][site] = state["sites"].get(site, 0) + 1
+
+        fh.write(f"# {site}\n")
+        fh.write(
+            f"{s1}\t{s2}\t{cigar_string}\t{score}\t{match_score}\t"
+            f"{mismatch_penalty}\t{opening_penalty}\t{gap_ext}\n"
+        )
+        fh.flush()
+        return res
+
+    CONS.parasail_alignment = wrapper
+    return state
+
+
 def install_simplify(outdir):
     """Replace `simplifyGraph` with a recording wrapper.
 
@@ -412,6 +475,13 @@ def main():
         "so recording one alone wastes the other.",
     )
     ap.add_argument(
+        "--record-parasail",
+        action="store_true",
+        help="also record every `parasail_alignment` call as a replayable case "
+        "in parasail_cases.tsv, for rust/src/parasail.rs's PARASAIL_CASES "
+        "oracle and its tie-break sweep.",
+    )
+    ap.add_argument(
         "--record-spoa",
         action="store_true",
         help="also record every `spoa` call as a replayable case in "
@@ -431,6 +501,7 @@ def main():
     if args.stage in ("simplify", "both"):
         install_simplify(args.outdir)
     spoa_state = install_spoa(args.outdir) if args.record_spoa else None
+    para_state = install_parasail(args.outdir) if args.record_parasail else None
 
     if args.fastq:
         targets = [args.fastq]
@@ -483,6 +554,17 @@ def main():
                 "judges them rather than this script.",
                 file=sys.stderr,
             )
+    if para_state is not None:
+        para_state["fh"].close()
+        sites = ", ".join(
+            f"{s}={n}" for s, n in sorted(para_state["sites"].items())
+        )
+        print(
+            f"[dump] {para_state['calls']} parasail call(s), "
+            f"{para_state['unique']} unique -> {para_state['path']}"
+            + (f" [{sites}]" if sites else ""),
+            file=sys.stderr,
+        )
     return 0
 
 

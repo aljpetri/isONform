@@ -165,11 +165,11 @@ jobs:
       #
       # The test skips loudly without ISONFORM_GRAPH_DUMPS, so setting it here is
       # what makes it a gate rather than a no-op.
-      - name: Stage oracles (graph construction, simplification, spoa)
+      - name: Stage oracles (graph, simplification, spoa, parasail)
         shell: bash -el {0}
         run: |
           python bench/dump_reference.py --fastq-folder bench/corpus/sirv_small \
-              --outdir "$RUNNER_TEMP/dumps" --record-spoa
+              --outdir "$RUNNER_TEMP/dumps" --record-spoa --record-parasail
           test -n "$(ls "$RUNNER_TEMP/dumps"/graph_*.txt 2>/dev/null)"
           test -n "$(ls "$RUNNER_TEMP/dumps"/simplify_*.txt 2>/dev/null)"
           test -s "$RUNNER_TEMP/dumps/spoa_cases.tsv"
@@ -187,3 +187,11 @@ jobs:
           SPOA_CASES="$RUNNER_TEMP/dumps/spoa_cases.tsv" \
               cargo test --manifest-path rust/Cargo.toml --release \
               --lib poa::oracle -- --nocapture
+          # crate::parasail against the real library on isONform's own inputs.
+          # The score is gated exactly; the CIGAR against a measured budget, for
+          # an end-cell tie-break parasail resolves differently --- see
+          # `end_cell` and PORTING.md finding 25.
+          test -s "$RUNNER_TEMP/dumps/parasail_cases.tsv"
+          PARASAIL_CASES="$RUNNER_TEMP/dumps/parasail_cases.tsv" \
+              cargo test --manifest-path rust/Cargo.toml --release \
+              --lib parasail::oracle::matches -- --nocapture

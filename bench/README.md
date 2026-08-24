@@ -25,7 +25,7 @@ binary cannot pass), locates the reference env, and runs both against each other
 | `accuracy_isoforms.py` | isoform accuracy against a known transcriptome (SIRV): recall, precision, redundancy, per-isoform identity |
 | `accuracy_isoforms_genome.py` | isoform accuracy against a genome (Drosophila) via `minimap2 -ax splice`: error rate, aligned fraction, canonical splice fraction, intron-chain redundancy. With `--annotation`, also SQANTI structural categories |
 | `annotation.py` | GFF3 parsing and SQANTI-style classification (FSM/ISM/NIC/NNC/...). Run it directly to execute its self-tests — no genome or minimap2 needed |
-| `dump_reference.py` | records a stage's inputs and outputs from the live driver: `--stage graph` writes `graph_*.txt`, `--stage simplify` writes the graph before and after each `simplifyGraph` call, `--record-spoa` writes every `spoa` call to `spoa_cases.tsv` |
+| `dump_reference.py` | records a stage’s inputs and outputs from the live driver: `--stage graph` writes `graph_*.txt`, `--stage simplify` writes the graph before and after each `simplifyGraph` call, `--record-spoa` and `--record-parasail` write every `spoa` / `parasail_alignment` call to `spoa_cases.tsv` / `parasail_cases.tsv` |
 
 ## Two different questions
 
@@ -82,10 +82,11 @@ feels necessary.
 
 ## The oracles
 
-Three, all replaying recorded reference behaviour through the Rust port:
+Four, all replaying recorded reference behaviour through the Rust port:
 
 ```bash
-bench/dump_reference.py --fastq-folder bench/corpus/sirv_small --outdir /tmp/d --record-spoa
+bench/dump_reference.py --fastq-folder bench/corpus/sirv_small --outdir /tmp/d \
+    --record-spoa --record-parasail
 
 ISONFORM_GRAPH_DUMPS=/tmp/d    cargo test --manifest-path rust/Cargo.toml \
     --release --test graph_oracle -- --nocapture
@@ -93,10 +94,12 @@ ISONFORM_SIMPLIFY_DUMPS=/tmp/d cargo test --manifest-path rust/Cargo.toml \
     --release --test simplify_oracle -- --nocapture
 SPOA_CASES=/tmp/d/spoa_cases.tsv cargo test --manifest-path rust/Cargo.toml \
     --release --lib poa::oracle -- --nocapture
+PARASAIL_CASES=/tmp/d/parasail_cases.tsv cargo test --manifest-path rust/Cargo.toml \
+    --release --lib parasail::oracle -- --nocapture
 ```
 
-All three **skip loudly** without their variable rather than passing silently,
-and CI sets all three.
+All four **skip loudly** without their variable rather than passing silently,
+and CI sets all four.
 
 The first two replay a *stage*: recorded inputs in, diff the outputs. The graph
 oracle passes on 72 recorded calls covering 47 963 nodes. The simplification
@@ -114,6 +117,19 @@ deduplicated (spoa is deterministic, so a repeat exercises nothing) with the
 call site kept as a `#` comment above each case so a mismatch localises without
 regenerating anything.
 
+The fourth does the same for `crate::parasail`, and needed doing for the same
+reason even though this file previously said otherwise: the *score* is exact by
+construction, but the **CIGAR** is a tie-break among equally-optimal paths, and
+`parse_cigar_diversity` reads the CIGAR. Recording isONform's own calls found 12
+outright score errors in 54 884 (`PORTING.md` finding 25). Its CIGAR check is a
+*property* rather than a count — where the port reports a different alignment it
+must still report an optimal one, verified by re-scoring its own output — because
+the residual rate is corpus-dependent (0.20% on Drosophila, 2.1% on sirv_small)
+and any threshold would either pass trivially or fail on a corpus nobody has run.
+`PARASAIL_SWEEP` re-runs the tie-break sweep, and `PARASAIL_HARD_OUT` writes just
+the mismatching cases out for inspection. Do **not** sweep on that subset and take
+the winner: it picks a setting that fixes all 112 and makes the full corpus worse.
+
 That third oracle is what makes the second one unconditional. The simplification
 oracle used to report-but-not-fail any disagreement that had called spoa, since
 attributing one would have been claiming evidence that did not exist. It now
@@ -129,7 +145,11 @@ marking synthetic ones (`*` = `original_support == false`, i.e. invented by
 difference" on exactly that case).
 
 `ISONFORM_TRACE_POPS=1` goes one level deeper: one line per pop, with iteration, branch, bubble
-endpoints and both path supports. Diffing that against the reference's equivalent and finding the
+endpoints and both path supports. `ISONFORM_TRACE_DECIDE=<comma-separated read ids>` goes deeper
+still, dumping the inputs, both consensus sequences and the verdict for the one bubble whose path
+carries exactly that read set --- the companion question, *why* did this one pop. That pair is what
+found findings 24 and 25: in both, the two sides computed byte-identical consensus sequences and
+disagreed anyway, which is what moved the search out of the stage and into the aligner. Diffing that against the reference's equivalent and finding the
 first surplus or missing pop has localised two of the three bugs found here. It is worth knowing that
 the *aggregate* counts have twice beaten a more precise-looking local signal — in finding 24 the
 "only synthetic reads differ" observation was true and pointed at the wrong function, and what
