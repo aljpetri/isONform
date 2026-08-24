@@ -165,6 +165,21 @@ jobs:
       #
       # The test skips loudly without ISONFORM_GRAPH_DUMPS, so setting it here is
       # what makes it a gate rather than a no-op.
+      # The interval oracle drives `main` itself rather than replaying a
+      # recorded intermediate, so it is the only check that covers minimizer
+      # selection, the anchor database and weighted interval scheduling. It runs
+      # as its own step because `--stage intervals` executes a different driver
+      # path from the wrapper-based stages.
+      - name: Interval oracle (the front half of main)
+        shell: bash -el {0}
+        run: |
+          python bench/dump_reference.py --fastq-folder bench/corpus/sirv_small \
+              --outdir "$RUNNER_TEMP/ivdumps" --stage intervals
+          test -n "$(ls "$RUNNER_TEMP/ivdumps"/intervals_*.txt 2>/dev/null)"
+          ISONFORM_INTERVAL_DUMPS="$RUNNER_TEMP/ivdumps" \
+              cargo test --manifest-path rust/Cargo.toml --release \
+              --test intervals_oracle -- --nocapture
+
       - name: Stage oracles (graph, simplification, spoa, parasail)
         shell: bash -el {0}
         run: |

@@ -11,9 +11,14 @@
 //! `modules/GraphGeneration.py`.
 
 pub mod align;
+pub mod anchors;
 pub mod cli;
 pub mod graph;
 pub mod graph_build;
+pub mod intervals;
+pub mod minimizers;
 pub mod parasail;
 pub mod poa;
+pub mod reads;
 pub mod simplify;
+pub mod wis;

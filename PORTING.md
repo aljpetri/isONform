@@ -112,11 +112,20 @@ Done so far:
   a rule parasail does not use. My earlier note that "the parasail side needs no such caveat" was
   wrong on both counts, and the CIGAR half is what `parse_cigar_diversity` actually reads.
 
-**Every recorded corpus now agrees, including both holdouts.** Simplification passes 56/56 on the
-disjoint holdout, 56/56 on the first Drosophila sample, 16/16 on `dsim_mid` and 2/2 on `sirv_small`.
-Nothing downstream of simplification (isoform generation, batch merging) is started, and the front
-half of `main` is still owed — so the port still cannot be run end to end, which remains the weakest
-part of the evidence.
+- **The front half of `main` is ported and verified.** `minimizers`, `anchors`, `wis`, `intervals`
+  and `reads` cover everything from a raw read to the intervals `generateGraphfromIntervals`
+  consumes. A fourth oracle (`rust/tests/intervals_oracle.rs`) drives `main` itself and diffs the
+  chosen intervals, the `graph_id` assignment and each interval's full instance list: **121 cases,
+  3 682 reads, 0 disagreements** across `sirv_small`, both disjoint Drosophila corpora and real SIRV.
+  This is the first stage whose input is a read rather than a recorded intermediate, and it closes
+  the gap where a wrong minimizer would have gone unnoticed — the graph oracle replays the
+  *reference's* intervals, so nothing upstream of them was covered.
+
+**Every recorded corpus now agrees.** Intervals 121/121, graph construction on all five corpora,
+simplification 56/56 on the disjoint holdout, 56/56 on the first Drosophila sample, 16/16 on
+`dsim_mid` and 2/2 on `sirv_small`. Not started: isoform generation and batch merging, i.e.
+everything downstream of simplification. The port still cannot be run end to end, but the missing
+piece is now the *back* half rather than the front.
 
 ### The simplification port did not converge, and the oracle is what found it
 
@@ -395,23 +404,39 @@ exactly `sg_trace_scan_16`, so **it transfers as-is, parameterised by `Scoring`.
 differing only in whether they also return `cigar_tuples` (and a stray `print("error")`) — the same
 duplication isONcorrect has, and `align.rs::cigar_to_seq` covers both.
 
-### 4. Far more than the CLI transfers: the entire front half of `main` is isONcorrect's.
+### 4. Much of the front half of `main` is isONcorrect's — but "function for function" was too strong.
 
 The recon framed the reuse as "`cli.rs`, `params.rs` and `validate.rs` are a starting point". It is
-much larger than that. `main` lines 81–340 are isONcorrect's interval machinery, function for
-function: `get_kmer_minimizers`, `get_kmer_maximizers`, `get_minimizers_and_positions`,
-`get_minimizers_and_positions_compressed`, `get_minimizer_combinations_database`,
-`minimizers_comb_iterator`, `fill_p2`, `solve_WIS`, `get_intervals_to_correct`, `batch`, `grouper`,
-`find_most_supported_span`, `rindex`, `remove_read_polyA_ends`.
+larger than that: `main` lines 81–340 are the interval machinery, and most of it does transfer. This
+entry originally said the fourteen functions matched **"function for function"**, which was written
+from a reading rather than a diff. Diffed, normalising whitespace and comments:
 
-That is `minimizers.rs`, `anchors.rs`, `contexts.rs` and `wis.rs` — plus the `solve_WIS`
-suboptimality already proven and fixed there by brute force. What isONform does differently is what
-happens *after* the intervals are chosen: instead of correcting them it feeds them to a graph. **The
-~2 400 lines of genuinely new algorithm are `GraphGeneration` → `SimplifyGraph` →
-`IsoformGeneration` → `batch_merging_parallel`, and nothing before them.**
+| | functions |
+| --- | --- |
+| **identical** | `solve_WIS` |
+| **cosmetic only** (whitespace, comments, `itertools.` qualification) | `rindex`, `get_intervals_to_correct`, `minimizers_comb_iterator`, `grouper`, `batch`, `get_kmer_minimizers` |
+| **substantively different** | `fill_p2`, `get_minimizer_combinations_database`, `get_minimizers_and_positions`, `find_most_supported_span` |
+| **isONform only** | `get_kmer_maximizers`, `get_minimizers_and_positions_compressed`, `remove_read_polyA_ends` |
 
-One difference inside that shared front half is not cosmetic, and it is the subject of finding 1
-below.
+Seven of fourteen transfer essentially verbatim. Four differ in ways that reach the output, and one of
+those is not a variation at all:
+
+* **`find_most_supported_span` shares nothing but the name.** isONcorrect's compares the actual
+  subsequences, tracks quality values and edit distances, and memoises across reads — sixty lines.
+  isONform's keeps a supporting read whenever the two spans differ in *length* by less than
+  `delta_len`, and never looks at a base — fifteen. Copying isONcorrect's would have been a
+  different algorithm.
+* **`fill_p2` is the `solve_WIS` suboptimality, still unfixed here.** See finding 26.
+* `get_minimizer_combinations_database` uses a different abundance filter (`> 3 * len(reads)`
+  unconditionally, against isONcorrect's poly-A-and-10x rule) and a different argument order.
+* `get_minimizers_and_positions` dispatches on `"lex"` where isONcorrect dispatches on `"random"`,
+  because the determinism fix of finding 1 moved which branch is the default.
+
+So `minimizers.rs` and `wis.rs` carry across almost intact, `anchors.rs` carries with its filter
+replaced, and the interval builder is new. What isONform does differently is still mostly *after* the
+intervals are chosen — **the ~2 400 lines of genuinely new algorithm are `GraphGeneration` →
+`SimplifyGraph` → `IsoformGeneration` → `batch_merging_parallel`** — but the front half is not the
+free ride this entry claimed.
 
 ### 5. The two entry points' CLIs overlap much less than stated.
 
@@ -1324,6 +1349,56 @@ says something about the search space.
 `column_first = true` at a clean 112 / 112 — and takes the full corpus from 54 772 to 54 522. That
 setting was applied on the strength of the subset result and the full-corpus oracle caught it
 immediately. Finding the setting that fixes the failures is not the same as finding the right one.
+
+### Finding 26 — `fill_p2` is off by one, so `solve_WIS` is measurably suboptimal. **Fix built, off by default.**
+
+`fill_p2` builds `p[j]`, the largest index whose interval finishes at or before interval `j` starts,
+and `solve_WIS` then evaluates `OPT[p[j]]` against the **1-based** `OPT` array. `fill_p2` stores a
+**0-based** index:
+
+```python
+stop_to_max_j = {stop: j for j, (start, stop, w, _) in enumerate(...) if start < stop}
+```
+
+Two consequences. Every predecessor is shifted down by one, so compatible earlier intervals are
+treated as incompatible; and `j_max` starts at 0 and means both "interval 0" and "nothing precedes
+this", so an interval with no predecessor is credited with interval 0's optimum. Both make the
+selection *conservative* — fewer intervals than the optimum, never an overlapping set — which is
+exactly why it has gone unnoticed.
+
+**This is not a new discovery.** It was found, proven by exhaustive search and fixed in the
+isONcorrect port, on both the Rust and Python sides there. isONform still carries the original.
+Re-measured here on isONform's own code path against brute-force maximum-weight independent set over
+3 000 random instances: the fix is optimal on **3 000 of 3 000**, the reference is worse on **2 085**
+and better on **none**. (isONcorrect measured 2 040 on its own generator — the same story from a
+different draw.)
+
+`WisOpts::fix_p2` implements it and is **off by default**, so the reference's behaviour is what runs
+and every recorded golden still matches. Turning it on changes which intervals reach the graph, so it
+is an accuracy question rather than a correctness one, and it wants measuring on the SIRV and
+Drosophila corpora before anyone flips it. That measurement has not been done.
+
+### Finding 27 — a third of the interval loop is unreachable, inherited from isONcorrect
+
+`main`'s per-read loop maintains `previously_corrected_regions`, a `defaultdict(list)` that is
+created empty, read in four places, and `del`-ed. **Nothing ever appends to it** (`main:423-495`),
+and `prev_visited_intervals` beside it is created empty and never appended to either. So on every
+path through the reference:
+
+* `read_previously_considered_positions` is always the empty set, which makes
+  `not_prev_corrected_spans` equal to `m1_curr_spans` — the filter is a no-op;
+* `pos_group` is always empty, so `not_prev_corrected_spans2` is always empty;
+* `all_intervals.extend(prev_visited_intervals)` extends by nothing;
+* both `if previously_corrected_regions[r_id]:` branches never run.
+
+That is roughly 35 lines including a nested position-grouping loop. In isONcorrect the same machinery
+is *live*: correction happens in rounds and later rounds skip what earlier ones already fixed.
+isONform runs one pass and never populates it, so the scaffolding came across without the thing that
+drives it.
+
+Not a defect — it produces the right answer, just via code that cannot run. Recorded because a reader
+would reasonably assume it matters, because the port implements the reachable path only, and because
+anyone adding a second pass later needs to know this is already half-built.
 
 ### Finding 22 — smaller things, recorded and not acted on
 

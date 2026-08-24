@@ -327,6 +327,90 @@ def install_spoa(outdir):
     return state
 
 
+def run_main_with_interval_recorder(outdir, argv, state=None):
+    """Run `main` with one recorder line injected, and dump the front half.
+
+    `main` is executed by `runpy`, so its module-level helpers are not reachable
+    from here the way `SimplifyGraph`'s and `GraphGeneration`'s are --- there is no
+    importable namespace to patch. The values the front half is defined by (`w`,
+    `x_low`, `x_high`, the batch's reads *including* the ones it skips) exist only
+    as locals inside `main.main`.
+
+    So this compiles `main`'s own source with a single call injected immediately
+    before `generateGraphfromIntervals`, where all of them are in scope. Same
+    code, same driver, one extra line --- the same technique the simplification
+    replay uses, and the reason it is worth the awkwardness is that a harness
+    reconstructing "plausible" batches would not be testing the front half at all.
+
+    Writes `intervals_<call>.txt`:
+
+        # params k=<k> w=<w> xmin=<x_low> xmax=<x_high> delta_len=<d>
+        R <r_id> <sequence>                     every read the batch saw
+        G <graph_id> <r_id>                     graph_id assignment, in order
+        I <graph_id> <pos> <start> <stop> <support> <a,b,c,...>
+    """
+    if state is None:
+        state = {"n": 0}
+
+    def record(reads, w, k_size, x_low, x_high, delta_len,
+               all_intervals_for_graph, new_all_reads):
+        state["n"] += 1
+        path = os.path.join(outdir, f"intervals_{state['n']:04d}.txt")
+        # `new_all_reads` maps graph_id -> the same read tuple `reads` holds, so
+        # identity recovers the r_id without depending on sequences being unique.
+        by_id = {id(v): r for r, v in reads.items()}
+        with open(path, "w") as fh:
+            fh.write(
+                f"# params k={k_size} w={w} xmin={x_low} xmax={x_high} "
+                f"delta_len={delta_len}\n"
+            )
+            for r_id in sorted(reads):
+                fh.write(f"R {r_id} {reads[r_id][1]}\n")
+            for gid in sorted(new_all_reads):
+                fh.write(f"G {gid} {by_id.get(id(new_all_reads[gid]), -1)}\n")
+            for gid in sorted(all_intervals_for_graph):
+                for pos, inter in enumerate(all_intervals_for_graph[gid]):
+                    arr = ",".join(str(x) for x in inter[3])
+                    fh.write(
+                        f"I {gid} {pos} {inter[0]} {inter[1]} {inter[2]} {arr}\n"
+                    )
+        print(
+            f"[dump] {path}: {len(reads)} read(s) in, "
+            f"{len(all_intervals_for_graph)} kept",
+            file=sys.stderr,
+        )
+
+    main_path = os.path.join(REPO_ROOT, "main")
+    src = open(main_path).read()
+    call = ("        DG,  reads_for_isoforms = GraphGeneration."
+            "generateGraphfromIntervals(\n")
+    if src.count(call) != 1:
+        sys.exit("main's generateGraphfromIntervals call moved; update the injection")
+    src = src.replace(
+        call,
+        "        __record_intervals(reads, w, k_size, x_low, x_high, delta_len,\n"
+        "                           all_intervals_for_graph, new_all_reads)\n"
+        + call,
+        1,
+    )
+
+    ns = {"__name__": "__main__", "__file__": main_path,
+          "__record_intervals": record}
+    saved = sys.argv
+    sys.argv = argv
+    cwd = os.getcwd()
+    try:
+        os.chdir(REPO_ROOT)
+        exec(compile(src, main_path, "exec"), ns)
+    except SystemExit as e:
+        if e.code not in (0, None):
+            print(f"[dump] main exited {e.code}", file=sys.stderr)
+    finally:
+        os.chdir(cwd)
+        sys.argv = saved
+    return state
+
+
 def install_parasail(outdir):
     """Record every `parasail_alignment` call as a replayable case.
 
@@ -468,7 +552,7 @@ def main():
     ap.add_argument("--outdir", required=True)
     ap.add_argument(
         "--stage",
-        choices=("graph", "simplify", "both"),
+        choices=("graph", "simplify", "both", "intervals"),
         default="both",
         help="which stage(s) to record. `graph` writes graph_*.txt, `simplify` "
         "writes simplify_*.txt. Both by default: they come from the same run, "
@@ -502,6 +586,32 @@ def main():
         install_simplify(args.outdir)
     spoa_state = install_spoa(args.outdir) if args.record_spoa else None
     para_state = install_parasail(args.outdir) if args.record_parasail else None
+
+    if args.stage == "intervals":
+        # This stage drives `main` itself rather than installing wrappers, so it
+        # does not share the loop below.
+        import glob as _glob
+
+        targets = (
+            [args.fastq]
+            if args.fastq
+            else sorted(_glob.glob(os.path.join(args.fastq_folder, "*.fastq")))
+        )
+        if not targets:
+            sys.exit("no *.fastq to record")
+        st = {"n": 0}
+        for i, fq in enumerate(targets):
+            workdir = os.path.join(args.outdir, f"run_{i}")
+            os.makedirs(workdir, exist_ok=True)
+            argv = [
+                "main", "--fastq", os.path.abspath(fq), "--outfolder", workdir,
+                "--k", str(args.k), "--w", str(args.w),
+            ] + list(args.extra)
+            print(f"[dump] running main on {fq}", file=sys.stderr)
+            run_main_with_interval_recorder(args.outdir, argv, st)
+        n = len([f for f in os.listdir(args.outdir) if f.startswith("intervals_")])
+        print(f"[dump] {n} interval-stage record(s) in {args.outdir}", file=sys.stderr)
+        return 0
 
     if args.fastq:
         targets = [args.fastq]

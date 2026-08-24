@@ -25,7 +25,7 @@ binary cannot pass), locates the reference env, and runs both against each other
 | `accuracy_isoforms.py` | isoform accuracy against a known transcriptome (SIRV): recall, precision, redundancy, per-isoform identity |
 | `accuracy_isoforms_genome.py` | isoform accuracy against a genome (Drosophila) via `minimap2 -ax splice`: error rate, aligned fraction, canonical splice fraction, intron-chain redundancy. With `--annotation`, also SQANTI structural categories |
 | `annotation.py` | GFF3 parsing and SQANTI-style classification (FSM/ISM/NIC/NNC/...). Run it directly to execute its self-tests — no genome or minimap2 needed |
-| `dump_reference.py` | records a stage’s inputs and outputs from the live driver: `--stage graph` writes `graph_*.txt`, `--stage simplify` writes the graph before and after each `simplifyGraph` call, `--record-spoa` and `--record-parasail` write every `spoa` / `parasail_alignment` call to `spoa_cases.tsv` / `parasail_cases.tsv` |
+| `dump_reference.py` | records a stage’s inputs and outputs from the live driver: `--stage intervals` writes `intervals_*.txt` (the front half of `main`), `--stage graph` writes `graph_*.txt`, `--stage simplify` writes the graph before and after each `simplifyGraph` call, `--record-spoa` and `--record-parasail` write every `spoa` / `parasail_alignment` call to `spoa_cases.tsv` / `parasail_cases.tsv` |
 
 ## Two different questions
 
@@ -82,7 +82,7 @@ feels necessary.
 
 ## The oracles
 
-Four, all replaying recorded reference behaviour through the Rust port:
+Five, all replaying recorded reference behaviour through the Rust port:
 
 ```bash
 bench/dump_reference.py --fastq-folder bench/corpus/sirv_small --outdir /tmp/d \
@@ -98,10 +98,30 @@ PARASAIL_CASES=/tmp/d/parasail_cases.tsv cargo test --manifest-path rust/Cargo.t
     --release --lib parasail::oracle -- --nocapture
 ```
 
-All four **skip loudly** without their variable rather than passing silently,
-and CI sets all four.
+All five **skip loudly** without their variable rather than passing silently,
+and CI sets all five.
 
-The first two replay a *stage*: recorded inputs in, diff the outputs. The graph
+The **interval** oracle is the odd one out and the most load-bearing:
+
+```bash
+bench/dump_reference.py --fastq-folder bench/corpus/sirv_small --outdir /tmp/i --stage intervals
+ISONFORM_INTERVAL_DUMPS=/tmp/i cargo test --manifest-path rust/Cargo.toml \
+    --release --test intervals_oracle -- --nocapture
+```
+
+It covers the front half of `main` — minimizer selection, the anchor database, span support and
+weighted interval scheduling — and it is the only oracle whose input is a **read** rather than a
+recorded intermediate. That matters: the graph oracle replays the *reference's* intervals, so a wrong
+minimizer would have produced a graph it happily agreed with. It compares the chosen intervals, the
+`graph_id` assignment and each interval's full instance list in order.
+
+Its dump is also produced differently. The other stages are recorded by replacing an importable
+function with a wrapper; the front half's values (`w`, the `x` bounds, the batch's reads *including*
+the ones it skips) exist only as locals inside `main.main`, which `runpy` executes. So
+`--stage intervals` compiles `main`'s own source with a single recorder call injected just before
+`generateGraphfromIntervals`. Same code, same driver, one extra line.
+
+The next two replay a *stage*: recorded inputs in, diff the outputs. The graph
 oracle passes on 72 recorded calls covering 47 963 nodes. The simplification
 oracle rebuilds the entry graph from the dump — in **insertion order**, because
 node and adjacency order decide `nx.topological_sort` and therefore which node
