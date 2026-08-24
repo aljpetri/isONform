@@ -502,6 +502,96 @@ def install_isoforms(outdir):
     return state
 
 
+def install_batch_merge(outdir):
+    """Record `write_final_output`'s decisions, and whether merging did anything.
+
+    Writes `batchmerge_<call>.txt`:
+
+        # params iso_abundance=<n> fastq=<0|1> low=<0|1> cluster=<name>
+        B <batch_id> <isoform_id> <merged 0|1> <n_reads> <sequence>   before merging
+        A <batch_id> <isoform_id> <merged 0|1> <n_reads>              after merging
+        F <destination> <id> <support> <sequence>                     what was written
+
+    Batch merging is reachable only from `isONform_parallel`, and only from the
+    parent process --- the per-cluster work is forked, but
+    `join_back_via_batch_merging` runs after `pool.join()`. So a wrapper installed
+    here does survive to see it.
+
+    The `B` and `A` records bracket `actual_merging_process` so the dump shows
+    directly whether it changed anything. It does not: see PORTING.md finding 31.
+    """
+    from modules import batch_merging_parallel as BM
+
+    orig_amp = BM.actual_merging_process
+    orig_wfo = BM.write_final_output
+    state = {"n": 0, "before": None, "merges": 0}
+
+    def snapshot(d):
+        # Dict order, NOT sorted --- `write_final_output` iterates
+        # `all_infos_dict.items()` and `id_dict.items()` directly, so insertion
+        # order is the order records appear in the output files. Sorting here
+        # made the oracle replay an order the reference never used. Third time
+        # this exact mistake has been made in this harness; see bench/README.md.
+        return [
+            (b, [(i, bool(v.merged), len(v.reads), v.sequence) for i, v in idd.items()])
+            for b, idd in d.items()
+        ]
+
+    def amp(all_infos_dict, *a, **kw):
+        state["before"] = snapshot(all_infos_dict)
+        out = orig_amp(all_infos_dict, *a, **kw)
+        after = snapshot(all_infos_dict)
+        state["after"] = after
+        if after != state["before"]:
+            state["merges"] += 1
+        return out
+
+    def wfo(all_infos_dict, outfolder, iso_abundance, cl_dir, folder,
+            write_fastq, write_low_abundance):
+        # Capture the decisions by replaying the same selection the reference is
+        # about to make, then let it write its files unchanged.
+        rows = []
+        for batchid, id_dict in all_infos_dict.items():
+            for iid, infos in id_dict.items():
+                if infos.merged:
+                    continue
+                new_id = f"{folder}_{batchid}_{iid}"
+                if len(infos.reads) >= iso_abundance or iso_abundance == 1:
+                    rows.append(("main", new_id, len(infos.reads), infos.sequence))
+                elif write_low_abundance:
+                    rows.append(("low", new_id, 1, infos.sequence))
+                else:
+                    rows.append(("dropped", new_id, len(infos.reads), infos.sequence))
+        result = orig_wfo(all_infos_dict, outfolder, iso_abundance, cl_dir, folder,
+                          write_fastq, write_low_abundance)
+        state["n"] += 1
+        path = os.path.join(outdir, f"batchmerge_{state['n']:04d}.txt")
+        with open(path, "w") as fh:
+            fh.write(
+                f"# params iso_abundance={iso_abundance} "
+                f"fastq={int(bool(write_fastq))} low={int(bool(write_low_abundance))} "
+                f"cluster={folder}\n"
+            )
+            for b, items in (state.get("before") or []):
+                for iid, merged, nreads, seq in items:
+                    fh.write(f"B {b} {iid} {int(merged)} {nreads} {seq}\n")
+            for b, items in (state.get("after") or []):
+                for iid, merged, nreads, _ in items:
+                    fh.write(f"A {b} {iid} {int(merged)} {nreads}\n")
+            for dest, nid, supp, seq in rows:
+                fh.write(f"F {dest} {nid} {supp} {seq}\n")
+        print(
+            f"[dump] {path}: cluster {folder}, {len(rows)} record(s), "
+            f"merging changed anything: {state['merges'] > 0}",
+            file=sys.stderr,
+        )
+        return result
+
+    BM.actual_merging_process = amp
+    BM.write_final_output = wfo
+    return state
+
+
 def install_parasail(outdir):
     """Record every `parasail_alignment` call as a replayable case.
 
@@ -643,7 +733,7 @@ def main():
     ap.add_argument("--outdir", required=True)
     ap.add_argument(
         "--stage",
-        choices=("graph", "simplify", "both", "intervals", "isoforms"),
+        choices=("graph", "simplify", "both", "intervals", "isoforms", "batchmerge"),
         default="both",
         help="which stage(s) to record. `graph` writes graph_*.txt, `simplify` "
         "writes simplify_*.txt. Both by default: they come from the same run, "
@@ -677,8 +767,42 @@ def main():
         install_simplify(args.outdir)
     if args.stage == "isoforms":
         install_isoforms(args.outdir)
+    if args.stage == "batchmerge":
+        install_batch_merge(args.outdir)
     spoa_state = install_spoa(args.outdir) if args.record_spoa else None
     para_state = install_parasail(args.outdir) if args.record_parasail else None
+
+    if args.stage == "batchmerge":
+        # Batch merging is reachable only from `isONform_parallel`, which forks
+        # the per-cluster work and then calls `join_back_via_batch_merging` in
+        # the parent --- so the wrapper installed above does see it. Driven here
+        # rather than through the `main` loop below, which never reaches it
+        # (`main:583` has the call commented out).
+        if not args.fastq_folder:
+            sys.exit("--stage batchmerge needs --fastq-folder")
+        work = os.path.join(args.outdir, "parallel_out")
+        os.makedirs(work, exist_ok=True)
+        sys.argv = [
+            "isONform_parallel",
+            "--fastq_folder", os.path.abspath(args.fastq_folder),
+            "--outfolder", work,
+            "--t", "1",
+            "--k", str(args.k), "--w", str(args.w),
+        ] + list(args.extra)
+        print(f"[dump] running isONform_parallel on {args.fastq_folder}", file=sys.stderr)
+        cwd = os.getcwd()
+        try:
+            os.chdir(REPO_ROOT)
+            runpy.run_path(os.path.join(REPO_ROOT, "isONform_parallel"),
+                           run_name="__main__")
+        except SystemExit as e:
+            if e.code not in (0, None):
+                print(f"[dump] isONform_parallel exited {e.code}", file=sys.stderr)
+        finally:
+            os.chdir(cwd)
+        n = len([f for f in os.listdir(args.outdir) if f.startswith("batchmerge_")])
+        print(f"[dump] {n} batch-merge record(s) in {args.outdir}", file=sys.stderr)
+        return 0
 
     if args.stage == "intervals":
         # This stage drives `main` itself rather than installing wrappers, so it

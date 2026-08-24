@@ -129,11 +129,18 @@ Done so far:
   orders every spoa call (finding 28). It fires on 28 of 114 cases and leaves 93% of isoform
   sequences byte-identical there.
 
-**Every recorded corpus agrees, except finding 28's ordering.** Intervals 121/121, graph
-construction on all five corpora, simplification 56/56 on the disjoint holdout and on the first
-Drosophila sample, 16/16 on `dsim_mid`, 2/2 on `sirv_small`; isoform partitioning and merging
-114/114. Not started: batch merging (`batch_merging_parallel.py`), which is now the only stage
-left.
+- **Batch merging is ported, and it turned out to be a no-op.** `batch_merge` covers the last
+  stage. Its merging step has never executed — see finding 31 — so the port reproduces that, and
+  what it does port is `write_final_output`'s destination, id and support decisions. A seventh
+  oracle, driven from `isONform_parallel` because `main` never reaches this stage: **114/114 cases,
+  2 102 output records, 0 disagreements**.
+
+**Every stage is ported, and every recorded corpus agrees except finding 28's ordering.** Intervals
+121/121, graph construction on all five corpora, simplification 56/56 on the disjoint holdout and on
+the first Drosophila sample, 16/16 on `dsim_mid`, 2/2 on `sirv_small`; isoform partitioning and
+merging 114/114; batch merging 114/114. What is left is not another stage but the two things that
+need the stages joined up: wiring the driver so the port runs end to end, and the accuracy scoring
+`bench/evaluate.sh` was built for.
 
 ### The simplification port did not converge, and the oracle is what found it
 
@@ -1501,6 +1508,85 @@ measure — but it is not what the comment says and not what a reader would assu
 and the diversity ratio it feeds is compared against a threshold derived from
 `delta`. Reproduced, and pinned by
 `every_interior_mismatch_counts_as_delta_len_regardless_of_its_length`.
+
+### Finding 31 — batch merging merges nothing. The code has never executed.
+
+`actual_merging_process` is the whole point of the last stage: it compares every
+isoform in every batch against every isoform in every *later* batch and folds the
+duplicates together. It does nothing, and it never has.
+
+```python
+all_infos_list = sorted(all_infos_dict.items(), key=lambda x: x[0], reverse=True)
+for b_i, (batchid, id_dict) in enumerate(all_infos_list[:len(all_infos_list) - 1]):
+    for b_j, (batchid2, id_dict2) in enumerate(all_infos_list[b_i + 1:]):
+        if not batchid2 <= batchid:      # <- never true
+```
+
+The list is sorted **descending**, so everything in `all_infos_list[b_i + 1:]` has
+a *smaller* batch id than `batchid`. `batchid2 <= batchid` is therefore always
+true, `not` makes it always false, and the entire body — the comparison, the
+alignment, the merge — is unreachable.
+
+**Measured, not read off.** On data engineered so that every pair is mergeable, the
+guard was evaluated 3 times and the body entered **0** times, merging 0 of 5
+consensuses. Flipping only the sort to ascending makes it enter immediately, which
+isolates the sort/guard combination as the cause. And on the real driver:
+`isONform_parallel` over `sirv_small` reports `merging changed anything: False` on
+both clusters, and over 112 Drosophila clusters likewise.
+
+**There is a second defect behind the first.** Flip the sort and the body runs
+straight into `generate_consensus_path`, which does `all_sequences[id]` where `id`
+is a read *accession* and `all_sequences` is `all_reads_dict`, keyed by *batch id*.
+It raises `KeyError` on the first read. So the stage cannot be repaired by fixing
+the guard: the lookup it needs does not exist in what it is passed. Two independent
+defects, stacked, which is itself the evidence that this path has never run — the
+first one has been hiding the second.
+
+**What this means for the tool.** Isoforms are never merged across batches. A
+cluster with more than `--max_seqs` reads (default 1000) is split into batches,
+and an isoform present in two batches is emitted twice, with different ids
+(`{cluster}_{batch}_{isoform}`). On corpora where every cluster fits in one batch
+nothing is lost, which is why it has gone unnoticed; on larger clusters the
+transcriptome carries duplicates.
+
+**The port reproduces the no-op and does not offer a fix flag.** Everywhere else a
+reference defect has an opt-in fix (`WisOpts::fix_p2`, `BuildOpts`) there was a
+defensible correct behaviour to switch to. Here there is not: making it merge means
+inventing the read-sequence lookup `generate_consensus_path` is missing, and
+inventing behaviour is the one thing the working agreements forbid. Fixing it
+properly is an upstream change, and it needs the owner to decide what
+`all_sequences` was meant to be.
+
+The rest of the stage — `write_final_output`, which chooses each isoform's
+destination, id and support count — is live, ported, and verified.
+
+### Finding 32 — the low-abundance support file always records 1
+
+In `write_final_output`:
+
+```python
+if new_id in all_infos_dict:
+    other_support_file.write("{0}: {1}\n".format(new_id, len(all_infos_dict[new_id].reads)))
+else:
+    other_support_file.write("{0}: {1}\n".format(new_id, 1))
+```
+
+`new_id` is a string like `"9_0_1"`; `all_infos_dict` is keyed by integer batch id.
+The lookup never succeeds, so the else branch always runs and the support column is
+the literal `1` regardless of the isoform's real support. Confirmed against the
+reference: an isoform with **four** reads, below an `--iso_abundance` of 5, is
+written as `9_0_1: 1`.
+
+Also note `all_infos_dict[new_id].reads` would be wrong even if the lookup
+succeeded — the values of that dict are per-batch dicts, not isoforms, so it would
+raise `AttributeError`. Cosmetic in practice, since only the low-abundance support
+file is affected and its counts are not read back by anything.
+
+One more, recorded and not acted on: `write_final_output` is called **inside** the
+per-batch loop in `join_back_via_batch_merging`, and opens its output files with
+`'w'` each time. So for a cluster with *n* batches every file is written *n* times,
+each rewriting the whole thing. The last write wins and the content is identical,
+so it is wasted work rather than a wrong answer.
 
 ### Finding 22 — smaller things, recorded and not acted on
 

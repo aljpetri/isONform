@@ -194,6 +194,19 @@ jobs:
               cargo test --manifest-path rust/Cargo.toml --release \
               --test isoforms_oracle -- --nocapture
 
+      # The last stage, and the only one `main` never reaches --- its call is
+      # commented out at main:583, so this drives `isONform_parallel`, which
+      # calls it in the parent process after pool.join().
+      - name: Batch-merge oracle
+        shell: bash -el {0}
+        run: |
+          python bench/dump_reference.py --fastq-folder bench/corpus/sirv_small \
+              --outdir "$RUNNER_TEMP/bmdumps" --stage batchmerge
+          test -n "$(ls "$RUNNER_TEMP/bmdumps"/batchmerge_*.txt 2>/dev/null)"
+          ISONFORM_BATCHMERGE_DUMPS="$RUNNER_TEMP/bmdumps" \
+              cargo test --manifest-path rust/Cargo.toml --release \
+              --test batch_merge_oracle -- --nocapture
+
       - name: Stage oracles (graph, simplification, spoa, parasail)
         shell: bash -el {0}
         run: |

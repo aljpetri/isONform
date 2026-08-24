@@ -82,7 +82,7 @@ feels necessary.
 
 ## The oracles
 
-Six, all replaying recorded reference behaviour through the Rust port:
+Seven, all replaying recorded reference behaviour through the Rust port:
 
 ```bash
 bench/dump_reference.py --fastq-folder bench/corpus/sirv_small --outdir /tmp/d \
@@ -98,8 +98,8 @@ PARASAIL_CASES=/tmp/d/parasail_cases.tsv cargo test --manifest-path rust/Cargo.t
     --release --lib parasail::oracle -- --nocapture
 ```
 
-All six **skip loudly** without their variable rather than passing silently,
-and CI sets all six.
+All seven **skip loudly** without their variable rather than passing silently,
+and CI sets all seven.
 
 The **interval** oracle is the odd one out and the most load-bearing:
 
@@ -206,6 +206,29 @@ iterates `curr_best_seqs.items()`, so `equal_reads`' insertion order decides how
 equal-length consensuses tie-break in the merge scan. Sorting them in the dump
 made the oracle replay an order the reference never used — and hid two real
 merging disagreements until it was fixed.
+
+## One mistake this harness has made three times: sorting a dump
+
+Every stage after graph construction depends somewhere on **Python dict or set
+insertion order**, and the natural thing to write in a recorder is
+`for k in sorted(d)`. Sorting produces a stable, diffable dump — and replays an
+order the reference never used. It has happened three times here:
+
+| record | what it broke |
+| --- | --- |
+| `Q` (isoform groups) | `merge_consensuses` iterates `curr_best_seqs.items()`, so insertion order decides how equal-length consensuses tie-break. Sorting hid **two real merging disagreements**. |
+| `B` (batch-merge isoforms) | `write_final_output` iterates `all_infos_dict.items()` and `id_dict.items()`, so insertion order is the order records appear in the output files. Sorting produced 19 false failures. |
+| `BN`/`BE` (simplification graph) | caught before it shipped: node and adjacency insertion order decide `nx.topological_sort`, which decides which bubbles are found. |
+
+The rule, learned the hard way: **record in the reference's own iteration order,
+and sort only when the consumer sorts.** A dump that is harder to eyeball is worth
+far more than one that is easy to eyeball and wrong. Where a record really is
+order-independent — `AN`/`AE`, `C` — say so in a comment, so the next person does
+not have to work it out again.
+
+The failures look different depending on which side is wrong, which is the useful
+tell: a *sorted dump* produces disagreements that are permutations of each other
+(same ids, same members, different order), while a real bug changes contents.
 
 One boundary worth holding onto when reading a failure: the spoa result licenses
 "same inputs ⇒ same consensus", not "the port computes the same inputs". A

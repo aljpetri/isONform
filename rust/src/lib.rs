@@ -12,6 +12,7 @@
 
 pub mod align;
 pub mod anchors;
+pub mod batch_merge;
 pub mod cli;
 pub mod graph;
 pub mod graph_build;
