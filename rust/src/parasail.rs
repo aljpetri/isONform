@@ -169,6 +169,55 @@ pub struct Alignment {
 
 const NEG: i32 = i32::MIN / 4;
 
+/// parasail's alphabet classes for `parasail_matrix_create("ACGT", …)`: one index
+/// per base plus a single catch-all for every other byte. Case-insensitive,
+/// because parasail's own mapping is (`matrix_create` accepts `a` for `A`).
+const CATCHALL: u8 = 4;
+
+const CLASS: [u8; 256] = {
+    let mut t = [CATCHALL; 256];
+    t[b'A' as usize] = 0;
+    t[b'a' as usize] = 0;
+    t[b'C' as usize] = 1;
+    t[b'c' as usize] = 1;
+    t[b'G' as usize] = 2;
+    t[b'g' as usize] = 2;
+    t[b'T' as usize] = 3;
+    t[b't' as usize] = 3;
+    t
+};
+
+/// The substitution score for two characters, as
+/// `parasail_matrix_create("ACGT", match, mismatch)` defines it.
+///
+/// **Not byte equality**, and the gap between the two is reachable rather than
+/// theoretical. `matrix_create` builds a 5×5 matrix — one row and column per
+/// base, plus one catch-all — and fills the catch-all row and column with
+/// **zero**. So any byte outside `ACGT` scores 0 against everything, *including
+/// an identical copy of itself*: real parasail scores `X` against `X` as 0, not
+/// as a match. Measured, not inferred; see the tests below.
+///
+/// That is a live code path, not a curiosity. `generate_consensus_path` returns
+/// `"X" * max_len` whenever every path span in a bubble is shorter than `k`, so
+/// two such placeholders get compared, and scoring X-against-X as a match is
+/// exactly the case byte equality gets wrong. It made the port pop bubbles the
+/// reference refuses --- `PORTING.md`, finding 24.
+///
+/// The CIGAR *operation* still comes from byte equality, which is not an
+/// inconsistency: parasail emits `=` for two identical characters even when the
+/// matrix scores them 0, so `X` against `X` is a zero-scoring `=`.
+#[inline(always)]
+fn subst(sc: Scoring, a: u8, b: u8) -> i32 {
+    let (ca, cb) = (CLASS[a as usize], CLASS[b as usize]);
+    if ca == CATCHALL || cb == CATCHALL {
+        0
+    } else if ca == cb {
+        sc.match_score
+    } else {
+        sc.mismatch
+    }
+}
+
 /// Align `s1` against `s2`, reproducing `parasail.sg_trace_scan_16`.
 ///
 /// `O(n*m)` time and memory. The guard runs this once per read against a
@@ -330,12 +379,7 @@ fn forward(s1: &[u8], s2: &[u8], sc: Scoring, tb: TieBreak, half: Option<usize>)
                 open_i > ext_i
             };
 
-            let diag = h_prev[j - 1]
-                + if c1 == s2[j - 1] {
-                    sc.match_score
-                } else {
-                    sc.mismatch
-                };
+            let diag = h_prev[j - 1] + subst(sc, c1, s2[j - 1]);
             let best = diag.max(e_cur[j]).max(f_cur[j]);
             h_cur[j] = best;
 
@@ -551,6 +595,123 @@ mod tests {
 
     fn sg(a: &str, b: &str) -> Alignment {
         semiglobal(a.as_bytes(), b.as_bytes(), VERIFIED)
+    }
+
+    /// `parasail_matrix_create("ACGT", m, n)` scores anything outside `ACGT` as
+    /// **zero against everything, itself included**. Every number below was read
+    /// off the parasail library, not derived:
+    ///
+    /// ```text
+    /// m = parasail.matrix_create("ACGT", 2, -8)
+    /// parasail.sg_trace_scan_16("A", "A", 12, 1, m).score  ->  2
+    /// parasail.sg_trace_scan_16("A", "X", 12, 1, m).score  ->  0
+    /// parasail.sg_trace_scan_16("X", "X", 12, 1, m).score  ->  0
+    /// parasail.sg_trace_scan_16("N", "N", 12, 1, m).score  ->  0
+    /// parasail.sg_trace_scan_16("a", "A", 12, 1, m).score  ->  2   (case-insensitive)
+    /// ```
+    #[test]
+    fn a_character_outside_acgt_scores_zero_even_against_itself() {
+        let b = Scoring::BUBBLE;
+        assert_eq!(subst(b, b'A', b'A'), 2, "a base against itself matches");
+        assert_eq!(subst(b, b'A', b'C'), -8, "two bases mismatch");
+        assert_eq!(subst(b, b'A', b'X'), 0, "base against non-base is zero");
+        assert_eq!(subst(b, b'X', b'A'), 0, "and symmetrically");
+        assert_eq!(
+            subst(b, b'X', b'X'),
+            0,
+            "X against X is ZERO, not a match --- this is the whole point"
+        );
+        assert_eq!(subst(b, b'N', b'N'), 0);
+        assert_eq!(subst(b, b'X', b'N'), 0);
+        // parasail's alphabet lookup is case-insensitive.
+        assert_eq!(subst(b, b'a', b'A'), 2);
+        assert_eq!(subst(b, b'g', b'g'), 2);
+        assert_eq!(subst(b, b'a', b'c'), -8);
+    }
+
+    /// The case that found the scoring bug. `generate_consensus_path` returns
+    /// `"X" * max_len` when every path span in a bubble is shorter than `k`, so a
+    /// 17-X against an 18-X placeholder is a real comparison the simplification
+    /// stage makes.
+    ///
+    /// parasail, verbatim:
+    ///
+    /// ```text
+    /// m = parasail.matrix_create("ACGT", 2, -8)
+    /// r = parasail.sg_trace_scan_16("X"*17, "X"*18, 12, 1, m)
+    /// r.score                      ->  0
+    /// str(r.cigar.decode, "utf-8") ->  "16I1=17D"
+    /// ```
+    ///
+    /// The **score** is what this pins, and it is what matters: every X pair
+    /// scores 0, so with `match_score` applied instead the port saw `17=1I` and
+    /// popped a bubble the reference refuses. `parse_cigar_diversity` rejects any
+    /// single non-match run longer than `delta_len`, and both `16I1=17D` (16 > 5)
+    /// and the port's `17I18D` (17 > 5) reject --- so the verdict agrees here even
+    /// though the CIGAR does not.
+    ///
+    /// **The CIGAR is a known, measured divergence**, asserted as the port's own
+    /// value rather than parasail's so that it is pinned rather than pretended.
+    /// See `degenerate_ties_do_not_reproduce_parasails_traceback` for the extent.
+    #[test]
+    fn all_x_placeholders_score_zero() {
+        let a = "X".repeat(17);
+        let b = "X".repeat(18);
+        let got = semiglobal(a.as_bytes(), b.as_bytes(), Scoring::BUBBLE);
+        assert_eq!(got.score, 0, "no pairing of X's can beat any other");
+        // parasail says "16I1=17D" for the same input. See the test below.
+        assert_eq!(
+            got.cigar, "17I18D",
+            "the port's traceback, pinned not blessed"
+        );
+    }
+
+    /// The residual, stated with its size rather than left as a footnote.
+    ///
+    /// With every cell scoring 0 there is no unique optimal alignment, and the
+    /// port's traceback does not reproduce parasail's choice: parasail always
+    /// keeps at least one diagonal (`1=`, `16I1=17D`), the port emits pure gaps
+    /// (`1I1D`, `17I18D`). **No** setting of [`TieBreak`] reproduces it --- all 24
+    /// combinations were swept --- so this is structural, not a parameter, and
+    /// `TieBreak::PARASAIL`'s `column_first`/`last_max` remain unpinned because
+    /// even pinning them would not close it.
+    ///
+    /// Measured over all-X pairs of lengths 1..=30 against the real library, with
+    /// `delta_perc = 0.20` and `delta_len` in {1, 3, 5, 10, 18, 40}:
+    ///
+    /// | | |
+    /// | --- | --- |
+    /// | score agrees | 900 / 900 |
+    /// | CIGAR agrees | 0 / 900 |
+    /// | `parse_cigar_diversity` verdict agrees | 5 282 / 5 400 |
+    ///
+    /// So 118 of 5 400 combinations would decide a bubble differently, all of them
+    /// with one side very short. That is not zero and is not claimed to be; it is
+    /// bounded, and the simplification oracle is what would surface a case that
+    /// reaches it. `PORTING.md` finding 24.
+    #[test]
+    fn degenerate_ties_do_not_reproduce_parasails_traceback() {
+        // parasail's answers, read off the library.
+        for (p, q, want) in [(1usize, 1usize, "1="), (1, 2, "1=1D"), (17, 18, "16I1=17D")] {
+            let a = "X".repeat(p);
+            let b = "X".repeat(q);
+            let got = semiglobal(a.as_bytes(), b.as_bytes(), Scoring::BUBBLE);
+            assert_eq!(got.score, 0, "the score does agree, always");
+            assert_ne!(
+                got.cigar, want,
+                "if this now matches parasail, the traceback was fixed --- \
+                 update the measurement in this test's docs and in PORTING.md"
+            );
+        }
+        // And no tie-break setting closes the gap.
+        let (a, b) = ("X".repeat(17), "X".repeat(18));
+        for tb in TieBreak::all() {
+            let g = semiglobal_with(a.as_bytes(), b.as_bytes(), Scoring::BUBBLE, tb);
+            assert_ne!(
+                g.cigar, "16I1=17D",
+                "a TieBreak reproduces parasail: {tb:?}"
+            );
+        }
     }
 
     #[test]
@@ -851,12 +1012,7 @@ mod banding {
                 } else {
                     open_i > ext_i
                 };
-                let diag = h_prev[j - 1]
-                    + if c1 == s2[j - 1] {
-                        sc.match_score
-                    } else {
-                        sc.mismatch
-                    };
+                let diag = h_prev[j - 1] + subst(sc, c1, s2[j - 1]);
                 let best = diag.max(e_cur[j]).max(f_cur[j]);
                 h_cur[j] = best;
                 let mut choice = 0u8;
@@ -1021,12 +1177,7 @@ mod banding {
             for j in lo..=hi {
                 e_cur[j] = (h_cur[j - 1] - sc.open).max(e_cur[j - 1] - sc.ext);
                 f_cur[j] = (h_prev[j] - sc.open).max(f_prev[j] - sc.ext);
-                let diag = h_prev[j - 1]
-                    + if c1 == s2[j - 1] {
-                        sc.match_score
-                    } else {
-                        sc.mismatch
-                    };
+                let diag = h_prev[j - 1] + subst(sc, c1, s2[j - 1]);
                 h_cur[j] = diag.max(e_cur[j]).max(f_cur[j]);
             }
             if hi == m {
@@ -1134,12 +1285,7 @@ mod global_vs_sg {
             for j in 1..=m {
                 e[at(i, j)] = (h[at(i, j - 1)] - sc.open).max(e[at(i, j - 1)] - sc.ext);
                 f[at(i, j)] = (h[at(i - 1, j)] - sc.open).max(f[at(i - 1, j)] - sc.ext);
-                let diag = h[at(i - 1, j - 1)]
-                    + if s1[i - 1] == s2[j - 1] {
-                        sc.match_score
-                    } else {
-                        sc.mismatch
-                    };
+                let diag = h[at(i - 1, j - 1)] + subst(sc, s1[i - 1], s2[j - 1]);
                 h[at(i, j)] = diag.max(e[at(i, j)]).max(f[at(i, j)]);
             }
         }
@@ -1177,8 +1323,7 @@ mod global_vs_sg {
                 None => {
                     let cur = h[at(i, j)];
                     let same = s1[i - 1] == s2[j - 1];
-                    let diag =
-                        h[at(i - 1, j - 1)] + if same { sc.match_score } else { sc.mismatch };
+                    let diag = h[at(i - 1, j - 1)] + subst(sc, s1[i - 1], s2[j - 1]);
                     let mut taken = Step::Diagonal;
                     for step in tb.h_order {
                         let hit = match step {

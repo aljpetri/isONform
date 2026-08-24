@@ -84,20 +84,26 @@ Done so far:
   behind, is recorded below.
 
 - **The simplification oracle exists** (`rust/tests/simplify_oracle.rs`). It rebuilds the graph the
-  reference had on entry, runs the port's `simplify_graph`, and diffs the result. `sirv_small`'s two
-  cases (CI) and 16 real Drosophila graphs that pop tens of edges each agree. A broader 56-cluster
-  Drosophila sample agrees on 54 and **fails on 2** — see *What closing it exposed*. See *The
-  simplification port did not converge* for the convergence bug this oracle caught and the fix.
+  reference had on entry, runs the port's `simplify_graph`, and diffs the result. Passing on
+  `sirv_small`'s 2 cases (CI), 16 real Drosophila graphs that pop tens of edges each, and a
+  56-cluster size-stratified Drosophila sample. **Failing on 2 of 56** in a second, disjoint
+  56-cluster holdout — see below.
 
-- **spoa equivalence is verified on isONform's own inputs. Caveat closed.** 3 277 of 3 277 recorded
-  calls across three corpora give a consensus identical to the `spoa` binary, 3 074 of them from the
-  bubble-path call site the simplification oracle depends on. That removed the oracle's
-  "disagreed but called spoa, so not attributable" escape hatch, which is what turned its last 2
-  reported cases into the 2 failures above.
+- **spoa equivalence is verified on isONform's own inputs. Caveat closed.** 5 368 of 5 368 recorded
+  calls across four corpora give a consensus identical to the `spoa` binary, the large majority from
+  the bubble-path call site the simplification oracle depends on. That removed the oracle's
+  "disagreed but called spoa, so not attributable" escape hatch, so every disagreement now fails.
 
-Not done: those 2 failures — one a poppability-decision difference, one a node-support difference, and
-they are separate bugs. Nothing downstream of simplification (isoform generation, batch merging) is
-started.
+- **Finding 24, found by that tightening and fixed:** the port's parasail scored a non-`ACGT`
+  character as a match against itself, where the real library scores it **0**. All-`X` placeholder
+  consensuses are an ordinary occurrence, so the port was popping bubbles the reference refuses. One
+  fix closed both cases the tightening had exposed — which had looked like two unrelated bugs.
+
+Not done: 2 failures in the holdout corpus, both characterised and neither fixed. `simplify_0002`
+differs on **one edge**, same 21 reads but different multiplicities (the reference duplicates read 18,
+the port duplicates read 6) — a `prepare_adding_edges` concatenation-order difference. `simplify_0051`
+shows many surplus synthetic reads, the signature of extra pops, so likely another poppability
+divergence. Nothing downstream of simplification (isoform generation, batch merging) is started.
 
 ### The simplification port did not converge, and the oracle is what found it
 
@@ -1156,6 +1162,64 @@ for:
 Both are the kind of thing that would have produced a small, hard-to-localise sequence difference
 much later.
 
+### Finding 24 — parasail scores a non-`ACGT` character as 0, even against itself. **Port bug, fixed.**
+
+Not a reference defect — a defect in the port, and the most consequential one found so far. Recorded
+here because the reason it was wrong is a reference behaviour nobody would guess.
+
+`consensus.parasail_alignment` builds its substitution matrix with
+`parasail.matrix_create("ACGT", match, mismatch)`. That builds a **5×5** matrix — one row and column
+per base, plus a single catch-all — and fills the catch-all row and column with **zero**. So any
+character outside `ACGT` scores 0 against everything, *including an identical copy of itself*. Read
+off the library rather than inferred:
+
+```text
+m = parasail.matrix_create("ACGT", 2, -8)
+sg("A", "A") ->  2      sg("X", "X") ->  0
+sg("A", "C") -> -8      sg("N", "N") ->  0
+sg("A", "X") ->  0      sg("a", "A") ->  2   (the lookup is case-insensitive)
+```
+
+The port's aligner scored by byte equality: `X == X` ⇒ `match_score`. Which is wrong, and reachable —
+`generate_consensus_path` returns `"X" * max_len` whenever **every** path span in a bubble is shorter
+than `k`, so two all-`X` placeholders being compared is an ordinary event, not a corner.
+
+The consequence is not subtle. For a 17-`X` against an 18-`X` placeholder:
+
+| | CIGAR | first non-match run | `parse_cigar_diversity` |
+| --- | --- | --- | --- |
+| parasail (all pairs score 0) | `16I1=17D` | 16 | **False** — 16 > `delta_len` 5 |
+| port (X-vs-X scored as a match) | `17=1I` | 1 | **True** |
+
+So the port popped bubbles the reference refuses. Fixed by giving `parasail.rs` a `subst` function
+that models the real matrix — class-per-base plus a catch-all, case-insensitive, zero for anything
+involving the catch-all — and using it at all five scoring sites. The CIGAR *operation* still comes
+from byte equality, which is not an inconsistency: parasail emits `=` for two identical characters
+even when the matrix scores them 0, so `X` against `X` is a zero-scoring `=`.
+
+**A residual, measured rather than waved off.** With every cell scoring 0 there is no unique optimal
+alignment, and the port's traceback does not reproduce parasail's choice: parasail keeps at least one
+diagonal, the port emits pure gaps (`17I18D` against `16I1=17D`). No setting of `TieBreak`
+reproduces it — all 24 combinations swept — so it is structural, not a parameter, and
+`TieBreak::PARASAIL`'s `column_first`/`last_max` stay unpinned because pinning them would not close
+it. Over all-`X` pairs of lengths 1..=30 against the real library, `delta_perc = 0.20` and
+`delta_len` in {1, 3, 5, 10, 18, 40}:
+
+| | |
+| --- | --- |
+| score agrees | 900 / 900 |
+| CIGAR agrees | 0 / 900 |
+| `parse_cigar_diversity` **verdict** agrees | 5 282 / 5 400 |
+
+118 of 5 400 would decide a bubble differently, all with one side very short. Not zero, not claimed
+to be; bounded, pinned by tests
+(`degenerate_ties_do_not_reproduce_parasails_traceback`), and the simplification oracle is what
+would surface a case reaching it.
+
+Worth carrying elsewhere: **isONcorrect's port has the same aligner and may have the same bug.** It
+would only fire on non-`ACGT` input, so whether it is reachable there depends on whether anything
+upstream can emit one; that has not been checked.
+
 ### Finding 22 — smaller things, recorded and not acted on
 
 - `main`'s window check is `if 100 < args.w or args.w < args.k` but its message reads "smaller than
@@ -1230,7 +1294,7 @@ different sequences from a different stage — bubble-path consensus, not correc
 check had to be repeated here before a simplification oracle could attribute a disagreement to one
 side or the other.
 
-Repeated, and it holds: **3 277 of 3 277 recorded isONform spoa calls produce an identical
+Repeated, and it holds: **5 368 of 5 368 recorded isONform spoa calls produce an identical
 consensus.** Recording is `bench/dump_reference.py --record-spoa`, which wraps
 `IsoformGeneration.run_spoa` and writes the `SPOA_CASES` TSV that `poa.rs`'s `oracle` test already
 read — so closing this needed no new test, only isONform's inputs fed to the existing one.
@@ -1240,11 +1304,13 @@ read — so closing this needed no new test, only isONform's inputs fed to the e
 | `sirv_small` (2 clusters) | 32 | 0 |
 | Drosophila (56 clusters, size-stratified) | 2 425 | 0 |
 | SIRV real (7 clusters) | 820 | 0 |
-| **total** | **3 277** | **0** |
+| Drosophila holdout (56 more, disjoint) | 2 091 | 0 |
+| **total** | **5 368** | **0** |
 
-2 to 96 sequences per call, consensus 20 to 1 742 bases, and all three live call sites covered:
-`SimplifyGraph.py:570` (3 074 cases — the bubble-path consensus the simplification oracle's verdicts
-depend on), `IsoformGeneration.py:413` (132) and `:436` (71), summing to the 3 277. One attribute
+2 to 96 sequences per call, consensus 20 to 1 742 bases, and all three live call sites covered.
+On the first three corpora (3 277 cases), the split was `SimplifyGraph.py:570` 3 074 — the bubble-path
+consensus the simplification oracle's verdicts depend on — with `IsoformGeneration.py:413` 132 and
+`:436` 71; the holdout adds 1 978 / 46 / 67 in the same three. One attribute
 patch reaches all of them, because two call sites use `IsoformGeneration.run_spoa(...)` and two a
 bare `run_spoa(...)` inside that module, and both forms resolve through the module dict at call time.
 `batch_merging_parallel.py:34` is the fourth live site and recorded nothing on these corpora, so it
@@ -1263,30 +1329,56 @@ rather than merely reclassified.
 The parasail side needs no such caveat: it is exact by construction and verified at the CIGAR level,
 and its tests came with it.
 
-### What closing it exposed: two real bugs the split gate was hiding
+### What closing it exposed: one bug wearing two disguises. **Fixed.**
 
 Tightening the simplification oracle to fail on every disagreement turned its two
-"reported, not attributable" Drosophila cases into failures. They are **not** the same bug, which is
-worth recording before either is chased:
+"reported, not attributable" Drosophila cases into failures. They looked like separate bugs, and I
+recorded them as separate bugs:
 
 - **`simplify_0002`** — a *topology* difference. The reference leaves a bubble standing, two parallel
-  paths carrying 15 and 3 reads; the port pops it into one chain whose nodes carry 18 = 15 + 3. Both
-  paths have more than two supporting reads, so both go through spoa, which makes this a poppability
-  decision — `decide()`'s length gate, `parse_cigar_diversity`/`DIVERSITY_DELTA`, or a divergence in
-  the spans handed to spoa in the first place.
-- **`simplify_0054`** — topology *agrees exactly*, no edge added or missing, so the sequence of pops
-  matched. Only the node `reads` maps differ, mostly by one entry each way (36 vs 35, 22 vs 23) with
-  one large outlier (2 vs 31). That points at `additional_node_support` or `merge_two_dicts`, not at
-  the popping decision.
+  paths carrying 15 and 3 reads; the port pops it into one chain whose nodes carry 18 = 15 + 3.
+- **`simplify_0054`** — topology *agrees exactly*, not one edge added or missing. Only the node
+  `reads` maps differ, mostly by one entry each way (36 vs 35, 22 vs 23) with one outlier at 2 vs 31.
 
-Both are on `dump_droso_sample`, which is not a CI corpus; `sirv_small` (CI) and the 16 `dsim_mid`
-graphs still pass. So the test is green where CI runs it and red on a corpus kept out of band —
-stated plainly here rather than left for someone to discover, because a known-red corpus that nobody
-writes down becomes a corpus nobody runs.
+That reading was wrong, and the way it was wrong is the useful part. Symptoms that far apart —
+one changing the graph's shape, one changing only bookkeeping inside an identical shape — invited
+"two different mechanisms", and I wrote that down before checking. **They were the same bug**, and
+one fix closed both. Finding 24 below is what it actually was.
 
-Worth knowing for sequencing the work: the **two-supporting-read** path never calls spoa at all — it
-takes whichever read's span is longer, verbatim. `simplify_0054`'s off-by-one read counts are the
-shape that path produces when it disagrees.
+The route to it, because the shortcut did not exist: on `0054`, the port's node `reads` differed only
+in **synthetic** entries — `original_support == false`, i.e. invented by `additional_node_support` —
+which pointed hard at that function, and that function turned out to be faithful. What located the
+bug was stepping back out: the port ran the same **15 iterations** but did **94 pops against the
+reference's 92**, and a pop-by-pop diff showed the first 81 identical and the 82nd extra. So `0054`
+was never a bookkeeping bug at all — it was two surplus pops whose extra `additional_node_support`
+calls left synthetic reads behind, while the topology happened to reconverge. The same
+poppability-decision bug as `0002`, seen through a graph that hid it.
+
+Worth keeping as a method note: "the diff is only in synthetic reads" was a true observation that
+pointed at the wrong function, and the thing that corrected it was a *count* — iterations and pops,
+which the reference prints and the port now reports too (`PopStats`, surfaced per case by the
+oracle). A cheap aggregate beat a precise-looking local signal.
+
+**And the holdout says the job is not finished.** A second, *disjoint* 56-cluster Drosophila sample —
+same stratification, offset so it shares no cluster with the first — fails on 2 of 56 after the fix.
+That is the reason for taking a holdout at all: the first corpus went green, and green on the corpus
+you debugged against is the weakest evidence there is. Both new failures are characterised, neither
+is fixed:
+
+- **`simplify_0002`** — **one** edge in the whole graph, `"568, 601, 5" -> "532, 577, 6"`. Same 21
+  reads on both sides, same *set*, different **multiplicities**: the reference has read 18 once more
+  than the port, the port has read 6 once more than the reference. `edge_supp` is a Python list and
+  `prepare_adding_edges` builds it as `new_edge_supp1 + new_edge_supp2`, so a read present in both
+  path supports legitimately appears twice — meaning the two sides assigned paths to
+  `(prevnode1, nextnode1)` and `(prevnode2, nextnode2)` differently. A path-ordering difference, not a
+  support-computation one. Finding it took extending the oracle to compare edge support as a
+  **multiset**: a set difference reports "no difference" on precisely this case, which is worse than
+  reporting nothing.
+- **`simplify_0051`** — many surplus synthetic reads, the same signature pre-fix `0054` had, so most
+  likely another poppability divergence rather than a new mechanism.
+
+Neither is a regression from Finding 24's fix: both corpora were recorded after it, and the first
+one's 56 cases pass.
 
 ## Evaluating isONform
 

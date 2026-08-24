@@ -248,6 +248,12 @@ fn rebuild(c: &Case) -> Graph {
 struct Outcome {
     problems: Vec<String>,
     spoa_calls: usize,
+    /// Iterations and pops the port performed. Reported on every case, agreeing
+    /// or not, because the reference prints the same two numbers --- so a
+    /// disagreement can be localised to "took a different route" versus "took
+    /// the same route and bookkept differently" without instrumenting anything.
+    iterations: usize,
+    pops: usize,
     /// Set when the rebuild itself is wrong, which is not an algorithm failure.
     rebuild_failed: bool,
     /// Set when the iteration cap stopped the loop.
@@ -284,6 +290,8 @@ fn check(c: &Case) -> Outcome {
                             got.get(at)
                         )],
                         spoa_calls: 0,
+                        iterations: 0,
+                        pops: 0,
                         rebuild_failed: true,
                         hit_cap: false,
                     };
@@ -293,6 +301,8 @@ fn check(c: &Case) -> Outcome {
                 return Outcome {
                     problems: vec!["REBUILD: rebuilt graph is cyclic".to_string()],
                     spoa_calls: 0,
+                    iterations: 0,
+                    pops: 0,
                     rebuild_failed: true,
                     hit_cap: false,
                 }
@@ -345,8 +355,48 @@ fn check(c: &Case) -> Outcome {
                 a.sort_by_key(|(r, _)| *r);
                 b.sort_by_key(|(r, _)| *r);
                 let kind = if a == b { "ORDER ONLY" } else { "contents" };
+                // Which reads, and whether they are invented. `original_support
+                // == false` marks a read `additional_node_support` put here
+                // because it reached the node down the *other* bubble path, so
+                // "only-in-port, all synthetic" and "only-in-port, all real" are
+                // different bugs in different functions. Counts alone cannot
+                // tell them apart, and that is the first thing worth knowing.
+                let tag = |v: &[(u32, ReadInfo)], r: u32| {
+                    v.iter()
+                        .find(|(x, _)| *x == r)
+                        .map(|(_, i)| if i.original_support { "" } else { "*" })
+                        .unwrap_or("")
+                };
+                let ids =
+                    |v: &[(u32, ReadInfo)]| -> Vec<u32> { v.iter().map(|(r, _)| *r).collect() };
+                let (ea, ga) = (ids(exp_reads), ids(got_reads));
+                let only_ref: Vec<String> = ea
+                    .iter()
+                    .filter(|r| !ga.contains(r))
+                    .map(|r| format!("{r}{}", tag(exp_reads, *r)))
+                    .collect();
+                let only_port: Vec<String> = ga
+                    .iter()
+                    .filter(|r| !ea.contains(r))
+                    .map(|r| format!("{r}{}", tag(got_reads, *r)))
+                    .collect();
+                // Same id on both sides but different positions: neither list is
+                // missing anything, the invented coordinates just disagree.
+                let pos_differs: Vec<u32> = ea
+                    .iter()
+                    .filter(|r| ga.contains(r))
+                    .filter(|r| {
+                        let f = |v: &[(u32, ReadInfo)]| {
+                            v.iter().find(|(x, _)| x == *r).map(|(_, i)| *i)
+                        };
+                        f(exp_reads) != f(got_reads)
+                    })
+                    .copied()
+                    .collect();
                 problems.push(format!(
-                    "node {name:?} reads differ ({kind}): reference {} entries, port {}",
+                    "node {name:?} reads differ ({kind}): reference {} entries, port {} \
+                     | only-ref {only_ref:?} | only-port {only_port:?} \
+                     | same-id-diff-pos {pos_differs:?}  (* = synthetic)",
                     exp_reads.len(),
                     got_reads.len()
                 ));
@@ -389,8 +439,28 @@ fn check(c: &Case) -> Outcome {
                 a.sort_unstable();
                 b.sort_unstable();
                 let kind = if a == b { "ORDER ONLY" } else { "contents" };
+                // Compared as a *multiset*, reported as `<read>x<surplus>`.
+                // `edge_supp` is a Python list and `prepare_adding_edges`
+                // concatenates two path supports into it, so a read appearing
+                // twice is representable and does happen. A plain set difference
+                // reports "no difference" on exactly that case, which is worse
+                // than saying nothing at all.
+                let count = |v: &[u32], r: u32| v.iter().filter(|x| **x == r).count();
+                let mut all: Vec<u32> = a.iter().chain(b.iter()).copied().collect();
+                all.sort_unstable();
+                all.dedup();
+                let mut only_ref: Vec<String> = Vec::new();
+                let mut only_port: Vec<String> = Vec::new();
+                for r in all {
+                    let (ca, cb) = (count(&a, r), count(&b, r));
+                    if ca > cb {
+                        only_ref.push(format!("{r}x{}", ca - cb));
+                    } else if cb > ca {
+                        only_port.push(format!("{r}x{}", cb - ca));
+                    }
+                }
                 problems.push(format!(
-                    "edge {:?}->{:?} support differs ({kind}): {} vs {} entries",
+                    "edge {:?}->{:?} support differs ({kind}): {} vs {} entries | only-ref {only_ref:?} | only-port {only_port:?}",
                     e.0,
                     e.1,
                     exp_supp.len(),
@@ -403,6 +473,8 @@ fn check(c: &Case) -> Outcome {
     Outcome {
         problems,
         spoa_calls,
+        iterations: stats.iterations,
+        pops: stats.pops,
         rebuild_failed: false,
         hit_cap,
     }
@@ -470,8 +542,10 @@ fn simplification_matches_the_reference() {
 
         let _ = writeln!(
             report,
-            "\n=== {name} === ({} spoa call(s){})",
+            "\n=== {name} === ({} spoa call(s), {} iteration(s), {} pop(s){})",
             out.spoa_calls,
+            out.iterations,
+            out.pops,
             if out.hit_cap { ", and the cap hit" } else { "" }
         );
         for p in out.problems.iter().take(12) {
