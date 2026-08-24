@@ -12,24 +12,29 @@
 //!
 //! Skips loudly with the variable unset, like the graph oracle.
 //!
-//! # Why this one is weaker than the graph oracle, and by how much
+//! # What a disagreement here means
 //!
-//! Graph construction is pure. This stage calls **spoa**, whose consensus decides
-//! which bubbles are poppable — and the Rust spoa (`spoars`, via
-//! `crate::poa`) has *not* been re-verified against the `spoa` binary on
-//! isONform's inputs. It was verified on isONcorrect's, which are different
-//! sequences from a different stage, so that evidence does not transfer. See
-//! `PORTING.md`.
+//! Graph construction is pure; this stage calls **spoa**, whose consensus decides
+//! which bubbles are poppable. So this oracle used to split its verdict — cases
+//! that never touched spoa failed the build, cases that did were only reported —
+//! because `crate::poa`'s equivalence to the `spoa` binary had been measured on
+//! isONcorrect's correction intervals and nothing said it transferred to
+//! isONform's different sequences from a different stage.
 //!
-//! So a disagreement here is not immediately attributable, and the report says
-//! which side of that line each case falls on: every case reports how many times
-//! spoa was called. **A failing case with zero spoa calls is a bug in this port**
-//! — the two-supporting-read path takes the longer span verbatim and never touches
-//! spoa. A failing case with spoa calls could be either side, and needs the spoa
-//! equivalence check before it means anything.
+//! **It transfers, and that is measured**: 3 277 of 3 277 recorded isONform spoa
+//! calls give an identical consensus to the binary, 3 074 of them from
+//! `SimplifyGraph.py:570`, the site these verdicts depend on. See `crate::poa`
+//! and `bench/dump_reference.py --record-spoa`.
 //!
-//! That split is the reason to run this oracle now rather than after wiring spoa
-//! up: it isolates the part that can be judged.
+//! So every disagreement now fails the build. One boundary is worth keeping in
+//! view: that result licenses "same inputs ⇒ same consensus", not "the port
+//! computes the same inputs". If span extraction diverges, spoa is handed
+//! different sequences and faithfully returns a different consensus — still a bug
+//! on this side, which is why the gate is unconditional either way.
+//!
+//! `spoa_calls` is still reported per case, now as a diagnostic rather than a
+//! verdict: it says whether a failure went through the consensus path at all,
+//! which is the first thing worth knowing when localising one.
 //!
 //! # Rebuilding the "before" graph
 //!
@@ -467,13 +472,7 @@ fn simplification_matches_the_reference() {
             report,
             "\n=== {name} === ({} spoa call(s){})",
             out.spoa_calls,
-            if out.hit_cap {
-                ", but the cap hit makes this attributable regardless"
-            } else if out.spoa_calls == 0 {
-                ", so this is attributable to the port"
-            } else {
-                ", so spoa equivalence is still in question"
-            }
+            if out.hit_cap { ", and the cap hit" } else { "" }
         );
         for p in out.problems.iter().take(12) {
             let _ = writeln!(report, "  {p}");
@@ -491,26 +490,30 @@ fn simplification_matches_the_reference() {
         cases.len()
     );
 
-    // The gate is deliberately split. Cases that never called spoa are fully
-    // attributable, so any disagreement there is a port bug and fails the build.
-    // Cases that did call spoa cannot be judged until spoa equivalence is
-    // re-verified on isONform's inputs, so they are reported and counted but do
-    // not fail --- claiming otherwise would be claiming evidence we do not have.
+    // The gate used to be split: cases that called spoa were reported but did not
+    // fail, because `crate::poa`'s equivalence had only ever been measured on
+    // isONcorrect's correction intervals and could not be assumed to carry over.
+    //
+    // It does carry over, and that is now measured rather than assumed: 3 277 of
+    // 3 277 recorded isONform spoa calls produce an identical consensus to the
+    // binary, 3 074 of them from `SimplifyGraph.py:570`, the site these verdicts
+    // depend on (`crate::poa`, and `--record-spoa` in `bench/dump_reference.py`).
+    //
+    // So the escape hatch is gone and every disagreement fails. Note what the
+    // spoa result does and does not license: it says that *given the same input
+    // sequences in the same order* the consensus agrees. It does not say the port
+    // computes the same inputs — if span extraction diverges, spoa is handed
+    // different sequences and correctly returns a different consensus. Either way
+    // the bug is on this side, which is exactly why these cases now fail.
     assert_eq!(
         rebuild_failures, 0,
         "the before-graph rebuild is wrong, so nothing else here means anything:{report}"
     );
     assert_eq!(
-        bad_no_spoa, 0,
-        "{bad_no_spoa} attributable case(s) disagree --- either spoa was never \
-         called, or the iteration cap fired, which spoa cannot explain:{report}"
+        bad_no_spoa + bad_spoa,
+        0,
+        "{} case(s) disagree ({bad_no_spoa} without spoa, {bad_spoa} with). \
+         spoa equivalence is measured, so all of these are attributable:{report}",
+        bad_no_spoa + bad_spoa
     );
-    if bad_spoa > 0 {
-        eprintln!(
-            "\nNOTE: {bad_spoa} case(s) disagree but did call spoa, so they are not \
-             yet attributable. Not failing the build on them. Re-verify \
-             crate::poa against the spoa binary on isONform's inputs to close \
-             this.{report}"
-        );
-    }
 }

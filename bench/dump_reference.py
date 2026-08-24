@@ -8,6 +8,15 @@ Two stages, both recorded from the same run:
 * **simplification** --- `SimplifyGraph.simplifyGraph`, written to
   `simplify_*.txt` as the graph before and the graph after, since that stage
   mutates in place and returns nothing.
+
+and, with `--record-spoa`, one thing that is not a stage:
+
+* **every `spoa` call**, written to `spoa_cases.tsv` as `consensus<TAB>seq<TAB>…`.
+  spoa is reached from both simplification and isoform generation, so it is
+  recorded independently of `--stage`. This is what lets `crate::poa` be checked
+  against the `spoa` binary on *isONform's* inputs; the equivalence it shipped
+  with was measured on isONcorrect's correction intervals, which are different
+  sequences from a different stage.
 The Rust port replays these recorded inputs and diffs its graph against the
 recorded output, which localises a disagreement to one stage instead of leaving
 "the transcriptome differs" as the only signal.
@@ -229,6 +238,95 @@ def dump_call(path, k, delta_len, intervals, read_len_dict, all_reads, dg, reads
         fh.write(f"S {dg.number_of_nodes()} {dg.number_of_edges()}\n")
 
 
+def read_fasta_in_order(path):
+    """Sequences from a two-line-per-record fasta, **in file order**.
+
+    Order is load-bearing and not a stylistic choice: partial-order alignment is
+    order-sensitive, so replaying these through `crate::poa` in any other order
+    would compare a different computation. Every writer in the reference emits
+    `">{name}\\n{seq}\\n"`, so this does not need a general fasta parser --- but it
+    does need to not sort, not deduplicate, and not skip blanks.
+    """
+    seqs = []
+    with open(path) as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if not line.startswith(">"):
+                seqs.append(line)
+    return seqs
+
+
+def install_spoa(outdir):
+    """Record every `spoa` call the run makes, as replayable cases.
+
+    Writes `spoa_cases.tsv` in the format `rust/src/poa.rs`'s `oracle` test
+    already reads (`SPOA_CASES`): one line per call, `consensus<TAB>seq<TAB>seq…`,
+    `#` lines ignored. So this closes the open caveat on `crate::poa` --- verified
+    against isONcorrect's correction intervals, never against isONform's inputs
+    --- without a new test needing to be written.
+
+    Patching `IsoformGeneration.run_spoa` catches **all** of it. That is worth
+    stating rather than assuming, because there are four live call sites in three
+    modules: `SimplifyGraph.py:570` (bubble-path consensus), `IsoformGeneration.py`
+    at 190, 413 and 436, and `batch_merging_parallel.py:34`. Two reach it as
+    `IsoformGeneration.run_spoa(...)` and two as a bare `run_spoa(...)` inside
+    `IsoformGeneration` itself, and both forms resolve the name through the module
+    dict at call time, so one attribute patch covers every one.
+    (`modules/consensus.py:245` and `create_augmented_reference.py` also name a
+    `run_spoa`, but those take a third `spoa_path` argument and belong to a module
+    nothing imports --- see PORTING.md, reconnaissance correction 2.)
+
+    Identical inputs are recorded once. spoa is deterministic, so a duplicate
+    exercises nothing new; the counts printed at the end report how many calls
+    collapsed, so the deduplication is visible rather than silent.
+    """
+    from modules import IsoformGeneration as IG
+
+    original = IG.run_spoa
+    path = os.path.join(outdir, "spoa_cases.tsv")
+    fh = open(path, "w")
+    fh.write(
+        "# One `spoa -l 0 -r 0 -g -2` call per line: "
+        "<consensus>\\t<seq>\\t<seq>...\n"
+        "# Sequence order is the order spoa saw them --- POA is order-sensitive.\n"
+    )
+    state = {"path": path, "fh": fh, "calls": 0, "unique": 0, "empty_seq": 0,
+             "sites": {}, "seen": set()}
+
+    def wrapper(reads, spoa_out_file):
+        consensus = original(reads, spoa_out_file)
+        state["calls"] += 1
+        try:
+            seqs = read_fasta_in_order(reads)
+        except OSError:
+            return consensus
+        if not seqs:
+            return consensus
+
+        key = (consensus, tuple(seqs))
+        if key in state["seen"]:
+            return consensus
+        state["seen"].add(key)
+        state["unique"] += 1
+        if any(not s for s in seqs):
+            state["empty_seq"] += 1
+
+        # Provenance, as a comment the oracle skips: which call site produced
+        # this case. Kept per case rather than aggregated so that a mismatch
+        # localises to a stage without regenerating anything.
+        frame = sys._getframe(1)
+        site = f"{os.path.basename(frame.f_code.co_filename)}:{frame.f_lineno}"
+        state["sites"][site] = state["sites"].get(site, 0) + 1
+
+        fh.write(f"# {site}\n")
+        fh.write(consensus + "\t" + "\t".join(seqs) + "\n")
+        fh.flush()
+        return consensus
+
+    IG.run_spoa = wrapper
+    return state
+
+
 def install_simplify(outdir):
     """Replace `simplifyGraph` with a recording wrapper.
 
@@ -313,6 +411,14 @@ def main():
         "writes simplify_*.txt. Both by default: they come from the same run, "
         "so recording one alone wastes the other.",
     )
+    ap.add_argument(
+        "--record-spoa",
+        action="store_true",
+        help="also record every `spoa` call as a replayable case in "
+        "spoa_cases.tsv, for rust/src/poa.rs's SPOA_CASES oracle. Orthogonal to "
+        "--stage: spoa is called from simplification and from isoform "
+        "generation, so this is not a property of one stage.",
+    )
     ap.add_argument("--k", type=int, default=20)
     ap.add_argument("--w", type=int, default=31)
     ap.add_argument("--extra", nargs=argparse.REMAINDER, default=[])
@@ -324,6 +430,7 @@ def main():
         install(args.outdir)
     if args.stage in ("simplify", "both"):
         install_simplify(args.outdir)
+    spoa_state = install_spoa(args.outdir) if args.record_spoa else None
 
     if args.fastq:
         targets = [args.fastq]
@@ -358,6 +465,24 @@ def main():
         f"in {args.outdir}",
         file=sys.stderr,
     )
+    if spoa_state is not None:
+        spoa_state["fh"].close()
+        sites = ", ".join(
+            f"{s}={n}" for s, n in sorted(spoa_state["sites"].items())
+        )
+        print(
+            f"[dump] {spoa_state['calls']} spoa call(s), "
+            f"{spoa_state['unique']} unique -> {spoa_state['path']}"
+            + (f" [{sites}]" if sites else ""),
+            file=sys.stderr,
+        )
+        if spoa_state["empty_seq"]:
+            print(
+                f"[dump] NOTE {spoa_state['empty_seq']} case(s) contain an empty "
+                "sequence; recorded as-is rather than skipped, so the oracle "
+                "judges them rather than this script.",
+                file=sys.stderr,
+            )
     return 0
 
 

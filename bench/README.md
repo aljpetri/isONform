@@ -25,7 +25,7 @@ binary cannot pass), locates the reference env, and runs both against each other
 | `accuracy_isoforms.py` | isoform accuracy against a known transcriptome (SIRV): recall, precision, redundancy, per-isoform identity |
 | `accuracy_isoforms_genome.py` | isoform accuracy against a genome (Drosophila) via `minimap2 -ax splice`: error rate, aligned fraction, canonical splice fraction, intron-chain redundancy. With `--annotation`, also SQANTI structural categories |
 | `annotation.py` | GFF3 parsing and SQANTI-style classification (FSM/ISM/NIC/NNC/...). Run it directly to execute its self-tests — no genome or minimap2 needed |
-| `dump_reference.py` | records a stage's inputs and outputs from the live driver: `--stage graph` writes `graph_*.txt`, `--stage simplify` writes the graph before and after each `simplifyGraph` call |
+| `dump_reference.py` | records a stage's inputs and outputs from the live driver: `--stage graph` writes `graph_*.txt`, `--stage simplify` writes the graph before and after each `simplifyGraph` call, `--record-spoa` writes every `spoa` call to `spoa_cases.tsv` |
 
 ## Two different questions
 
@@ -75,41 +75,52 @@ Note the sample size. In isONcorrect, six seeds made six records look like
 porting bugs; at 24 they were all reference behaviour. Prefer more seeds than
 feels necessary.
 
-## The stage oracles
+## The oracles
 
-Two, both replaying recorded reference inputs through the Rust port:
+Three, all replaying recorded reference behaviour through the Rust port:
 
 ```bash
-bench/dump_reference.py --fastq-folder bench/corpus/sirv_small --outdir /tmp/d
+bench/dump_reference.py --fastq-folder bench/corpus/sirv_small --outdir /tmp/d --record-spoa
 
 ISONFORM_GRAPH_DUMPS=/tmp/d    cargo test --manifest-path rust/Cargo.toml \
     --release --test graph_oracle -- --nocapture
 ISONFORM_SIMPLIFY_DUMPS=/tmp/d cargo test --manifest-path rust/Cargo.toml \
     --release --test simplify_oracle -- --nocapture
+SPOA_CASES=/tmp/d/spoa_cases.tsv cargo test --manifest-path rust/Cargo.toml \
+    --release --lib poa::oracle -- --nocapture
 ```
 
-Both **skip loudly** without their variable rather than passing silently, and CI
-sets both.
+All three **skip loudly** without their variable rather than passing silently,
+and CI sets all three.
 
-**They are not equally strong, and the difference is worth understanding before
-reading a result.** Graph construction is pure, so the graph oracle is a
-straight verdict: it passes on 72 recorded calls covering 47 963 nodes.
-Simplification calls spoa, and the Rust spoa has *not* been re-verified against
-the `spoa` binary on isONform's inputs — it was verified on isONcorrect's, which
-are different sequences from a different stage.
+The first two replay a *stage*: recorded inputs in, diff the outputs. The graph
+oracle passes on 72 recorded calls covering 47 963 nodes. The simplification
+oracle rebuilds the entry graph from the dump — in **insertion order**, because
+node and adjacency order decide `nx.topological_sort` and therefore which node
+pairs are candidate bubbles — and asserts that order matches the reference's
+before it will judge anything downstream.
 
-So the simplification oracle splits its verdict by whether spoa was involved:
+The third replays a *dependency* rather than a stage. `crate::poa` wraps `spoars`
+in place of the `spoa` binary, and simplification's poppability decisions run
+through it, so it needs its own evidence. `--record-spoa` wraps
+`IsoformGeneration.run_spoa` — the single function all four live call sites
+resolve through — and writes `consensus<TAB>seq<TAB>seq…` lines, one per call,
+deduplicated (spoa is deterministic, so a repeat exercises nothing) with the
+call site kept as a `#` comment above each case so a mismatch localises without
+regenerating anything.
 
-- **a disagreeing case with zero spoa calls is a port bug**, and fails the build.
-  The two-supporting-read path takes the longer span verbatim and never touches
-  spoa, so those cases are fully attributable;
-- a disagreeing case that did call spoa is reported and counted but does **not**
-  fail, because attributing it would be claiming evidence that does not exist
-  yet.
+That third oracle is what makes the second one unconditional. The simplification
+oracle used to report-but-not-fail any disagreement that had called spoa, since
+attributing one would have been claiming evidence that did not exist. It now
+exists — 3 277 of 3 277 recorded isONform calls match the binary, see
+`PORTING.md` — so every disagreement fails.
 
-Closing that gap means one targeted job: replay isONform's own spoa inputs
-through both `crate::poa` and the binary and diff. Until then the oracle's
-own output tells you which half of the result you are looking at.
+One boundary worth holding onto when reading a failure: the spoa result licenses
+"same inputs ⇒ same consensus", not "the port computes the same inputs". A
+divergence in span extraction hands spoa different sequences and gets a
+faithfully different consensus back. Still a port bug — hence the unconditional
+gate — but it means `spoa_calls` in the report is now a *diagnostic* (did this
+failure go through the consensus path at all?) rather than a verdict.
 
 ## Scoring Drosophila against the annotation
 

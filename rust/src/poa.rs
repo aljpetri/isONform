@@ -1,6 +1,13 @@
-//! Consensus by partial-order alignment, matching `create_augmented_reference.run_spoa`.
+//! Consensus by partial-order alignment, matching `IsoformGeneration.run_spoa`
+//! (`modules/IsoformGeneration.py:143`).
 //!
-//! The reference shells out per correction interval:
+//! That citation is deliberate: this module arrived from the isONcorrect port
+//! naming `create_augmented_reference.run_spoa`, which in isONform is dead code
+//! in a module nothing imports (PORTING.md, reconnaissance correction 2). The
+//! invocation is character-for-character the same, so the code was right and only
+//! the attribution was wrong — but the live one is what a reader needs to find.
+//!
+//! The reference shells out per call:
 //!
 //! ```text
 //! spoa <reads.fa> -l 0 -r 0 -g -2
@@ -14,9 +21,20 @@
 //!
 //! This wraps [`spoars`], a pure-Rust reimplementation of spoa, rather than
 //! binding the C++ library. That choice is backed by a differential oracle, not
-//! by the crate's own claim: 505 of 505 real correction intervals produced an
-//! identical consensus to the `spoa` binary. See `PORTING.md`, and the
-//! `oracle` test below, which re-checks it on demand.
+//! by the crate's own claim, and it has now been measured twice — on two
+//! different tools' inputs, which is the part that matters:
+//!
+//! * isONcorrect: 505 of 505 real correction intervals.
+//! * **isONform: 3 277 of 3 277 recorded calls**, across `sirv_small`, 56
+//!   Drosophila clusters and 7 real SIRV clusters — 2 to 96 sequences per call,
+//!   consensus 20 to 1 742 bases. All three live call sites are covered, 3 074 of
+//!   the cases coming from `SimplifyGraph.py:570` (bubble-path consensus), which
+//!   is the one the simplification oracle's verdicts depend on.
+//!
+//! The isONcorrect number does **not** imply the isONform one: different
+//! sequences from a different stage, so it had to be re-measured rather than
+//! inherited. Recording is `bench/dump_reference.py --record-spoa`; the `oracle`
+//! test below replays it from `SPOA_CASES`.
 //!
 //! # Measured and rejected: reusing the engine across intervals
 //!

@@ -83,18 +83,20 @@ Done so far:
   provides the real consensus and alignment. 147 unit tests. What came across, and what was left
   behind, is recorded below.
 
-- **The simplification oracle exists and passes on every corpus tried, including real data**
-  (`rust/tests/simplify_oracle.rs`). It rebuilds the graph the reference had on entry, runs the
-  port's `simplify_graph`, and diffs the result. `sirv_small`'s two cases agree with **zero spoa
-  calls** (fully attributable, CI gates on them); 16 real Drosophila graphs that pop tens of edges
-  each agree too, spoa called thousands of times per case. A further, broader 56-cluster sample
-  spanning the corpus's size range agrees on 54; the other 2 disagree but did call spoa, so they are
-  reported rather than failing — see *Not done* below. See *The simplification port did not
-  converge, and the oracle is what found it* for the convergence bug this caught and the fix.
+- **The simplification oracle exists** (`rust/tests/simplify_oracle.rs`). It rebuilds the graph the
+  reference had on entry, runs the port's `simplify_graph`, and diffs the result. `sirv_small`'s two
+  cases (CI) and 16 real Drosophila graphs that pop tens of edges each agree. A broader 56-cluster
+  Drosophila sample agrees on 54 and **fails on 2** — see *What closing it exposed*. See *The
+  simplification port did not converge* for the convergence bug this oracle caught and the fix.
 
-Not done: re-verifying spoa's consensus against the binary on isONform's own inputs — the oracle's
-agreement so far is consistent with the port matching the reference, not yet independent proof spoa
-itself is correct. Nothing downstream of simplification (isoform generation, batch merging) is
+- **spoa equivalence is verified on isONform's own inputs. Caveat closed.** 3 277 of 3 277 recorded
+  calls across three corpora give a consensus identical to the `spoa` binary, 3 074 of them from the
+  bubble-path call site the simplification oracle depends on. That removed the oracle's
+  "disagreed but called spoa, so not attributable" escape hatch, which is what turned its last 2
+  reported cases into the 2 failures above.
+
+Not done: those 2 failures — one a poppability-decision difference, one a node-support difference, and
+they are separate bugs. Nothing downstream of simplification (isoform generation, batch merging) is
 started.
 
 ### The simplification port did not converge, and the oracle is what found it
@@ -1220,20 +1222,71 @@ itself; recomputing them arithmetically at a new scoring would turn a measuremen
 What they establish — free end gaps on both sequences, a one-base gap costing `open`, longer gaps
 costing `open + (L-1) * ext` — is a property of parasail's semi-global mode and holds at any scoring.
 
-### One verification did not transfer, and it matters
+### One verification did not transfer — so it was repeated. **Closed.**
 
 `poa.rs` came with a strong claim: identical consensus to the `spoa` binary on **505 of 505** real
 isONcorrect correction intervals. **That number does not carry over.** isONform calls spoa on
 different sequences from a different stage — bubble-path consensus, not correction intervals — so the
-check has to be repeated here before a simplification oracle can attribute a disagreement to one
-side or the other. It has not been.
+check had to be repeated here before a simplification oracle could attribute a disagreement to one
+side or the other.
+
+Repeated, and it holds: **3 277 of 3 277 recorded isONform spoa calls produce an identical
+consensus.** Recording is `bench/dump_reference.py --record-spoa`, which wraps
+`IsoformGeneration.run_spoa` and writes the `SPOA_CASES` TSV that `poa.rs`'s `oracle` test already
+read — so closing this needed no new test, only isONform's inputs fed to the existing one.
+
+| corpus | unique calls | mismatches |
+| --- | --- | --- |
+| `sirv_small` (2 clusters) | 32 | 0 |
+| Drosophila (56 clusters, size-stratified) | 2 425 | 0 |
+| SIRV real (7 clusters) | 820 | 0 |
+| **total** | **3 277** | **0** |
+
+2 to 96 sequences per call, consensus 20 to 1 742 bases, and all three live call sites covered:
+`SimplifyGraph.py:570` (3 074 cases — the bubble-path consensus the simplification oracle's verdicts
+depend on), `IsoformGeneration.py:413` (132) and `:436` (71), summing to the 3 277. One attribute
+patch reaches all of them, because two call sites use `IsoformGeneration.run_spoa(...)` and two a
+bare `run_spoa(...)` inside that module, and both forms resolve through the module dict at call time.
+`batch_merging_parallel.py:34` is the fourth live site and recorded nothing on these corpora, so it
+is covered by construction but not by measurement.
+
+A useful incidental cross-check: `sirv_small` records **zero** calls from `SimplifyGraph.py:570`,
+which is independently why the simplification oracle reports "0 spoa calls" on that corpus. Two
+instruments built for different purposes agreeing on a fact neither was aimed at.
+
+**What this licenses, precisely.** Given the same input sequences in the same order, `crate::poa`
+agrees with `spoa`. It does *not* say the port computes the same input sequences — if span extraction
+diverges, spoa is handed different sequences and faithfully returns a different consensus. That is
+still a bug on the port's side, which is why the simplification oracle's gate is now unconditional
+rather than merely reclassified.
 
 The parasail side needs no such caveat: it is exact by construction and verified at the CIGAR level,
 and its tests came with it.
 
+### What closing it exposed: two real bugs the split gate was hiding
+
+Tightening the simplification oracle to fail on every disagreement turned its two
+"reported, not attributable" Drosophila cases into failures. They are **not** the same bug, which is
+worth recording before either is chased:
+
+- **`simplify_0002`** — a *topology* difference. The reference leaves a bubble standing, two parallel
+  paths carrying 15 and 3 reads; the port pops it into one chain whose nodes carry 18 = 15 + 3. Both
+  paths have more than two supporting reads, so both go through spoa, which makes this a poppability
+  decision — `decide()`'s length gate, `parse_cigar_diversity`/`DIVERSITY_DELTA`, or a divergence in
+  the spans handed to spoa in the first place.
+- **`simplify_0054`** — topology *agrees exactly*, no edge added or missing, so the sequence of pops
+  matched. Only the node `reads` maps differ, mostly by one entry each way (36 vs 35, 22 vs 23) with
+  one large outlier (2 vs 31). That points at `additional_node_support` or `merge_two_dicts`, not at
+  the popping decision.
+
+Both are on `dump_droso_sample`, which is not a CI corpus; `sirv_small` (CI) and the 16 `dsim_mid`
+graphs still pass. So the test is green where CI runs it and red on a corpus kept out of band —
+stated plainly here rather than left for someone to discover, because a known-red corpus that nobody
+writes down becomes a corpus nobody runs.
+
 Worth knowing for sequencing the work: the **two-supporting-read** path never calls spoa at all — it
-takes whichever read's span is longer, verbatim. So the first simplification-oracle results can come
-from those bubbles alone, with spoa out of the picture entirely.
+takes whichever read's span is longer, verbatim. `simplify_0054`'s off-by-one read counts are the
+shape that path produces when it disagrees.
 
 ## Evaluating isONform
 
