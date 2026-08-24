@@ -162,7 +162,7 @@ pub fn get_dist_to_prev(g: &Graph, prev_node: NodeId, curr_node: NodeId) -> f64 
     let mut n: i64 = 0;
     for (r, ci) in curr {
         if let Some((_, pi)) = prev.iter().find(|(pr, _)| pr == r) {
-            sum += ci.end_mini_start as i64 - pi.end_mini_start as i64;
+            sum += ci.end_mini_start - pi.end_mini_start;
             n += 1;
         }
     }
@@ -187,7 +187,7 @@ pub fn get_avg_interval_length(g: &Graph, node: NodeId) -> i64 {
     }
     let sum: i64 = reads
         .iter()
-        .map(|(_, i)| i.end_mini_start as i64 - i.start_mini_end as i64)
+        .map(|(_, i)| i.end_mini_start - i.start_mini_end)
         .sum();
     (sum as f64 / reads.len() as f64).trunc() as i64
 }
@@ -309,7 +309,10 @@ pub fn find_paths(
 pub struct LiftedEdge {
     pub u: NodeId,
     pub v: NodeId,
-    pub length: i64,
+    /// `None` when the edge exists but carries no `length` --- see
+    /// `Graph::upsert_edge_support`. The edge must still be lifted and removed
+    /// in that case; only a genuinely *absent* edge is skipped.
+    pub length: Option<i64>,
     pub support: Vec<u32>,
 }
 
@@ -405,12 +408,20 @@ pub fn remove_edges(
         let pnl_start = path.nodes.first().copied().unwrap_or(bubble_end);
 
         // The edge from the bubble start into the path.
+        //
+        // Gated on existence, not on having a `length` --- a re-added edge from
+        // an earlier pop carries no `length` (`Graph::upsert_edge_support`) and
+        // still has to be lifted and removed here, exactly as `DG.get_edge_data`
+        // returns an attribute dict either way and the reference deletes it
+        // unconditionally. Checking `edge_length` here instead of `has_edge`
+        // silently skipped exactly the edges a prior pop had re-added, leaving
+        // them in the graph and making bubble popping fail to converge.
         let prev_node = bubble_start;
-        if let Some(length) = g.edge_length(prev_node, pnl_start) {
+        if g.has_edge(prev_node, pnl_start) {
             lifted.put_edge(LiftedEdge {
                 u: prev_node,
                 v: pnl_start,
-                length,
+                length: g.edge_length(prev_node, pnl_start),
                 support: g.edge_support(prev_node, pnl_start).unwrap_or(&[]).to_vec(),
             });
         } else {
@@ -445,11 +456,11 @@ pub fn remove_edges(
             } else {
                 bubble_end
             };
-            if let Some(length) = g.edge_length(path_node, target) {
+            if g.has_edge(path_node, target) {
                 lifted.put_edge(LiftedEdge {
                     u: path_node,
                     v: target,
-                    length,
+                    length: g.edge_length(path_node, target),
                     support: g.edge_support(path_node, target).unwrap_or(&[]).to_vec(),
                 });
             }
@@ -780,13 +791,17 @@ fn additional_node_support(
         }
         if let Some((_, info)) = g.reads(other_prevnode).iter().find(|(r, _)| *r == r_id) {
             let relative = (this_dist - other_dist).trunc() as i64;
-            let newend = info.end_mini_start as i64 + relative;
+            let newend = info.end_mini_start + relative;
             let newstart = newend - avg_len;
+            // NOT clamped. `int()` in the reference truncates toward zero but does
+            // not floor at zero, and both of these genuinely come out negative on
+            // real data --- 57 nodes across 16 recorded Drosophila
+            // simplifications. Clamping here was a divergence the oracle caught.
             out.push((
                 r_id,
                 ReadInfo {
-                    start_mini_end: newstart.max(0) as u32,
-                    end_mini_start: newend.max(0) as u32,
+                    start_mini_end: newstart,
+                    end_mini_start: newend,
                     original_support: false,
                 },
             ));
@@ -887,7 +902,34 @@ impl Consensus for SpoaParasail {
 }
 
 /// One read's span across a bubble: `(r_id, start, end)`.
-pub type ConsensusAttr = (u32, u32, u32);
+///
+/// Positions are signed for the same reason [`ReadInfo`]'s are: they come
+/// straight from `end_mini_start`, which `additional_node_support` can leave
+/// negative.
+pub type ConsensusAttr = (u32, i64, i64);
+
+/// Python's `seq[a:b]`, including its negative-index behaviour.
+///
+/// This is not pedantry. `generate_consensus_path` clamps `pos1` to zero in its
+/// spoa branch (`if pos1 < 0: pos1 = 0`) but **not** in its two-read branch, and
+/// `align_bubble_nodes` does not clamp its single-read branch either — so a
+/// negative position there indexes from the *end* of the read rather than being
+/// treated as zero. Since positions really do go negative after a bubble is
+/// popped (see [`ReadInfo`]), the difference is reachable, and treating negatives
+/// as zero would silently take a different subsequence.
+fn py_slice(seq: &[u8], a: i64, b: i64) -> &[u8] {
+    let n = seq.len() as i64;
+    let norm = |i: i64| -> usize {
+        let i = if i < 0 { i + n } else { i };
+        i.clamp(0, n) as usize
+    };
+    let (lo, hi) = (norm(a), norm(b));
+    if lo >= hi {
+        &[]
+    } else {
+        &seq[lo..hi]
+    }
+}
 
 /// `get_consensus_positions`: where each shared read enters and leaves a bubble.
 ///
@@ -942,8 +984,8 @@ pub fn generate_consensus_path<C: Consensus>(
             let Some(read) = reads.get(&q_id) else {
                 continue;
             };
-            let mut pos1 = pos1 as i64;
-            let mut pos2 = pos2 as i64;
+            let mut pos1 = pos1;
+            let mut pos2 = pos2;
             if pos2 == 0 {
                 // `pos2 == 0` means "no end recorded"; fall back to the read's
                 // own end. Can go negative for a read shorter than k, which the
@@ -951,12 +993,12 @@ pub fn generate_consensus_path<C: Consensus>(
                 pos2 = read.len() as i64 - k as i64;
             }
             let seq: Vec<u8> = if pos1 < pos2 + k as i64 {
+                // This branch *does* clamp, explicitly, so py_slice's
+                // negative-index behaviour is deliberately bypassed here.
                 if pos1 < 0 {
                     pos1 = 0;
                 }
-                let lo = (pos1.max(0) as usize).min(read.len());
-                let hi = ((pos2 + k as i64).max(0) as usize).min(read.len());
-                read[lo..hi.max(lo)].to_vec()
+                py_slice(read, pos1, pos2 + k as i64).to_vec()
             } else {
                 Vec::new()
             };
@@ -981,12 +1023,12 @@ pub fn generate_consensus_path<C: Consensus>(
     // Exactly two: the longer span wins, no spoa.
     let (f_id, fstart, fend) = attrs[0];
     let (e_id, estart, eend) = attrs[1];
-    let fdist = fend as i64 - fstart as i64;
-    let edist = eend as i64 - estart as i64;
+    let fdist = fend - fstart;
+    let edist = eend - estart;
     let (id, lo, hi) = if fdist > edist {
-        (f_id, fstart as usize, fend as usize + k)
+        (f_id, fstart, fend + k as i64)
     } else {
-        (e_id, estart as usize, eend as usize + k)
+        (e_id, estart, eend + k as i64)
     };
     // FINDING 21 lives in the line the reference writes next to this one: it
     // files the chosen span under `seq_infos[f_id]` in *both* branches, so when
@@ -994,11 +1036,9 @@ pub fn generate_consensus_path<C: Consensus>(
     // entry at all. Harmless, and not reproduced, because `seq_infos` is never
     // read --- see the note on `align_bubble_nodes`.
     match reads.get(&id) {
-        Some(read) => {
-            let lo = lo.min(read.len());
-            let hi = hi.min(read.len());
-            read[lo..hi.max(lo)].to_vec()
-        }
+        // No clamp here: the reference slices directly, so a negative start
+        // counts from the end of the read.
+        Some(read) => py_slice(read, lo, hi).to_vec(),
         None => Vec::new(),
     }
 }
@@ -1116,16 +1156,13 @@ impl<'a, C: Consensus> RealAligner<'a, C> {
             }
         } else if attrs.len() == 1 {
             let (q_id, pos1, pos2) = attrs[0];
-            let too_short = (pos2 as i64 - pos1 as i64).abs() < 3;
+            let too_short = (pos2 - pos1).abs() < 3;
             if too_short || pos2 < pos1 {
                 Vec::new()
             } else {
                 match self.reads.get(&q_id) {
-                    Some(read) => {
-                        let lo = (pos1 as usize).min(read.len());
-                        let hi = (pos2 as usize + self.k).min(read.len());
-                        read[lo..hi.max(lo)].to_vec()
-                    }
+                    // Unclamped, as the reference is.
+                    Some(read) => py_slice(read, pos1, pos2 + self.k as i64).to_vec(),
                     None => Vec::new(),
                 }
             }
@@ -1278,6 +1315,62 @@ pub struct PopStats {
     /// What the reference *prints* as "Overall number of bubbles popped", which
     /// is not the same number. See `PORTING.md` finding 17.
     pub reported_pops: usize,
+}
+
+/// `simplifyGraph`: the stage's entry point.
+///
+/// The reference's wrapper is one line — `new_bubble_popping_routine(DG,
+/// all_reads, work_dir, k_size, delta_len, mode)` — and mutates `DG` in place,
+/// returning nothing. Same here, except that the statistics come back rather than
+/// being printed.
+///
+/// `work_dir` has no analogue: it exists only so the reference can write a fasta
+/// for spoa to read. [`crate::poa`] takes sequences directly.
+pub fn simplify_graph(
+    g: &mut Graph,
+    reads: &FxHashMap<u32, Vec<u8>>,
+    k: usize,
+    delta_len: i64,
+    slow: bool,
+) -> PopStats {
+    let mut aligner = RealAligner::new(SpoaParasail, reads, k, delta_len);
+    pop_bubbles(g, &mut aligner, PopOpts { slow })
+}
+
+/// Wraps a [`Consensus`] and counts what it was asked for.
+///
+/// The point is attribution. spoa's consensus is the one part of this stage whose
+/// equivalence to the reference has **not** been re-verified on isONform's inputs
+/// (see `PORTING.md`), so when the simplification oracle disagrees on a case, the
+/// first question is whether spoa was involved at all. A case with zero spoa calls
+/// that still disagrees is a bug in this port; one with many is not yet
+/// attributable.
+#[derive(Debug, Default)]
+pub struct Counting<C> {
+    pub inner: C,
+    pub spoa_calls: usize,
+    pub align_calls: usize,
+}
+
+impl<C: Consensus> Counting<C> {
+    pub fn new(inner: C) -> Self {
+        Self {
+            inner,
+            spoa_calls: 0,
+            align_calls: 0,
+        }
+    }
+}
+
+impl<C: Consensus> Consensus for Counting<C> {
+    fn spoa(&mut self, seqs: &[&[u8]]) -> Vec<u8> {
+        self.spoa_calls += 1;
+        self.inner.spoa(seqs)
+    }
+    fn align(&mut self, s1: &[u8], s2: &[u8]) -> Vec<(u32, u8)> {
+        self.align_calls += 1;
+        self.inner.align(s1, s2)
+    }
 }
 
 /// `filter_out_if_marked`: drop paths that touch a marked node, or that retrace a
@@ -1563,7 +1656,29 @@ pub fn pop_bubbles<A: BubbleAligner>(g: &mut Graph, aligner: &mut A, opts: PopOp
                         not_viable_multibubble.insert(this_combi);
                         continue;
                     }
-                    let mut pair_paths = vec![all_paths[i].clone(), all_paths[j].clone()];
+                    // The reference does `all_paths_filtered = [p1, p2]`, and
+                    // those are the *same tuples* that stay in `all_paths` --- so
+                    // when `remove_edges` strips the bubble start from each with
+                    // `pop(0)`, later pairs in this same iteration see the
+                    // shortened lists. Cloning here instead left them unstripped,
+                    // which changed which pairs the emptiness and marked checks
+                    // skipped and made the loop pop indefinitely. Mutate in place.
+                    let mut pair_paths = vec![
+                        std::mem::replace(
+                            &mut all_paths[i],
+                            BubblePath {
+                                nodes: Vec::new(),
+                                support: Vec::new(),
+                            },
+                        ),
+                        std::mem::replace(
+                            &mut all_paths[j],
+                            BubblePath {
+                                nodes: Vec::new(),
+                                support: Vec::new(),
+                            },
+                        ),
+                    ];
                     linearize_bubble(
                         g,
                         combination.start,
@@ -1588,6 +1703,10 @@ pub fn pop_bubbles<A: BubbleAligner>(g: &mut Graph, aligner: &mut A, opts: PopOp
                             direct_combis.push(pair);
                         }
                     }
+                    // Put the mutated paths back, so later pairs see them as the
+                    // reference does.
+                    all_paths[j] = pair_paths.pop().expect("two paths");
+                    all_paths[i] = pair_paths.pop().expect("two paths");
                 }
             }
         }
@@ -1604,7 +1723,7 @@ mod tests {
     use super::*;
     use crate::graph::{NodeKey, ReadInfo};
 
-    fn ri(a: u32, b: u32) -> ReadInfo {
+    fn ri(a: i64, b: i64) -> ReadInfo {
         ReadInfo {
             start_mini_end: a,
             end_mini_start: b,
@@ -1635,7 +1754,7 @@ mod tests {
             (t, &[1, 2, 3]),
         ] {
             for &r in reads {
-                g.set_read(n, r, ri(0, r * 10));
+                g.set_read(n, r, ri(0, (r * 10) as i64));
             }
         }
         (g, s, a, b, t)
@@ -1801,7 +1920,7 @@ mod tests {
             (t, &[1, 2, 3][..]),
         ] {
             for &r in rs {
-                g.set_read(n, r, ri(0, r * 10));
+                g.set_read(n, r, ri(0, (r * 10) as i64));
             }
         }
         (g, s, a, b, t)
@@ -1970,8 +2089,41 @@ mod tests {
         let mut paths = find_paths(&g, s, t, &[1, 2, 3], &FxHashSet::default());
         let lifted = remove_edges(&mut g, s, t, &mut paths, &FxHashMap::default());
         let e = lifted.edges.iter().find(|e| e.u == s && e.v == a).unwrap();
-        assert_eq!(e.length, 0);
+        assert_eq!(e.length, Some(0));
         assert_eq!(e.support, vec![1, 2]);
+    }
+
+    #[test]
+    fn a_lengthless_edge_inside_the_bubble_is_still_lifted_and_removed() {
+        // An edge `prepare_adding_edges` re-added on an earlier pop carries no
+        // `length` (`Graph::upsert_edge_support`). `remove_edges` used to gate
+        // lifting on `edge_length` returning `Some`, which treated "exists with
+        // no length" the same as "does not exist" and left the edge in the
+        // graph forever --- so a later pop that reused the same bubble start
+        // kept finding it, and `pop_bubbles` never converged. Regression for
+        // that: the edge must be lifted (and actually removed from the graph)
+        // even though it has no length.
+        let (mut g, s, a, _b, t) = two_path_bubble();
+        // Simulate what an earlier pop leaves behind: the edge was removed and
+        // then re-added via `upsert_edge_support`, which --- like the
+        // reference's `DG.add_edge(u, v, edge_supp=...)` on a fresh pair ---
+        // creates it with no `length`.
+        let supp = g.edge_support(s, a).unwrap().to_vec();
+        g.remove_edge(s, a);
+        g.upsert_edge_support(s, a, supp);
+        assert!(g.has_edge(s, a));
+        assert_eq!(g.edge_length(s, a), None);
+
+        let mut paths = find_paths(&g, s, t, &[1, 2, 3], &FxHashSet::default());
+        let lifted = remove_edges(&mut g, s, t, &mut paths, &FxHashMap::default());
+
+        let e = lifted.edges.iter().find(|e| e.u == s && e.v == a).unwrap();
+        assert_eq!(e.length, None);
+        assert_eq!(e.support, vec![1, 2]);
+        assert!(
+            !g.has_edge(s, a),
+            "a lengthless edge inside the bubble must still be removed"
+        );
     }
 
     #[test]
@@ -2097,7 +2249,7 @@ mod tests {
             lifted
                 .edges
                 .iter()
-                .any(|e| e.u == s && e.v == t && e.length == 5),
+                .any(|e| e.u == s && e.v == t && e.length == Some(5)),
             "the direct start->end edge is lifted too"
         );
         assert!(
@@ -2366,10 +2518,16 @@ mod tests {
     }
 
     #[test]
-    fn an_aligner_that_never_refuses_is_stopped_by_the_cap() {
-        // Documents that the reference's loop has no termination guarantee. A
-        // three-path bubble plus an always-yes aligner reaches a fixed point that
-        // still looks poppable; the reference would spin, the port reports it.
+    fn an_aligner_that_never_refuses_still_converges_by_merging_paths_away() {
+        // A three-path bubble plus an always-yes aligner: earlier this hit the
+        // iteration cap, because `remove_edges` gated lifting an edge on it
+        // having a `length` rather than on it existing, so a re-added
+        // (lengthless) edge from an earlier pop was never removed on the next
+        // one --- see `a_lengthless_edge_inside_the_bubble_is_still_lifted_and_removed`.
+        // With that fixed, three parallel paths merge into one linear chain and
+        // the loop finds nothing left to pop: no fixed point here after all, the
+        // node set stays put (popping relinks edges, never deletes nodes) but
+        // the edge count drops from 6 to 4 as the chain forms.
         let mut g = Graph::new();
         let k = |i| NodeKey::Interval {
             start: i,
@@ -2384,16 +2542,19 @@ mod tests {
             g.set_edge_support(s, m, r);
             g.add_edge(m, t, 0);
             g.set_edge_support(m, t, r);
-            g.set_read(m, r, ri(0, r * 10));
+            g.set_read(m, r, ri(0, (r * 10) as i64));
             g.set_read(s, r, ri(0, 0));
             g.set_read(t, r, ri(0, 100));
         }
         let stats = pop_bubbles(&mut g, &mut AlwaysPop, PopOpts::default());
-        assert!(
-            stats.hit_iteration_cap,
-            "the cap is what ends this, not the reference's own exit conditions"
+        assert!(!stats.hit_iteration_cap, "this now terminates on its own");
+        assert_eq!(stats.pops, 2, "three paths merge pairwise, twice");
+        assert_eq!(
+            g.node_count(),
+            5,
+            "popping relinks edges, it never deletes nodes"
         );
-        assert_eq!(g.node_count(), 5, "and the node set still never changes");
+        assert_eq!(g.edge_count(), 4, "one linear chain: s -> m -> m -> m -> t");
     }
 
     #[test]
@@ -2454,7 +2615,7 @@ mod tests {
             g.set_edge_support(s, m, r);
             g.add_edge(m, t, 0);
             g.set_edge_support(m, t, r);
-            g.set_read(m, r, ri(0, r * 10));
+            g.set_read(m, r, ri(0, (r * 10) as i64));
             // Node reads, without which no bubble is detected at all.
             g.set_read(s, r, ri(0, 0));
             g.set_read(t, r, ri(0, 100));

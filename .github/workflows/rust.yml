@@ -165,11 +165,20 @@ jobs:
       #
       # The test skips loudly without ISONFORM_GRAPH_DUMPS, so setting it here is
       # what makes it a gate rather than a no-op.
-      - name: Graph-construction oracle
+      - name: Stage oracles (graph construction and simplification)
         shell: bash -el {0}
         run: |
           python bench/dump_reference.py --fastq-folder bench/corpus/sirv_small \
-              --outdir "$RUNNER_TEMP/graph_dumps"
-          test -n "$(ls "$RUNNER_TEMP/graph_dumps"/graph_*.txt 2>/dev/null)"
-          ISONFORM_GRAPH_DUMPS="$RUNNER_TEMP/graph_dumps" \
-              cargo test --manifest-path rust/Cargo.toml --test graph_oracle -- --nocapture
+              --outdir "$RUNNER_TEMP/dumps"
+          test -n "$(ls "$RUNNER_TEMP/dumps"/graph_*.txt 2>/dev/null)"
+          test -n "$(ls "$RUNNER_TEMP/dumps"/simplify_*.txt 2>/dev/null)"
+          ISONFORM_GRAPH_DUMPS="$RUNNER_TEMP/dumps" \
+              cargo test --manifest-path rust/Cargo.toml --release \
+              --test graph_oracle -- --nocapture
+          # The simplification oracle fails only on cases that never called spoa,
+          # since spoa equivalence has not been re-verified on isONform's inputs
+          # --- see PORTING.md. sirv_small's cases are all spoa-free, so this is a
+          # real gate there.
+          ISONFORM_SIMPLIFY_DUMPS="$RUNNER_TEMP/dumps" \
+              cargo test --manifest-path rust/Cargo.toml --release \
+              --test simplify_oracle -- --nocapture

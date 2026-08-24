@@ -82,8 +82,9 @@ fn parse_reads_attr(field: &str) -> Vec<(u32, ReadInfo)> {
         .map(|item| {
             let mut p = item.split(':');
             let r: u32 = p.next().unwrap().parse().unwrap();
-            let a: u32 = p.next().unwrap().parse().unwrap();
-            let b: u32 = p.next().unwrap().parse().unwrap();
+            // Signed: positions really do go negative after a bubble is popped.
+            let a: i64 = p.next().unwrap().parse().unwrap();
+            let b: i64 = p.next().unwrap().parse().unwrap();
             let o: u8 = p.next().unwrap().parse().unwrap();
             (
                 r,

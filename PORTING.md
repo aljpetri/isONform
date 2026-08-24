@@ -83,15 +83,98 @@ Done so far:
   provides the real consensus and alignment. 147 unit tests. What came across, and what was left
   behind, is recorded below.
 
-Not done: the driver that walks a whole graph through the simplification stage so the
-`simplify_*.txt` dumps can be replayed, and re-verifying spoa's consensus against the binary on
-isONform's own inputs. Nothing downstream of simplification (isoform generation, batch merging) is
+- **The simplification oracle exists and passes on every corpus tried, including real data**
+  (`rust/tests/simplify_oracle.rs`). It rebuilds the graph the reference had on entry, runs the
+  port's `simplify_graph`, and diffs the result. `sirv_small`'s two cases agree with **zero spoa
+  calls** (fully attributable, CI gates on them); 16 real Drosophila graphs that pop tens of edges
+  each agree too, spoa called thousands of times per case. A further, broader 56-cluster sample
+  spanning the corpus's size range agrees on 54; the other 2 disagree but did call spoa, so they are
+  reported rather than failing — see *Not done* below. See *The simplification port did not
+  converge, and the oracle is what found it* for the convergence bug this caught and the fix.
+
+Not done: re-verifying spoa's consensus against the binary on isONform's own inputs — the oracle's
+agreement so far is consistent with the port matching the reference, not yet independent proof spoa
+itself is correct. Nothing downstream of simplification (isoform generation, batch merging) is
 started.
 
-Not done: bubble *popping* (`new_bubble_popping_routine`, ~270 lines of in-place mutation plus spoa
-calls), and everything downstream of it. The front half of `main` is also still owed, which is why
-the binaries stop at argument handling and the oracle replays recorded inputs rather than running the
-port end to end.
+### The simplification port did not converge, and the oracle is what found it
+
+The oracle's first run against real bubble-popping graphs: **16 of 16 disagreed, and every one hit
+the port's iteration cap.** The reference terminates on these graphs in 5 to 9 iterations; the port
+ran until the cap stopped it.
+
+That was attributable with no further work, and it is worth being precise about why. The cap fired
+because `this_it_pops >= pop_threshold` every iteration — the port kept finding poppable bubbles
+where the reference ran out. **No consensus difference can explain that**: spoa can only change
+*which* bubbles are judged poppable, never turn a terminating loop into a non-terminating one. So
+this was a port bug, not the unverified spoa half, and the oracle classifies a cap hit that way
+regardless of how many times spoa was called (its first version filed these under "not attributable",
+which was wrong and would have hidden them).
+
+The second symptom pointed the same way: the port's nodes ended up with **far fewer reads** than the
+reference's — 6 against 53 on one node, 2 against 67 on another. Reads are added to nodes by
+`additional_node_support` during a pop, so fewer reads with more pops is contradictory unless
+something is dropping them.
+
+Ruled out along the way, before finding the actual cause:
+
+- **spoa was not returning nothing.** `poa::consensus` on five noisy 116-base variants returns a
+  116-base consensus, and parasail on two near-identical sequences returns a sensible single-run
+  CIGAR. An empty consensus would have made every bubble look poppable (two short sequences pop
+  unconditionally), which was the obvious candidate.
+- **The rebuild was correct.** All 16 cases reproduce the reference's exact `nx.topological_sort`
+  order before the stage runs, which the oracle asserts as a precondition. A full node/edge-content
+  diff at the end of the first iteration also matched byte for byte between the two, which is what
+  ruled out graph *construction* and pointed at something order- or state-dependent inside popping
+  itself.
+- **One real divergence found and fixed on the way**, though it was not the cause: the multi-path
+  branch cloned the two paths before linearising them, where the reference passes the same tuples
+  that stay in `all_paths` — so `remove_edges`' `pop(0)` is visible to later pairs in the same
+  iteration there and was not here. Fixed by mutating in place.
+
+**The actual cause**, found by instrumenting both the port and a directly-replayed reference run
+(loading the same recorded "before" graph into a real `networkx.DiGraph` and tracing which edge each
+side walked) side by side, iteration by iteration, until a single bubble's alignment decision
+diverged: `remove_edges` (`SimplifyGraph.py:279-304`) records an edge for deletion whenever it
+*exists*, unconditionally. The port's `remove_edges` instead only lifted an edge when
+`Graph::edge_length` returned `Some` — but Finding 16 is exactly the reason that is the wrong test:
+an edge `prepare_adding_edges` had re-added on an *earlier* pop carries no `length` at all
+(`upsert_edge_support` creates it without one), and the port's check silently treated "exists with no
+length" as "does not exist" and skipped removing it. The edge survived every subsequent pop attempt
+that touched its endpoints, so the bubble it belonged to kept reappearing as poppable — indefinitely,
+since the graph a later iteration inspects is corrupted in exactly the way needed to look poppable
+again. The fix: gate lifting on `Graph::has_edge` (existence) and carry the length through as the
+`Option<i64>` it already is; `LiftedEdge::length` is now `Option<i64>` rather than `i64` to make that
+representable. Regression test:
+`a_lengthless_edge_inside_the_bubble_is_still_lifted_and_removed`.
+
+One existing test's premise turned out to rest on the same bug: `an_aligner_that_never_refuses`
+documented "the reference's loop has no termination guarantee" using a synthetic three-path bubble
+that, with an always-yes aligner, hit the cap before the fix — but after it, the same fixture
+converges in three iterations (two pops, six edges down to four), because the re-added edges from the
+first pop are now correctly removed on the second. Renamed to
+`an_aligner_that_never_refuses_still_converges_by_merging_paths_away` and rewritten to assert the
+(correct) convergence. The structural point it meant to document — `while has_combinations` has no
+formal termination proof, so the iteration cap stays as a safety net — is still true in principle;
+this fixture just was not evidence of it, and no fixture we know of is now.
+
+Verified after the fix: all 16 real Drosophila graphs agree (spoa called thousands of times across
+them, e.g. 8 825 times on one), none hit the iteration cap, and every case's rebuild reproduces the
+reference's topological order exactly. A further sample of 56 clusters spanning the corpus's size
+distribution (1.2 KB to 174 KB of reads, stratified by file size, largest 5 of 561 excluded to bound
+runtime) agrees on 54; the other 2 disagree while calling spoa 75 and 178 times respectively, so they
+land in the pending-spoa-verification bucket the oracle already had rather than the cap-hit bucket
+this fix targets — none of the 56 hit the iteration cap either. All 148 unit tests pass, both oracles
+pass (simplify's build gate is "no attributable disagreement", which holds), and
+`cargo clippy --all-targets -- -D warnings` is clean.
+
+Bubble popping is now ported and verified against real data. Everything downstream of it (isoform
+generation, batch merging) is not started, and the front half of `main` is still owed — which is why
+the binaries stop at argument handling and every oracle replays recorded inputs rather than running
+the port end to end. That last point is the weakest link in the current evidence, not a formality:
+in isONcorrect the one genuine bug that survived every replayed-input oracle was found only by
+diffing a dump taken from the *running* driver, because a port that follows a different trajectory
+still satisfies replayed inputs.
 
 ### The argument-parity oracle, for free
 
@@ -1044,6 +1127,32 @@ all dead.
 Not worth fixing the assignment on its own; worth deleting three of the five
 return values, which would have made the bug impossible to write. The port's
 `AlignVerdict` carries only the two live ones.
+
+### Finding 23 — read positions go negative after a bubble is popped
+
+`additional_node_support` invents positions for reads that reach a node via the other branch of a
+bubble: `newend = prev_end + relative_dist`, then `newstart = newend - avg_len`. Both can come out
+**negative**, and do.
+
+Measured across 16 recorded Drosophila simplifications: **57 nodes carry a negative position
+afterwards, and none did before.** So a position here is a virtual coordinate that may precede the
+read's own start, and anything consuming one has to tolerate that.
+
+Not a defect — the invented coordinates are marked `original_support=False`, which is exactly the
+flag for "this read was never really here" — but it has two consequences the port had to be corrected
+for:
+
+1. **`ReadInfo`'s positions must be signed.** The port had `u32` and clamped the negatives to zero.
+   That was a divergence introduced without measuring it, and the simplification oracle caught it on
+   its first run against real data.
+2. **Python's negative-index slicing becomes reachable.** `generate_consensus_path` clamps `pos1` to
+   zero in its spoa branch (`if pos1 < 0: pos1 = 0`) but **not** in its two-read branch, and
+   `align_bubble_nodes` does not clamp its single-read branch either. So a negative position there
+   slices from the *end* of the read rather than the start. The port now reproduces Python's slice
+   semantics exactly where the reference does not clamp, and clamps where it does.
+
+Both are the kind of thing that would have produced a small, hard-to-localise sequence difference
+much later.
 
 ### Finding 22 — smaller things, recorded and not acted on
 

@@ -148,8 +148,8 @@ pub fn generate_graph_from_intervals(
             t,
             r,
             ReadInfo {
-                start_mini_end: len,
-                end_mini_start: len,
+                start_mini_end: len as i64,
+                end_mini_start: len as i64,
                 original_support: true,
             },
         );
@@ -201,8 +201,8 @@ pub fn generate_graph_from_intervals(
                             prior,
                             r_id,
                             ReadInfo {
-                                start_mini_end: inter.start,
-                                end_mini_start: inter.end,
+                                start_mini_end: inter.start as i64,
+                                end_mini_start: inter.end as i64,
                                 original_support: true,
                             },
                         );
@@ -224,8 +224,8 @@ pub fn generate_graph_from_intervals(
                                 alt,
                                 r_id,
                                 ReadInfo {
-                                    start_mini_end: inter.start,
-                                    end_mini_start: inter.end,
+                                    start_mini_end: inter.start as i64,
+                                    end_mini_start: inter.end as i64,
                                     original_support: true,
                                 },
                             );
@@ -268,8 +268,8 @@ pub fn generate_graph_from_intervals(
                                 prior,
                                 r_id,
                                 ReadInfo {
-                                    start_mini_end: inter.start,
-                                    end_mini_start: inter.end,
+                                    start_mini_end: inter.start as i64,
+                                    end_mini_start: inter.end as i64,
                                     original_support: true,
                                 },
                             );
@@ -305,8 +305,8 @@ pub fn generate_graph_from_intervals(
                                         alt,
                                         r_id,
                                         ReadInfo {
-                                            start_mini_end: inter.start,
-                                            end_mini_start: inter.end,
+                                            start_mini_end: inter.start as i64,
+                                            end_mini_start: inter.end as i64,
                                             original_support: true,
                                         },
                                     );
@@ -343,8 +343,8 @@ pub fn generate_graph_from_intervals(
                                         alt,
                                         r_id,
                                         ReadInfo {
-                                            start_mini_end: inter.start,
-                                            end_mini_start: inter.end,
+                                            start_mini_end: inter.start as i64,
+                                            end_mini_start: inter.end as i64,
                                             original_support: true,
                                         },
                                     );
@@ -370,8 +370,8 @@ pub fn generate_graph_from_intervals(
                         n,
                         r_id,
                         ReadInfo {
-                            start_mini_end: inter.start,
-                            end_mini_start: inter.end,
+                            start_mini_end: inter.start as i64,
+                            end_mini_start: inter.end as i64,
                             original_support: true,
                         },
                     );
@@ -392,8 +392,8 @@ pub fn generate_graph_from_intervals(
                         n,
                         r_id,
                         ReadInfo {
-                            start_mini_end: inter.start,
-                            end_mini_start: inter.end,
+                            start_mini_end: inter.start as i64,
+                            end_mini_start: inter.end as i64,
                             original_support: true,
                         },
                     );

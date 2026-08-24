@@ -57,6 +57,10 @@ and for `simplify_*.txt`:
     R <r_id> <sequence>
     BN / BE / BT                            the graph on entry (nodes/edges/topo)
     AN / AE / AT                            the graph on exit
+
+The B/A records are in networkx **insertion** order, not sorted: the oracle
+rebuilds the graph from them, and node and adjacency insertion order decide the
+topological order, which decides which bubbles get found.
     S <before_n> <before_e> <after_n> <after_e>
 
 Node names are the reference's own (`"<start>, <end>, <r_id>"`, plus `s` and
@@ -114,16 +118,34 @@ def fmt_reads_attr(reads):
     return ",".join(parts) if parts else "-"
 
 
-def write_nodes(fh, dg, tag="N"):
-    for node in sorted(dg.nodes()):
+def write_nodes(fh, dg, tag="N", order="sorted"):
+    """Node records.
+
+    `order="insertion"` emits them in networkx's own order --- i.e. the order they
+    were added --- which the simplification oracle *needs*, because it rebuilds the
+    graph from these records and node insertion order decides the topological
+    order, which decides which bubbles are found. Sorted output would make the
+    rebuild produce a different (still valid) topological order and every case
+    would disagree for the wrong reason.
+    """
+    nodes = dg.nodes() if order == "insertion" else sorted(dg.nodes())
+    for node in nodes:
         attrs = dg.nodes[node]
         reads = attrs.get("reads", {}) or {}
         ems = attrs.get("end_mini_seq", "")
         fh.write(f"{tag} {node} {ems if ems else '-'} {fmt_reads_attr(reads)}\n")
 
 
-def write_edges(fh, dg, tag="E"):
-    for u, v in sorted(dg.edges()):
+def write_edges(fh, dg, tag="E", order="sorted"):
+    """Edge records. See `write_nodes` for why order matters.
+
+    networkx yields edges grouped by source node in node-insertion order, each
+    group in edge-insertion order --- so replaying these in sequence reproduces
+    each node's adjacency order, which is what the successor-order tie-breaks
+    depend on.
+    """
+    edges = dg.edges() if order == "insertion" else sorted(dg.edges())
+    for u, v in edges:
         d = dg[u][v]
         length = d.get("length", "NA")
         supp = d.get("edge_supp", []) or []
@@ -168,11 +190,12 @@ def dump_simplify_call(path, k_size, delta_len, mode, all_reads, before, after):
         fh.write(f"# params k={k_size} delta_len={delta_len} mode={mode}\n")
         for r_id in sorted(all_reads):
             fh.write(f"R {r_id} {all_reads[r_id][1]}\n")
-        write_nodes(fh, before, "BN")
-        write_edges(fh, before, "BE")
+        # Insertion order, not sorted --- the oracle rebuilds from these.
+        write_nodes(fh, before, "BN", order="insertion")
+        write_edges(fh, before, "BE", order="insertion")
         write_topo(fh, before, "BT")
-        write_nodes(fh, after, "AN")
-        write_edges(fh, after, "AE")
+        write_nodes(fh, after, "AN", order="insertion")
+        write_edges(fh, after, "AE", order="insertion")
         write_topo(fh, after, "AT")
         fh.write(
             f"S {before.number_of_nodes()} {before.number_of_edges()} "

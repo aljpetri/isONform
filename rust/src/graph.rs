@@ -72,10 +72,24 @@ impl fmt::Display for NodeKey {
 
 /// The reference's `Read_infos` namedtuple: `(start_mini_end, end_mini_start,
 /// original_support)`.
+///
+/// The positions are **signed**, and that is not defensive typing. Graph
+/// construction only ever stores non-negative coordinates, but
+/// `additional_node_support` invents positions for reads that reach a node via
+/// the other branch of a bubble — `newend = prev_end + relative_dist`, then
+/// `newstart = newend - avg_len` — and both can come out negative. Measured on 16
+/// recorded Drosophila simplifications: **57 nodes carry a negative position
+/// afterwards, and none did before**. So a position here is a virtual coordinate
+/// that may precede the read's own start, and anything consuming it has to
+/// tolerate that.
+///
+/// An earlier version of this port clamped them to zero. That was a divergence
+/// introduced without measuring, and the simplification oracle caught it on its
+/// first run against real data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReadInfo {
-    pub start_mini_end: u32,
-    pub end_mini_start: u32,
+    pub start_mini_end: i64,
+    pub end_mini_start: i64,
     pub original_support: bool,
 }
 
@@ -525,7 +539,7 @@ mod tests {
         // tuple(DG.nodes[node]['reads']).
         let mut g = Graph::new();
         let n = g.add_node(NodeKey::Source);
-        let ri = |a, b| ReadInfo {
+        let ri = |a: i64, b: i64| ReadInfo {
             start_mini_end: a,
             end_mini_start: b,
             original_support: true,
@@ -542,7 +556,7 @@ mod tests {
     fn replace_reads_discards_the_existing_map() {
         let mut g = Graph::new();
         let n = g.add_node(NodeKey::Source);
-        let ri = |a: u32, b: u32| ReadInfo {
+        let ri = |a: i64, b: i64| ReadInfo {
             start_mini_end: a,
             end_mini_start: b,
             original_support: true,
