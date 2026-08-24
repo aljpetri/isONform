@@ -411,6 +411,93 @@ def run_main_with_interval_recorder(outdir, argv, state=None):
     return state
 
 
+def install_isoforms(outdir):
+    """Record one `generate_isoforms` call: the graph and reads in, isoforms out.
+
+    Writes `isoforms_<call>.txt`:
+
+        # params delta=<d> delta_len=<n> d3=<n> d5=<n> max_seqs=<n>
+        R <r_id> <sequence>                      all_reads, by graph id
+        S <r_id,...>                             reads_for_isoforms (the `support` arg)
+        N <node>                                 graph nodes, in insertion order
+        E <u> -> <v> <r_id,...>                  edges + edge_supp, insertion order
+        Q <id> <r_id,...>                        equal_reads after grouping and merging
+        C <id> <consensus>                       new_consensuses
+
+    `generate_isoforms` returns nothing and mutates nothing the caller keeps, so
+    the two results are captured by wrapping the two functions it calls:
+    `compute_equal_reads` fills `equal_reads` in place, and `merge_consensuses`
+    returns `new_consensuses`. The graph is snapshotted on entry because
+    `compute_equal_reads` only reads it, but `merge_consensuses` mutates
+    `equal_reads` --- so `Q` is recorded *before* merging and the merged state is
+    implied by `C`.
+    """
+    from modules import IsoformGeneration as IG
+
+    original = IG.generate_isoforms
+    orig_cer = IG.compute_equal_reads
+    orig_mc = IG.merge_consensuses
+    state = {"n": 0, "equal_reads": None, "new_consensuses": None}
+
+    def cer(DG, support, equal_reads):
+        out = orig_cer(DG, support, equal_reads)
+        # After grouping and sub-isoform merging, before consensus merging.
+        state["equal_reads"] = {k: list(v) for k, v in equal_reads.items()}
+        return out
+
+    def mc(curr_best_seqs, *a, **kw):
+        out = orig_mc(curr_best_seqs, *a, **kw)
+        state["new_consensuses"] = dict(out)
+        return out
+
+    IG.compute_equal_reads = cer
+    IG.merge_consensuses = mc
+
+    def wrapper(DG, all_reads, reads, work_dir, outfolder, batch_id, delta,
+                delta_len, delta_iso_len_3, delta_iso_len_5,
+                max_seqs_to_spoa=200):
+        nodes = list(DG.nodes())
+        edges = [(u, v, list(DG[u][v].get("edge_supp", []) or [])) for u, v in DG.edges()]
+        snap_reads = {r: tuple(v) for r, v in all_reads.items()}
+        snap_support = list(reads)
+
+        state["equal_reads"] = None
+        state["new_consensuses"] = None
+        result = original(DG, all_reads, reads, work_dir, outfolder, batch_id,
+                          delta, delta_len, delta_iso_len_3, delta_iso_len_5,
+                          max_seqs_to_spoa)
+        state["n"] += 1
+        path = os.path.join(outdir, f"isoforms_{state['n']:04d}.txt")
+        with open(path, "w") as fh:
+            fh.write(
+                f"# params delta={delta} delta_len={delta_len} "
+                f"d3={delta_iso_len_3} d5={delta_iso_len_5} "
+                f"max_seqs={max_seqs_to_spoa}\n"
+            )
+            for r_id in sorted(snap_reads):
+                fh.write(f"R {r_id} {snap_reads[r_id][1]}\n")
+            fh.write("S " + ",".join(str(x) for x in snap_support) + "\n")
+            for node in nodes:
+                fh.write(f"N {node}\n")
+            for u, v, supp in edges:
+                fh.write(f"E {u} -> {v} {','.join(str(x) for x in supp)}\n")
+            for k in sorted(state["equal_reads"] or {}):
+                v = state["equal_reads"][k]
+                fh.write(f"Q {k} {','.join(str(x) for x in v)}\n")
+            for k in sorted(state["new_consensuses"] or {}):
+                fh.write(f"C {k} {state['new_consensuses'][k]}\n")
+        print(
+            f"[dump] {path}: {len(snap_support)} read(s), "
+            f"{len(state['equal_reads'] or {})} group(s), "
+            f"{len(state['new_consensuses'] or {})} isoform(s)",
+            file=sys.stderr,
+        )
+        return result
+
+    IG.generate_isoforms = wrapper
+    return state
+
+
 def install_parasail(outdir):
     """Record every `parasail_alignment` call as a replayable case.
 
@@ -552,7 +639,7 @@ def main():
     ap.add_argument("--outdir", required=True)
     ap.add_argument(
         "--stage",
-        choices=("graph", "simplify", "both", "intervals"),
+        choices=("graph", "simplify", "both", "intervals", "isoforms"),
         default="both",
         help="which stage(s) to record. `graph` writes graph_*.txt, `simplify` "
         "writes simplify_*.txt. Both by default: they come from the same run, "
@@ -584,6 +671,8 @@ def main():
         install(args.outdir)
     if args.stage in ("simplify", "both"):
         install_simplify(args.outdir)
+    if args.stage == "isoforms":
+        install_isoforms(args.outdir)
     spoa_state = install_spoa(args.outdir) if args.record_spoa else None
     para_state = install_parasail(args.outdir) if args.record_parasail else None
 

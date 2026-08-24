@@ -180,6 +180,20 @@ jobs:
               cargo test --manifest-path rust/Cargo.toml --release \
               --test intervals_oracle -- --nocapture
 
+      # Isoform generation. Its gate is deliberately split: a wrong read
+      # partition or a merging disagreement fails, while a difference that is
+      # only CPython set-iteration order is reported --- see PORTING.md finding
+      # 28, which is an open decision rather than a settled one.
+      - name: Isoform oracle
+        shell: bash -el {0}
+        run: |
+          python bench/dump_reference.py --fastq-folder bench/corpus/sirv_small \
+              --outdir "$RUNNER_TEMP/isodumps" --stage isoforms
+          test -n "$(ls "$RUNNER_TEMP/isodumps"/isoforms_*.txt 2>/dev/null)"
+          ISONFORM_ISOFORM_DUMPS="$RUNNER_TEMP/isodumps" \
+              cargo test --manifest-path rust/Cargo.toml --release \
+              --test isoforms_oracle -- --nocapture
+
       - name: Stage oracles (graph, simplification, spoa, parasail)
         shell: bash -el {0}
         run: |

@@ -16,6 +16,7 @@ pub mod cli;
 pub mod graph;
 pub mod graph_build;
 pub mod intervals;
+pub mod isoforms;
 pub mod minimizers;
 pub mod parasail;
 pub mod poa;

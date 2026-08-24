@@ -121,11 +121,18 @@ Done so far:
   the gap where a wrong minimizer would have gone unnoticed — the graph oracle replays the
   *reference's* intervals, so nothing upstream of them was covered.
 
-**Every recorded corpus now agrees.** Intervals 121/121, graph construction on all five corpora,
-simplification 56/56 on the disjoint holdout, 56/56 on the first Drosophila sample, 16/16 on
-`dsim_mid` and 2/2 on `sirv_small`. Not started: isoform generation and batch merging, i.e.
-everything downstream of simplification. The port still cannot be run end to end, but the missing
-piece is now the *back* half rather than the front.
+- **Isoform generation is ported, with one open decision.** `isoforms` covers the live path of
+  `IsoformGeneration.py` — grouping reads by their route through the simplified graph, then merging
+  groups whose consensuses are similar. A fifth oracle diffs both halves. On 114 real cases:
+  **0 wrong partitions, 0 merging failures, 28 cases differing only in CPython set-iteration
+  order** — which names every isoform and orders every spoa call. See finding 28; that one needs
+  the owner's call.
+
+**Every recorded corpus agrees, except finding 28's ordering.** Intervals 121/121, graph
+construction on all five corpora, simplification 56/56 on the disjoint holdout and on the first
+Drosophila sample, 16/16 on `dsim_mid`, 2/2 on `sirv_small`; isoform partitioning and merging
+114/114. Not started: batch merging (`batch_merging_parallel.py`), which is now the only stage
+left.
 
 ### The simplification port did not converge, and the oracle is what found it
 
@@ -1399,6 +1406,95 @@ drives it.
 Not a defect — it produces the right answer, just via code that cannot run. Recorded because a reader
 would reasonably assume it matters, because the port implements the reachable path only, and because
 anyone adding a second pass later needs to know this is already half-built.
+
+### Finding 28 — CPython set-iteration order names every isoform and orders every spoa call. **Open decision.**
+
+`compute_equal_reads` groups reads by the route they take, then:
+
+```python
+id = list(current_node_support)[0]
+equal_reads[id] = list(current_node_support)
+```
+
+Both the representative `id` and the member **order** come from iterating a Python
+`set`. That order is not arbitrary trivia here — it reaches the output twice:
+
+* the `id` becomes the **isoform's identifier** in `mapping.txt` and the consensus file;
+* the member order is the order sequences are fed to **spoa**, which is order-sensitive,
+  so it changes the consensus *sequence*.
+
+Measured: `{3, 7, 8, 17}` iterates as `8, 17, 3, 7` and `{1, 5, 18}` as `1, 18, 5` —
+slot order in a size-8 table under `x & 7`. Across 114 recorded real cases, **28
+differ from ascending order** (16 of 56 Drosophila sample, 12 of 56 holdout); the
+other 86 happen to coincide.
+
+**This is the third place set order has reached output** (finding 12 in `find_paths`,
+finding 14 in `prepare_adding_edges`), and it differs from both in a way that
+matters: read ids are ints, `hash(int) == int`, so this is **not**
+`PYTHONHASHSEED`-dependent. The reference is stable run to run here. Diverging
+would therefore buy no determinism — only convenience — which is the opposite of
+the trade in findings 1 and 14.
+
+**The port currently uses ascending order and the oracle does not fail on it.**
+`rust/tests/isoforms_oracle.rs` separates three things: a wrong *partition* (reads
+in the wrong groups) fails the build; a merging disagreement on cases where the
+order matched fails the build; a difference that is *only* set order is reported
+and counted. On 114 cases: **0 wrong partitions, 0 merging failures, 28 set-order
+differences.** So everything except the ordering is verified.
+
+Closing it means one of two things, and it is the owner's call:
+
+* **Model CPython's set internals.** Byte-faithful. Needs the probing scheme
+  (linear probes then perturbed), the resize rule (`fill * 5 >= mask * 3`, growing
+  to `used * 4`), *and* the insertion order propagated through `set()`,
+  `.intersection()` and `-=`, since collisions resolve by insertion order. A
+  simplified model — ascending insertion, linear probing — reproduces 54 of 64
+  observed multi-member groups, so the remainder really does depend on those
+  details. It also couples the port to a CPython implementation detail across
+  versions.
+* **Keep a defined order and measure the cost.** Changes isoform ids and some
+  consensus sequences. Needs scoring on the SIRV and Drosophila corpora against
+  the reference's output before anyone can call it acceptable — that measurement
+  has not been done.
+
+### Finding 29 — nearly a third of `IsoformGeneration.py` is unreachable
+
+Of its 24 functions, **four are referenced nowhere in the repository** —
+`search_last_entries`, `search_first_entries`, `parse_cigar_diversity_isoform_level`
+(the older sibling of the `_new` one that is live) and `write_transcriptome_single` —
+and two more are reachable only from commented-out call sites,
+`generate_isoform_using_spoa` and `generate_isoforms_new`. That is roughly **183 of
+631 lines**, and it is a larger version of the same pattern as finding 27.
+
+Two of the four are informative rather than merely dead: `search_last_entries` and
+`search_first_entries` take exactly the `delta_len_3`/`delta_len_5` arguments that
+`parse_cigar_diversity_isoform_level_new` uses, so they read as helpers that were
+inlined when the `_new` variant was written and never removed. And the live
+`_new` sits directly above the dead original, which makes it easy to read the wrong
+one — worth knowing before editing either.
+
+Only the live path is ported.
+
+### Finding 30 — every interior mismatch counts as `delta_len`, whatever its length
+
+In `parse_cigar_diversity_isoform_level_new`, the accumulator is:
+
+```python
+# we want to add up all missmatches to compare to sequence length
+miss_match_length += delta_len
+```
+
+`+= delta_len`, not `+= cig_len`, immediately under a comment describing the
+opposite. Anything longer than `delta_len` has already returned `False` on the line
+above, so the total is exactly `delta_len × (number of interior mismatch runs)`: a
+one-base mismatch and a `delta_len`-base one contribute identically, and two
+one-base mismatches contribute twice as much as one five-base one.
+
+Not obviously wrong — counting *runs* rather than bases is a defensible similarity
+measure — but it is not what the comment says and not what a reader would assume,
+and the diversity ratio it feeds is compared against a threshold derived from
+`delta`. Reproduced, and pinned by
+`every_interior_mismatch_counts_as_delta_len_regardless_of_its_length`.
 
 ### Finding 22 — smaller things, recorded and not acted on
 

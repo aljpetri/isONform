@@ -25,7 +25,7 @@ binary cannot pass), locates the reference env, and runs both against each other
 | `accuracy_isoforms.py` | isoform accuracy against a known transcriptome (SIRV): recall, precision, redundancy, per-isoform identity |
 | `accuracy_isoforms_genome.py` | isoform accuracy against a genome (Drosophila) via `minimap2 -ax splice`: error rate, aligned fraction, canonical splice fraction, intron-chain redundancy. With `--annotation`, also SQANTI structural categories |
 | `annotation.py` | GFF3 parsing and SQANTI-style classification (FSM/ISM/NIC/NNC/...). Run it directly to execute its self-tests — no genome or minimap2 needed |
-| `dump_reference.py` | records a stage’s inputs and outputs from the live driver: `--stage intervals` writes `intervals_*.txt` (the front half of `main`), `--stage graph` writes `graph_*.txt`, `--stage simplify` writes the graph before and after each `simplifyGraph` call, `--record-spoa` and `--record-parasail` write every `spoa` / `parasail_alignment` call to `spoa_cases.tsv` / `parasail_cases.tsv` |
+| `dump_reference.py` | records a stage’s inputs and outputs from the live driver: `--stage intervals` writes `intervals_*.txt` (the front half of `main`), `--stage isoforms` writes `isoforms_*.txt`, `--stage graph` writes `graph_*.txt`, `--stage simplify` writes the graph before and after each `simplifyGraph` call, `--record-spoa` and `--record-parasail` write every `spoa` / `parasail_alignment` call to `spoa_cases.tsv` / `parasail_cases.tsv` |
 
 ## Two different questions
 
@@ -82,7 +82,7 @@ feels necessary.
 
 ## The oracles
 
-Five, all replaying recorded reference behaviour through the Rust port:
+Six, all replaying recorded reference behaviour through the Rust port:
 
 ```bash
 bench/dump_reference.py --fastq-folder bench/corpus/sirv_small --outdir /tmp/d \
@@ -98,8 +98,8 @@ PARASAIL_CASES=/tmp/d/parasail_cases.tsv cargo test --manifest-path rust/Cargo.t
     --release --lib parasail::oracle -- --nocapture
 ```
 
-All five **skip loudly** without their variable rather than passing silently,
-and CI sets all five.
+All six **skip loudly** without their variable rather than passing silently,
+and CI sets all six.
 
 The **interval** oracle is the odd one out and the most load-bearing:
 
@@ -178,6 +178,27 @@ first surplus or missing pop has localised two of the three bugs found here. It 
 the *aggregate* counts have twice beaten a more precise-looking local signal — in finding 24 the
 "only synthetic reads differ" observation was true and pointed at the wrong function, and what
 corrected it was 94 pops against 92.
+
+The **isoform** oracle has the most nuanced gate, and the nuance is the point:
+
+```bash
+bench/dump_reference.py --fastq-folder bench/corpus/sirv_small --outdir /tmp/o --stage isoforms
+ISONFORM_ISOFORM_DUMPS=/tmp/o cargo test --manifest-path rust/Cargo.toml \
+    --release --test isoforms_oracle -- --nocapture
+```
+
+It reports three outcomes, not one. A wrong **partition** — reads in the wrong
+groups — fails. A **merging** disagreement on a case whose grouping and order both
+matched fails. A difference that is *only* CPython **set-iteration order** — same
+reads, same groups, different representative id or different order within a group —
+is reported and counted but does **not** fail, because reproducing it means
+modelling CPython's set internals and that is an open decision (`PORTING.md`
+finding 28) rather than a settled one. On 114 real cases: 0 wrong partitions,
+0 merging failures, 28 set-order differences.
+
+That split is worth copying rather than collapsing. "28 of 114 disagree" and
+"0 of 114 disagree on anything this port decides" are both true, and only the
+second one tells you where to look.
 
 One boundary worth holding onto when reading a failure: the spoa result licenses
 "same inputs ⇒ same consensus", not "the port computes the same inputs". A
