@@ -86,7 +86,7 @@ Done so far:
 - **The simplification oracle exists** (`rust/tests/simplify_oracle.rs`). It rebuilds the graph the
   reference had on entry, runs the port's `simplify_graph`, and diffs the result. Passing on
   `sirv_small`'s 2 cases (CI), 16 real Drosophila graphs that pop tens of edges each, and a
-  56-cluster size-stratified Drosophila sample. **Failing on 2 of 56** in a second, disjoint
+  56-cluster size-stratified Drosophila sample. **Failing on 1 of 56** in a second, disjoint
   56-cluster holdout — see below.
 
 - **spoa equivalence is verified on isONform's own inputs. Caveat closed.** 5 368 of 5 368 recorded
@@ -99,11 +99,15 @@ Done so far:
   consensuses are an ordinary occurrence, so the port was popping bubbles the reference refuses. One
   fix closed both cases the tightening had exposed — which had looked like two unrelated bugs.
 
-Not done: 2 failures in the holdout corpus, both characterised and neither fixed. `simplify_0002`
-differs on **one edge**, same 21 reads but different multiplicities (the reference duplicates read 18,
-the port duplicates read 6) — a `prepare_adding_edges` concatenation-order difference. `simplify_0051`
-shows many surplus synthetic reads, the signature of extra pops, so likely another poppability
-divergence. Nothing downstream of simplification (isoform generation, batch merging) is started.
+- **Finding 14 reclassified from latent to live, and the port now diverges deliberately.** The
+  holdout's one-edge failure turned out to be a `PYTHONHASHSEED`-dependent pick in
+  `prepare_adding_edges` — the *reference* gives two different graphs across eight seeds. The port
+  orders the candidates lexicographically, matching finding 1's precedent. This also means finding 1's
+  "fixed" was a claim about one cause, not about the tool.
+
+Not done: **1** failure left in the holdout corpus. `simplify_0051` shows many surplus synthetic
+reads, the signature of extra pops, so likely another poppability divergence — the same shape pre-fix
+`0054` had. Nothing downstream of simplification (isoform generation, batch merging) is started.
 
 ### The simplification port did not converge, and the oracle is what found it
 
@@ -429,10 +433,18 @@ Nine defects came out of the isONcorrect port and the two largest were reference
 porting bugs. Same pattern here: the first day of reconnaissance produced these, before a line of
 algorithm was ported.
 
-### Finding 1 — isONform was non-deterministic run to run. Every output file, every run. **Fixed.**
+### Finding 1 — isONform was non-deterministic run to run. Every output file, every run. **Minimizer selection fixed; see finding 14 for a second source.**
 
 **This blocked recording goldens and blocked the port, so it came first.** The fix is described in
 *The determinism fix, measured* below; what follows is the defect as found.
+
+> **Scope correction.** This heading said simply "**Fixed**". It is fixed for the cause described
+> here — `hash()` on k-mer strings during minimizer selection, which was the dominant one and the one
+> that made *every* output file vary. It is **not** the only source: finding 14 documents an
+> independent seed dependency in bubble linearisation that survives this fix and still produces two
+> distinct outputs across eight seeds on real data. It is far rarer (one occurrence in 19 831 calls),
+> which is why it was not visible in the 24-seed check below — that corpus never reaches it. "Fixed"
+> was a claim about a cause, written as though it were a claim about the tool.
 
 `main:85`, inside `get_kmer_minimizers`:
 
@@ -982,33 +994,56 @@ Worth noting what this run also settled: the two rules coincide whenever every r
 node on the path (the distances telescope), and diverge only where the read sets differ. That is why
 the effect is small rather than absent.
 
-### Finding 14 — a latent seed dependency in bubble linearisation, and a gap in how it was checked
+### Finding 14 — a **live** seed dependency in bubble linearisation. Port diverges deliberately.
 
 `find_connecting_edges` returns a **`set` of `(node, node)` tuples**, and node names are *strings*, so
 its iteration order depends on `PYTHONHASHSEED`. `test_conn_end` filters that set into a list and
-`prepare_adding_edges` then takes `conn_list[0]` — so if two connecting edges ever ended at the same
-node, which one is picked would be seed-dependent, and finding 1's fix would be incomplete.
+`prepare_adding_edges` then takes `conn_list[0]` — so if two connecting edges ever end at the same
+node, which one is picked is seed-dependent, and finding 1's determinism fix does not cover it.
 
-Two things came out of chasing it, and the second is the more useful.
+**This entry previously said "latent, not live". That was wrong, and the correction is the point.**
+The original measurement found 0 of 343 non-empty `test_conn_end` results with more than one entry and
+concluded the pick was unambiguous on real data. A holdout corpus reached it on the first try.
+Re-measured by replaying recorded `simplifyGraph` calls:
 
-**It is latent, not live.** Instrumented across both real corpora:
+| corpus | `test_conn_end` calls | non-empty | **more than one** |
+| --- | --- | --- | --- |
+| `sirv_small` (2 clusters) | 4 | 0 | 0 |
+| Drosophila `dsim_mid` (16) | 3 125 | 2 | 0 |
+| Drosophila sample (56) | 8 582 | 81 | 0 |
+| Drosophila **holdout** (56) | 8 120 | 57 | **1** |
+| total | **19 831** | **140** | **1** |
 
-| | `sirv_real` | `droso` |
-| --- | --- | --- |
-| `test_conn_end` calls | 14 908 | 21 119 |
-| calls where `conn_edges` was non-empty | 132 | 211 |
-| calls where `conn_list` had **more than one** entry | **0** | **0** |
+So it is rare — one occurrence in 19 831 calls, one in 140 non-empty results — and it is real. Rare
+enough that the original conclusion was a reasonable read of the evidence available, and wrong enough
+to have silently mis-specified the port. The lesson is the one finding 14 already carried in its
+second half, turned on itself: **a negative result on a corpus is a statement about the corpus.**
+"Zero occurrences in 343 samples" bounds the rate near 1-in-343; it does not establish zero, and it
+was written up as though it did.
 
-So the pick is unambiguous on real data and the port can use any order. Recorded because it is a
-one-line change away from mattering, and because a corpus that did reach it would produce
-seed-dependent isoforms with nothing to warn you.
+**And the reference is non-deterministic where it fires.** Replaying the one graph that reaches it
+under eight `PYTHONHASHSEED` values produces **two distinct outputs** — seeds 0, 4, 6, 7 give one
+graph, seeds 1, 2, 3, 5 another, differing in one edge's support (`18` against `6`). So finding 1's
+"isONform was non-deterministic run to run — **fixed**" is true of minimizer selection and not true of
+the tool: this is an independent second source, unfixed upstream, and it can change the output.
 
-**The gap: the determinism check had been running on a corpus that barely exercises this stage.**
-`bench/corpus/sirv_small` pops a single edge (244 → 243), so "deterministic across 24 seeds" was a
-statement about graph construction and almost nothing about simplification. Re-run on 16 medium
-Drosophila clusters that pop tens of edges each, it is still clean — all 30 output files stable across
-8 seeds — but that was luck rather than evidence until it was checked. **A determinism check is only
-as good as the paths its corpus reaches**, which is worth remembering for every stage still to come.
+**What the port does.** Orders the candidates lexicographically by the source node's *name* and takes
+the first — the same choice already approved for minimizer selection, and the order the reference's
+own string names sort by. On the single observed multi-candidate case this agrees with
+`PYTHONHASHSEED=0`, hence with every recorded dump, so the simplification oracle passes; but that is
+a sample of one and is **not** evidence that lexicographic equals seed 0 in general. No env var
+restores the reference behaviour, because the behaviour is a coin flip rather than a defined order —
+there is nothing to restore. Pinned by
+`the_connecting_edge_pick_is_the_lexicographically_smallest_source`, whose fixture is built so that
+lexicographic and numeric order disagree, and which fails if the ordering is removed.
+
+**The other half of the original finding still stands: the determinism check had been running on a
+corpus that barely exercises this stage.** `bench/corpus/sirv_small` pops a single edge (244 → 243),
+so "deterministic across 24 seeds" was a statement about graph construction and almost nothing about
+simplification. Re-run on 16 medium Drosophila clusters that pop tens of edges each it was still
+clean — but note that those 16 register **2** non-empty results and **0** multi-candidate ones, so
+they could not have caught this either. **A determinism check is only as good as the paths its corpus
+reaches.**
 
 ### Finding 16 — simplification strips the `length` attribute from 42% of edges
 
@@ -1360,22 +1395,24 @@ which the reference prints and the port now reports too (`PopStats`, surfaced pe
 oracle). A cheap aggregate beat a precise-looking local signal.
 
 **And the holdout says the job is not finished.** A second, *disjoint* 56-cluster Drosophila sample —
-same stratification, offset so it shares no cluster with the first — fails on 2 of 56 after the fix.
+same stratification, offset so it shares no cluster with the first — failed on 2 of 56 after the fix
+(one since fixed, one open).
 That is the reason for taking a holdout at all: the first corpus went green, and green on the corpus
 you debugged against is the weakest evidence there is. Both new failures are characterised, neither
 is fixed:
 
-- **`simplify_0002`** — **one** edge in the whole graph, `"568, 601, 5" -> "532, 577, 6"`. Same 21
-  reads on both sides, same *set*, different **multiplicities**: the reference has read 18 once more
-  than the port, the port has read 6 once more than the reference. `edge_supp` is a Python list and
-  `prepare_adding_edges` builds it as `new_edge_supp1 + new_edge_supp2`, so a read present in both
-  path supports legitimately appears twice — meaning the two sides assigned paths to
-  `(prevnode1, nextnode1)` and `(prevnode2, nextnode2)` differently. A path-ordering difference, not a
-  support-computation one. Finding it took extending the oracle to compare edge support as a
-  **multiset**: a set difference reports "no difference" on precisely this case, which is worse than
-  reporting nothing.
-- **`simplify_0051`** — many surplus synthetic reads, the same signature pre-fix `0054` had, so most
-  likely another poppability divergence rather than a new mechanism.
+- **`simplify_0002`** — **fixed**, and it was not what it looked like. **One** edge in the whole
+  graph, `"568, 601, 5" -> "532, 577, 6"`. Same 21 reads on both sides, same *set*, different
+  **multiplicities**: the reference had read 18 once more than the port, the port read 6 once more.
+  Finding it at all took extending the oracle to compare edge support as a **multiset** — a set
+  difference reports "no difference" on precisely this case, which is worse than reporting nothing.
+  My first reading was "a path-ordering difference in `prepare_adding_edges`", which was half right
+  and stopped one step short: the pop sequences turned out to be **byte-identical** (86 pops, same
+  order, same supports), so the divergence was inside a single pop, and it was the
+  `PYTHONHASHSEED`-dependent `conn_list[0]` pick of finding 14 — a case where **the reference has no
+  single answer to match**. See finding 14, now reclassified from latent to live.
+- **`simplify_0051`** — still open. Many surplus synthetic reads, the same signature pre-fix `0054`
+  had, so most likely another poppability divergence rather than a new mechanism.
 
 Neither is a regression from Finding 24's fix: both corpora were recorded after it, and the first
 one's 56 cases pass.

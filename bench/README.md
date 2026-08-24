@@ -67,9 +67,14 @@ isONcorrect's `get_kmer_minimizers_lex` does — so this script is now a
 bench/check_seed_sensitivity.py --fastq-folder bench/corpus/sirv_small --seeds 24
 ```
 
-The harness still exports `PYTHONHASHSEED=0` everywhere, as belt and braces. This
-script is what asserts that is no longer load-bearing; if it ever exits 1 again,
-a container whose iteration order reaches results has crept in.
+The harness still exports `PYTHONHASHSEED=0` everywhere, and that is **not** just
+belt and braces any more. `PORTING.md` finding 14 documents a second, independent
+seed dependency — `find_connecting_edges` returns a `set` of string tuples and
+`prepare_adding_edges` takes `conn_list[0]` — which survives the minimizer fix and
+produces two distinct graphs across eight seeds on real data. It is rare (one
+occurrence in 19 831 calls) and `corpus/sirv_small` never reaches it, which is
+exactly why this script still exits 0. So a pass here means "minimizer selection
+is deterministic", not "the tool is".
 
 Note the sample size. In isONcorrect, six seeds made six records look like
 porting bugs; at 24 they were all reference behaviour. Prefer more seeds than
@@ -112,8 +117,23 @@ regenerating anything.
 That third oracle is what makes the second one unconditional. The simplification
 oracle used to report-but-not-fail any disagreement that had called spoa, since
 attributing one would have been claiming evidence that did not exist. It now
-exists — 3 277 of 3 277 recorded isONform calls match the binary, see
+exists — 5 368 of 5 368 recorded isONform calls match the binary, see
 `PORTING.md` — so every disagreement fails.
+
+When a simplification case does disagree, the report gives three things before you reach for a
+debugger: the port's **iteration and pop counts** (the reference prints its own, so the useful
+comparison is the sequence rather than the total), node `reads` differences **naming** the reads and
+marking synthetic ones (`*` = `original_support == false`, i.e. invented by
+`additional_node_support`), and edge support compared as a **multiset** (`<read>x<surplus>`, because
+`edge_supp` is a Python list and a read can legitimately appear twice — a set difference reports "no
+difference" on exactly that case).
+
+`ISONFORM_TRACE_POPS=1` goes one level deeper: one line per pop, with iteration, branch, bubble
+endpoints and both path supports. Diffing that against the reference's equivalent and finding the
+first surplus or missing pop has localised two of the three bugs found here. It is worth knowing that
+the *aggregate* counts have twice beaten a more precise-looking local signal — in finding 24 the
+"only synthetic reads differ" observation was true and pointed at the wrong function, and what
+corrected it was 94 pops against 92.
 
 One boundary worth holding onto when reading a failure: the spoa result licenses
 "same inputs ⇒ same consensus", not "the port computes the same inputs". A

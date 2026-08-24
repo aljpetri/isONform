@@ -667,10 +667,34 @@ pub fn prepare_adding_edges(
         let overall_nextnode = find_real_nextnode(g, nextnode1, nextnode2, bubble_end, topo_index);
 
         // `test_conn_end`: connecting edges that end at the node being added.
-        let conn: Vec<&(NodeId, NodeId)> = conn_edges
+        //
+        // **Deliberate divergence, and the reference has no answer to match.**
+        // `find_connecting_edges` returns a Python `set` of `(name, name)` string
+        // tuples, so its iteration order is `PYTHONHASHSEED`-dependent, and
+        // `prepare_adding_edges` takes `conn_list[0]`. When two connecting edges
+        // end at the same node the pick is therefore a coin flip: replaying one
+        // recorded graph under 8 seeds produces 2 distinct outputs. Finding 14
+        // called this latent on the evidence then available; a holdout corpus
+        // reached it, so it is live --- rare (1 of 140 non-empty results across
+        // 19 831 calls) but real.
+        //
+        // Ordering lexicographically by the source node's *name*, which is the
+        // same choice already approved for minimizer selection (finding 1) and is
+        // what the reference's own node names sort by. On the one observed
+        // multi-candidate case this agrees with `PYTHONHASHSEED=0`, i.e. with
+        // every recorded dump --- but that is a sample of one and is not evidence
+        // that lexicographic equals seed 0 in general.
+        //
+        // No env var restores "the reference path" here, because there is no
+        // reference path to restore: the behaviour being diverged from is a
+        // coin flip, not a defined order.
+        let mut conn: Vec<&(NodeId, NodeId)> = conn_edges
             .iter()
             .filter(|(_, v)| *v == overall_nextnode)
             .collect();
+        if conn.len() > 1 {
+            conn.sort_by_cached_key(|(u, _)| g.key(*u).to_string());
+        }
 
         let new_edge_supp1 = lifted_supp(prevnode1, nextnode1);
         let new_edge_supp2 = lifted_supp(prevnode2, nextnode2);
@@ -1448,6 +1472,18 @@ pub fn pop_bubbles<A: BubbleAligner>(g: &mut Graph, aligner: &mut A, opts: PopOp
     // converging run can reach it.
     let iteration_cap = g.node_count() + g.edge_count() + 16;
 
+    // `ISONFORM_TRACE_POPS=1` logs one line per pop: iteration, branch, bubble
+    // endpoints, both path supports.
+    //
+    // Permanent rather than scaffolding, because the reference prints its own
+    // per-iteration pop counts and the useful comparison is the *sequence*, not
+    // the total. Twice now a simplification-oracle failure has been localised by
+    // diffing this against the reference's equivalent and finding the first
+    // surplus or missing pop --- once for Finding 24, where the local signal
+    // (only synthetic reads differ) pointed at the wrong function entirely.
+    // Read once here rather than per pop, so it costs nothing when unset.
+    let trace_pops = std::env::var_os("ISONFORM_TRACE_POPS").is_some();
+
     loop {
         if stats.iterations >= iteration_cap {
             stats.hit_iteration_cap = true;
@@ -1553,6 +1589,16 @@ pub fn pop_bubbles<A: BubbleAligner>(g: &mut Graph, aligner: &mut A, opts: PopOp
                 };
                 let verdict = aligner.align(&req);
                 if verdict.poppable {
+                    if trace_pops {
+                        eprintln!(
+                            "POP it={} 2path {} -> {} p1={:?} p2={:?}",
+                            stats.iterations,
+                            g.key(combination.start),
+                            g.key(combination.end),
+                            all_paths[0].support,
+                            all_paths[1].support
+                        );
+                    }
                     linearize_bubble(
                         g,
                         combination.start,
@@ -1663,6 +1709,16 @@ pub fn pop_bubbles<A: BubbleAligner>(g: &mut Graph, aligner: &mut A, opts: PopOp
                     // shortened lists. Cloning here instead left them unstripped,
                     // which changed which pairs the emptiness and marked checks
                     // skipped and made the loop pop indefinitely. Mutate in place.
+                    if trace_pops {
+                        eprintln!(
+                            "POP it={} multi {} -> {} p1={:?} p2={:?}",
+                            stats.iterations,
+                            g.key(combination.start),
+                            g.key(combination.end),
+                            all_paths[i].support,
+                            all_paths[j].support
+                        );
+                    }
                     let mut pair_paths = vec![
                         std::mem::replace(
                             &mut all_paths[i],
@@ -2374,6 +2430,85 @@ mod tests {
         let mut paths = find_paths(&g, s, t, &[1, 2, 3], &FxHashSet::default());
         let order = linearize_bubble(&mut g, s, t, &mut paths, &FxHashMap::default(), &topo);
         assert_eq!(order, vec![s, b, a, t]);
+    }
+
+    #[test]
+    fn the_connecting_edge_pick_is_the_lexicographically_smallest_source() {
+        // `find_connecting_edges` can return two edges ending at the same node,
+        // and `prepare_adding_edges` folds the support of `conn_list[0]` into the
+        // new edge. In the reference `conn_list` comes from a Python `set` of
+        // string tuples, so which one that is depends on PYTHONHASHSEED --- two
+        // distinct outputs across 8 seeds on real data. The port orders by the
+        // source node's name instead. PORTING.md finding 14.
+        //
+        // Bubble s -> t. path1 = [a1, a2], path2 = [c], with BOTH a1 -> c and
+        // a2 -> c present, so `test_conn_end` for `c` has two candidates.
+        let mut g = Graph::new();
+        // Names sort as "100, .." < "99, ..", so lexicographic and numeric order
+        // disagree here on purpose: the reference's names are strings.
+        let k = |start: u32| NodeKey::Interval {
+            start,
+            end: start + 10,
+            r_id: 1,
+        };
+        let s = g.add_node(NodeKey::Source);
+        let a1 = g.add_node(k(99));
+        let a2 = g.add_node(k(100));
+        let c = g.add_node(k(200));
+        let t = g.add_node(NodeKey::Sink);
+        assert!(
+            g.key(a2).to_string() < g.key(a1).to_string(),
+            "fixture intent: '100, ..' sorts before '99, ..' as a string"
+        );
+
+        // path1: s -> a1 -> a2 -> t   path2: s -> c -> t
+        for (u, v, r) in [(s, a1, 1u32), (a1, a2, 1), (a2, t, 1), (s, c, 2), (c, t, 2)] {
+            g.add_edge(u, v, 0);
+            g.set_edge_support(u, v, r);
+        }
+        // The two connecting edges into `c`, each with its own marker read.
+        g.add_edge(a1, c, 0);
+        g.set_edge_support(a1, c, 91);
+        g.add_edge(a2, c, 0);
+        g.set_edge_support(a2, c, 92);
+
+        for n in [s, a1, a2, c, t] {
+            g.set_read(n, 1, ri(0, 10));
+            g.set_read(n, 2, ri(0, 10));
+        }
+
+        let topo = g.topological_index().unwrap();
+        let mut paths = vec![
+            BubblePath {
+                nodes: vec![s, a1, a2],
+                support: vec![1],
+            },
+            BubblePath {
+                nodes: vec![s, c],
+                support: vec![2],
+            },
+        ];
+        linearize_bubble(&mut g, s, t, &mut paths, &FxHashMap::default(), &topo);
+
+        // `a2` sorts first as a string, so its edge's support (92) is the one
+        // folded in --- not `a1`'s (91), which numeric order would have chosen.
+        // The linearised chain runs s -> a1 -> a2 -> c -> t, and the edge into
+        // `c` is where `conn_list[0]`'s support gets folded in. `a2` sorts first
+        // as a string, so that is 92. Without the ordering the port would take
+        // `find_connecting_edges`' insertion order, which visits `a1` first and
+        // would fold in 91 --- so this test discriminates.
+        let into_c = g.edge_support(a2, c).expect("a2 -> c is in the new chain");
+        assert!(
+            into_c.contains(&92),
+            "the lexicographically smallest source's support is folded in, got {into_c:?}"
+        );
+        assert!(
+            !into_c.contains(&91),
+            "and the other candidate's is not, got {into_c:?}"
+        );
+        // `a1 -> c` was never on a bubble path, so it survives untouched --- which
+        // is why the check has to be on one edge rather than on the whole graph.
+        assert_eq!(g.edge_support(a1, c).unwrap(), &[91]);
     }
 
     #[test]
