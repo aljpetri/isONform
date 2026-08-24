@@ -120,15 +120,19 @@ regenerating anything.
 The fourth does the same for `crate::parasail`, and needed doing for the same
 reason even though this file previously said otherwise: the *score* is exact by
 construction, but the **CIGAR** is a tie-break among equally-optimal paths, and
-`parse_cigar_diversity` reads the CIGAR. Recording isONform's own calls found 12
-outright score errors in 54 884 (`PORTING.md` finding 25). Its CIGAR check is a
-*property* rather than a count — where the port reports a different alignment it
-must still report an optimal one, verified by re-scoring its own output — because
-the residual rate is corpus-dependent (0.20% on Drosophila, 2.1% on sirv_small)
-and any threshold would either pass trivially or fail on a corpus nobody has run.
-`PARASAIL_SWEEP` re-runs the tie-break sweep, and `PARASAIL_HARD_OUT` writes just
-the mismatching cases out for inspection. Do **not** sweep on that subset and take
-the winner: it picks a setting that fixes all 112 and makes the full corpus worse.
+`parse_cigar_diversity` reads the CIGAR, not the score. Recording isONform's own
+calls found 12 outright score errors and 136 CIGAR errors in 54 884
+(`PORTING.md` finding 25). Both are now zero across **56 549** recorded calls and
+both are gated exactly.
+
+`PARASAIL_SWEEP` re-runs the tie-break sweep and `PARASAIL_HARD_OUT` writes just
+the mismatching cases out. Two warnings on those, both learned the hard way. Do
+**not** sweep on the failing subset and take the winner — it picked a setting that
+fixed all 112 of them and made the full corpus worse (54 772 → 54 522). And a
+sweep that fits nothing bounds the *parameter space*, not the problem: the last
+CIGAR errors were not a `TieBreak` value at all but a rule outside the
+parameterisation, and "no setting fits, therefore structural" sat in `PORTING.md`
+for a commit before that turned out to be wrong.
 
 That third oracle is what makes the second one unconditional. The simplification
 oracle used to report-but-not-fail any disagreement that had called spoa, since

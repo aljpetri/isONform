@@ -115,12 +115,26 @@ impl TieBreak {
     /// guessed — see the `sweep` test for the numbers.
     ///
     /// `column_first` and `last_max` only matter when several cells on the last
-    /// row or column tie for the best score, which never happens on the recorded
-    /// corpus: the two sequences are a read and its own correction, so a
-    /// full-length alignment always beats ending early. Both values are
-    /// therefore **unpinned by evidence**, and the sweep reports all four
-    /// combinations as equally perfect. If a corpus ever reaches such a tie,
-    /// re-run the sweep before trusting these two.
+    /// row or column tie for the best score. On isONcorrect's corpus that never
+    /// happened — a read against its own correction always prefers a full-length
+    /// alignment — so both were **unpinned by evidence**, with the sweep reporting
+    /// all four combinations as equally perfect and a note to re-run it if a
+    /// corpus ever reached such a tie.
+    ///
+    /// **isONform's does, constantly**, because it aligns two bubble-path
+    /// consensuses rather than a read against itself. Swept over 54 884 recorded
+    /// isONform calls the winner is now unique and strict:
+    ///
+    /// ```text
+    ///   54884 / 54884  [Diagonal, Insert, Delete] open=false col_first=false last_max=false
+    ///   54664 / 54884  [Diagonal, Insert, Delete] open=false col_first=true  last_max=false
+    ///   52891 / 54884  [Diagonal, Insert, Delete] open=false col_first=false last_max=true
+    /// ```
+    ///
+    /// So all four fields are pinned by evidence now. Note this only became a
+    /// clean sweep after `end_cell` stopped admitting the corner into the row and
+    /// column ranges (finding 25); before that the best any setting reached was
+    /// 54 772.
     pub const PARASAIL: TieBreak = TieBreak {
         h_order: [Step::Diagonal, Step::Insert, Step::Delete],
         prefer_open: false,
@@ -462,28 +476,53 @@ pub fn semiglobal_with(s1: &[u8], s2: &[u8], sc: Scoring, tb: TieBreak) -> Align
 // here, that scaffolding is worth copying back rather than rewriting.
 
 impl Table {
-    /// The end cell the alignment starts its traceback from.
+    /// The end cell the alignment starts its traceback from: the best-scoring cell
+    /// on the last row or last column, since trailing gaps are free.
     ///
-    /// The scan starts at **1**, not 0, and that is load-bearing. Cell `(n, 0)`
-    /// is reached by consuming all of `s1` as a free leading gap and none of
-    /// `s2`; `(0, m)` is its mirror. Both score 0, so including them lets an
-    /// "align nothing" path win whenever every real alignment scores below zero
-    /// --- and parasail does not do that. Measured:
+    /// Two things about parasail's choice here are not guessable, and both were
+    /// measured rather than reasoned about. `result.end_query` / `result.end_ref`
+    /// report the cell parasail picked, which is what made them measurable.
+    ///
+    /// **1. The scan starts at 1, not 0.** Cell `(n, 0)` is reached by consuming
+    /// all of `s1` as a free leading gap and none of `s2`; `(0, m)` is its mirror.
+    /// Both score 0, so including them lets "align nothing" win whenever every
+    /// real alignment scores below zero. parasail does not do that --- it insists
+    /// on at least one diagonal step:
     ///
     /// ```text
     /// m = parasail.matrix_create("ACGT", 2, -2)
-    /// sg("AAAA", "CCCC") -> score -2, cigar "3I1X3D"
+    /// sg("A",    "C")    -> -2  "1X"
+    /// sg("AAAA", "CCCC") -> -2  "3I1X3D"
     /// ```
     ///
-    /// −2 is one mismatch, so parasail insists on at least one diagonal step
-    /// rather than taking the free 0. Including `j == 0` and `i == 0` made the
-    /// port return 0 on 12 of 54 884 recorded real calls, and produced pure-gap
-    /// CIGARs (`17I18D` where parasail gives `16I1=17D`) on the all-`X`
-    /// placeholder comparisons of finding 24. One cause, both symptoms.
+    /// **2. The corner is excluded from both ranges and considered last.** That
+    /// looks like a detail and decides real cases. All-A against all-C ties
+    /// everywhere, so it isolates the rule; the cell parasail picks, 1-based:
     ///
-    /// Only gaps in row 0 / column 0 and gaps after the end cell are free; gaps
-    /// in between are charged, which is what makes the one diagonal cheaper than
-    /// walking the border.
+    /// ```text
+    ///   n\m     1      2      3      4      5      6
+    ///     1   (1,1)  (1,1)  (1,1)  (1,1)  (1,1)  (1,1)
+    ///     2   (1,1)  (2,1)  (2,1)  (2,1)  (2,1)  (2,1)
+    ///     3   (1,1)  (3,1)  (3,1)  (3,1)  (3,1)  (3,1)
+    ///     4   (1,1)  (4,1)  (4,1)  (4,1)  (4,1)  (4,1)
+    /// ```
+    ///
+    /// The ties are always between `(n, 1)` on the last row and `(1, m)` on the
+    /// last column. For `m >= 2` parasail takes the row one; for `m == 1` it takes
+    /// `(1, 1)`, which is on the column. No row-before-column or
+    /// column-before-row rule produces both — but excluding the corner does:
+    /// with `m == 1` the row range `1..m` is **empty**, so the choice falls to the
+    /// column and lands on its first maximum, `(1, 1)`.
+    ///
+    /// Verified exactly on **56 549** recorded real calls (54 884 Drosophila,
+    /// 1 665 `sirv_small`): 0 score and 0 CIGAR mismatches. Before this, 112 and
+    /// 35 CIGARs differed --- all equally *optimal*, which is why the score gate
+    /// could not see them, and `parse_cigar_diversity` reads the CIGAR rather than
+    /// the score. `PORTING.md` finding 25.
+    ///
+    /// Only gaps in row 0 / column 0 and gaps after the end cell are free; gaps in
+    /// between are charged, which is what makes one mismatch cheaper than walking
+    /// the border.
     fn end_cell(&self, tb: TieBreak) -> (i32, usize, usize) {
         let n = self.last_col.len() - 1;
         let m = self.m;
@@ -495,8 +534,13 @@ impl Table {
             return (0, n, m);
         }
         let mut best: (i32, usize, usize) = (NEG, n, m);
-        let row = (1..=m).map(|j| (self.last_row[j], n, j));
-        let col = (1..=n).map(|i| (self.last_col[i], i, m));
+        // The corner is excluded from both ranges and considered last. With
+        // `m == 1` that leaves the row scan empty, which is what makes parasail
+        // pick `(1, 1)` there and `(n, 1)` for every `m >= 2` --- see the table in
+        // the doc comment.
+        let row = (1..m).map(|j| (self.last_row[j], n, j));
+        let col = (1..n).map(|i| (self.last_col[i], i, m));
+        let corner = (self.last_row[m], n, m);
         let consider = |cand: (i32, usize, usize), best: &mut (i32, usize, usize)| {
             if cand.0 > best.0 || (tb.last_max && cand.0 == best.0) {
                 *best = cand;
@@ -517,6 +561,7 @@ impl Table {
                 consider(c, &mut best);
             }
         }
+        consider(corner, &mut best);
         best
     }
 }
@@ -708,17 +753,16 @@ mod tests {
             open: 12,
             ext: 1,
         };
-        // Every score matches. The CIGAR matches on all but one, and the one it
-        // does not is the residual described on `end_cell` --- parasail picks a
-        // different member of a set of equally-scoring end cells, and no
-        // `TieBreak` setting reproduces its rule (swept over all 48 against
-        // 54 884 real calls). Recorded as the port's own value so it is pinned
-        // rather than pretended.
+        // Score and CIGAR both, read off the library. `("AAAA", "C")` is the one
+        // that pins the corner rule: with `m == 1` the last-row scan is empty, so
+        // the choice falls to the last column and lands on `(1, 1)` --- which is
+        // why the CIGAR is `1X3I` and not `3I1X`.
         let cases = [
             ("A", "C", -2, "1X"),
             ("AA", "CC", -2, "1I1X1D"),
             ("AAA", "CCC", -2, "2I1X2D"),
             ("A", "CCCC", -2, "1X3D"),
+            ("AAAA", "C", -2, "1X3I"),
             ("AAAA", "CCCC", -2, "3I1X3D"),
             ("AC", "CA", 2, "1I1=1D"),
             ("ACGT", "TGCA", 2, "3I1=3D"),
@@ -728,11 +772,6 @@ mod tests {
             assert_eq!(got.score, score, "score for sg({a:?}, {b:?})");
             assert_eq!(got.cigar, cigar, "cigar for sg({a:?}, {b:?})");
         }
-        // parasail gives "1X3I" here, i.e. it ends at (1, 1) and leaves the rest
-        // of `s1` as a free trailing gap; the port ends at (4, 1). Both score -2.
-        let got = semiglobal(b"AAAA", b"C", sc);
-        assert_eq!(got.score, -2, "the score still agrees");
-        assert_eq!(got.cigar, "3I1X", "the port's choice, pinned not blessed");
     }
 
     #[test]
@@ -923,39 +962,30 @@ mod oracle {
         // negative optimum, on 12 of 54 884 recorded real calls. See `end_cell`.
         assert_eq!(bad_score, 0, "scores differed");
 
-        // The **CIGAR** is not exact, and a percentage budget would be a false
-        // gate: the residual rate is corpus-dependent (0.20% on 54 884 Drosophila
-        // calls, 2.1% on 1 665 from sirv_small), so any threshold either passes
-        // trivially or fails on a corpus nobody has run yet.
-        //
-        // Gated on the property that actually matters instead: **where the port
-        // reports a different alignment, it must still report an optimal one.**
-        // Re-scoring the port's own CIGAR must reproduce the score parasail
-        // reported. That distinguishes "picked a different member of a tie", which
-        // is the known residual, from "picked a worse path", which would be a bug
-        // --- and no threshold can tell those apart. `parse_cigar_diversity` reads
-        // the CIGAR rather than the score, so the residual is observable
-        // downstream; see PORTING.md finding 25 for how far.
+        // The **CIGAR** is exact too, and gated as such. It was not: parasail
+        // resolves a tie among equally-scoring end cells by excluding the corner
+        // from the last-row and last-column scans and considering it last, which
+        // `end_cell` now models. Before that, 112 of these 54 884 differed --- all
+        // of them equally *optimal* paths, which is why the score gate above could
+        // not see them.
+        assert_eq!(
+            bad_cigar, 0,
+            "CIGARs differed --- if these are equally-optimal alternatives rather \
+             than worse paths, `rescore` below is the thing to reach for"
+        );
+
+        // Kept as a diagnostic for the next time a CIGAR does differ: it separates
+        // "picked a different member of a tie" from "picked a worse path", which
+        // the score gate alone cannot do, since a tie has the same score by
+        // definition.
         for c in &cases {
             let got = semiglobal(&c.s1, &c.s2, c.scoring);
-            if got.cigar == c.cigar {
-                continue;
-            }
-            assert_eq!(
+            debug_assert_eq!(
                 rescore(&got.ops, &c.s1, &c.s2, c.scoring),
                 c.score,
-                "the port reported a SUBOPTIMAL alignment, not merely a different \
-                 one, for {}x{}:\n  parasail: {}\n  rust    : {}",
-                c.s1.len(),
-                c.s2.len(),
-                c.cigar,
-                got.cigar
+                "the port's own CIGAR does not rescore to its reported score"
             );
         }
-        eprintln!(
-            "  {bad_cigar} CIGAR(s) differ, all of them equally-optimal paths \
-             (known end-cell tie-break residual --- see `end_cell`)"
-        );
     }
 
     /// Score a CIGAR the way parasail's semi-global mode does: leading and

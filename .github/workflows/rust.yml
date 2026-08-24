@@ -188,9 +188,9 @@ jobs:
               cargo test --manifest-path rust/Cargo.toml --release \
               --lib poa::oracle -- --nocapture
           # crate::parasail against the real library on isONform's own inputs.
-          # The score is gated exactly; the CIGAR against a measured budget, for
-          # an end-cell tie-break parasail resolves differently --- see
-          # `end_cell` and PORTING.md finding 25.
+          # Score and CIGAR both gated exactly. They were not: 12 score and 136
+          # CIGAR errors in 54 884 recorded calls, from an end-cell rule with two
+          # non-obvious parts --- see `end_cell` and PORTING.md finding 25.
           test -s "$RUNNER_TEMP/dumps/parasail_cases.tsv"
           PARASAIL_CASES="$RUNNER_TEMP/dumps/parasail_cases.tsv" \
               cargo test --manifest-path rust/Cargo.toml --release \

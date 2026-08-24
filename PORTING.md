@@ -85,9 +85,9 @@ Done so far:
 
 - **The simplification oracle exists** (`rust/tests/simplify_oracle.rs`). It rebuilds the graph the
   reference had on entry, runs the port's `simplify_graph`, and diffs the result. Passing on
-  `sirv_small`'s 2 cases (CI), 16 real Drosophila graphs that pop tens of edges each, and a
-  56-cluster size-stratified Drosophila sample. **Failing on 1 of 56** in a second, disjoint
-  56-cluster holdout — see below.
+  `sirv_small`’s 2 cases (CI), 16 real Drosophila graphs that pop tens of edges each, a
+  56-cluster size-stratified Drosophila sample, and a second **disjoint** 56-cluster holdout. The
+  holdout is what kept finding bugs the first corpus could not — see below.
 
 - **spoa equivalence is verified on isONform's own inputs. Caveat closed.** 5 368 of 5 368 recorded
   calls across four corpora give a consensus identical to the `spoa` binary, the large majority from
@@ -105,19 +105,18 @@ Done so far:
   orders the candidates lexicographically, matching finding 1's precedent. This also means finding 1's
   "fixed" was a claim about one cause, not about the tool.
 
-- **parasail is now verified on isONform's inputs too, and that found finding 25.** `--record-parasail`
-  writes the cases; 54 884 unique calls from 56 Drosophila clusters. 12 outright **score** errors,
-  now 0 — the port's semi-global scan admitted an "align nothing" end cell that parasail excludes.
-  That also closed what finding 24 had called a *structural* residual. My earlier note that "the
-  parasail side needs no such caveat" was wrong on both counts.
+- **parasail is now verified on isONform's inputs too, and that found finding 25.**
+  `--record-parasail` writes the cases; **56 549** unique calls across two corpora, **0 score and 0
+  CIGAR mismatches**. It started at 12 score and 136 CIGAR errors: the port's semi-global scan
+  admitted an "align nothing" end cell parasail excludes, and resolved the remaining end-cell ties by
+  a rule parasail does not use. My earlier note that "the parasail side needs no such caveat" was
+  wrong on both counts, and the CIGAR half is what `parse_cigar_diversity` actually reads.
 
-Not done: **1** failure left in the holdout corpus, and its cause is known rather than suspected.
-`simplify_0051` turns on a CIGAR the port reports differently from parasail — an equally *optimal*
-alignment, but `parse_cigar_diversity` reads the CIGAR and not the score, and the reference's
-`div = 0.2055` against a `0.2000` threshold flips. 112 of 54 884 CIGARs differ this way (2.1% on
-`sirv_small`), all of them provably optimal; two of them flip a poppability verdict. Closing it needs
-parasail's end-cell tie-break modelled exactly — see finding 25. Nothing downstream of simplification
-(isoform generation, batch merging) is started.
+**Every recorded corpus now agrees, including both holdouts.** Simplification passes 56/56 on the
+disjoint holdout, 56/56 on the first Drosophila sample, 16/16 on `dsim_mid` and 2/2 on `sirv_small`.
+Nothing downstream of simplification (isoform generation, batch merging) is started, and the front
+half of `main` is still owed — so the port still cannot be run end to end, which remains the weakest
+part of the evidence.
 
 ### The simplification port did not converge, and the oracle is what found it
 
@@ -1257,15 +1256,21 @@ Worth carrying elsewhere: **isONcorrect's port has the same aligner and may have
 would only fire on non-`ACGT` input, so whether it is reachable there depends on whether anything
 upstream can emit one; that has not been checked.
 
-### Finding 25 — parasail's semi-global mode will not take the free all-gap path. **Port bug, score half fixed.**
+### Finding 25 — parasail's end-cell rule has two non-obvious parts. **Port bug, fixed; CIGAR now exact.**
 
 A second port defect in `parasail.rs`, found the same way as finding 24 and with the same shape: a
-reference behaviour nobody would guess, in a function described as needing no verification.
+reference behaviour nobody would guess, in a function this file had described as needing no
+verification.
 
-`parasail_sg` scans the last row and last column for the best score and tracebacks from there. The
-port scanned **from index 0**, which admits end cell `(n, 0)` — reached by consuming all of `s1` as a
-free leading gap and none of `s2` — and its mirror `(0, m)`. Both score 0. parasail excludes them, so
-it insists on at least one diagonal step even when every real alignment scores below zero:
+`parasail_sg` scans the last row and last column for the best score — trailing gaps are free — and
+tracebacks from there. Two things about *which* cell it picks are not guessable. Both were measured,
+not reasoned about: `result.end_query` / `result.end_ref` report parasail's choice directly, which is
+what made them measurable at all.
+
+**1. The scan starts at 1, not 0.** The port scanned from 0, admitting end cell `(n, 0)` — reached by
+consuming all of `s1` as a free leading gap and none of `s2` — and its mirror `(0, m)`. Both score 0.
+parasail excludes them, so it insists on at least one diagonal step even when every real alignment
+scores below zero:
 
 ```text
 m = parasail.matrix_create("ACGT", 2, -2)
@@ -1274,42 +1279,51 @@ sg("AAAA", "CCCC") -> -2  "3I1X3D"      not 0
 sg("AC",   "CA")   ->  2  "1I1=1D"      one pair does match
 ```
 
-Only gaps in row 0 / column 0 and gaps after the end cell are free; gaps in between are charged,
-which is what makes one mismatch cheaper than walking the border. Fixed by starting both scans at 1.
+**2. The corner is excluded from both ranges and considered last.** All-A against all-C ties
+everywhere, which isolates the rule. The cell parasail picks, 1-based:
 
-**Measured, on 54 884 unique parasail calls recorded from 56 real Drosophila clusters:**
+```text
+  n\m     1      2      3      4      5      6
+    1   (1,1)  (1,1)  (1,1)  (1,1)  (1,1)  (1,1)
+    2   (1,1)  (2,1)  (2,1)  (2,1)  (2,1)  (2,1)
+    3   (1,1)  (3,1)  (3,1)  (3,1)  (3,1)  (3,1)
+    4   (1,1)  (4,1)  (4,1)  (4,1)  (4,1)  (4,1)
+```
 
-| | before | after |
-| --- | --- | --- |
-| score mismatches | **12** | **0** |
-| CIGAR mismatches | 136 | 112 |
+The tie is always between `(n, 1)` on the last row and `(1, m)` on the last column. For `m >= 2`
+parasail takes the row one; for `m == 1` it takes `(1, 1)`, which is on the column. **No
+row-before-column or column-before-row rule produces both** — which is exactly why sweeping the
+`TieBreak` parameter space found nothing and why "structural" looked like a fair conclusion. Excluding
+the corner produces both: with `m == 1` the row range `1..m` is *empty*, so the choice falls to the
+column and lands on its first maximum.
 
-The score is now exact and gated as such. It also closed what finding 24 had recorded as a
-*structural* residual: the all-`X` placeholder comparison now gives parasail's `16I1=17D` rather than
-the port's pure-gap `17I18D`. One cause, both symptoms — and the "no `TieBreak` setting reproduces it,
-so it is structural" conclusion was premature, because the missing piece was not in `TieBreak` at all.
+**Measured, on 56 549 unique recorded calls** — 54 884 from 56 Drosophila clusters, 1 665 from
+`sirv_small`:
 
-**What remains, and it is not closed.** 112 of 54 884 CIGARs still differ, and the rate is
-corpus-dependent — 0.20% there, **2.1%** (35 of 1 665) on `sirv_small`. parasail resolves a tie among
-equally-scoring end cells by a rule this port does not reproduce, and none of the 48 `TieBreak`
-settings does either: swept over the full corpus, the best is the current
-`[Diagonal, Insert, Delete] / open=false / column_first=false / last_max=false` at 54 772 / 54 884.
-(A sweep over only the *failing* subset picks `column_first=true` at 112/112 and makes the whole
-corpus worse, 54 522 — a clean demonstration of why you do not tune on the cases you are trying to
-fix.)
+| | before | after part 1 | after part 2 |
+| --- | --- | --- | --- |
+| score mismatches (of 54 884) | **12** | 0 | 0 |
+| CIGAR mismatches (of 54 884) | 136 | 112 | **0** |
+| CIGAR mismatches (of 1 665) | — | 35 | **0** |
 
-Because the rate cannot be gated by a threshold that means anything on an unseen corpus, the oracle
-gates the **property** instead: where the port reports a different CIGAR it must still report an
-*optimal* one, checked by re-scoring its own output. All 112 and all 35 pass that. So the port never
-returns a worse alignment, only a different equally-good one — which distinguishes the known residual
-from a real regression in a way no percentage can.
+Both are now gated exactly. This also closed what finding 24 recorded as a *structural* residual —
+the all-`X` placeholder comparison now gives parasail's `16I1=17D` — and it is what closes
+`simplify_0051`, the last failing case in the holdout corpus: the reference computed
+`div = 0.2055` against a `0.2000` threshold and refused the bubble, while the port's differing tail
+lowered the ratio and popped it. Same consensus sequences, same score, different CIGAR, opposite
+verdict, because `parse_cigar_diversity` reads the CIGAR and not the score.
 
-**It is still observable downstream**, because `parse_cigar_diversity` reads the CIGAR and not the
-score. Of the 112, five use `Scoring::BUBBLE` (the poppability path) and **two flip the poppability
-verdict** at `delta_len = 5`. One of those two is why `simplify_0051` still fails: the reference gets
-`div = 0.2055` against a threshold of `0.2000` and refuses the bubble, the port's differing tail
-lowers the ratio and pops it. So closing this is what closes that case, and it needs parasail's
-end-cell rule modelled exactly rather than another sweep.
+**Two method notes, both about how nearly this went wrong.**
+
+*Sweeping bounds the parameter space, not the problem.* "All 48 `TieBreak` settings tried, none fits,
+therefore structural" was written into this file and survived one commit. The missing piece was not a
+`TieBreak` value; it was outside the parameterisation entirely. A negative result over a search space
+says something about the search space.
+
+*Do not tune on the cases you are trying to fix.* A sweep restricted to the 112 failing cases picks
+`column_first = true` at a clean 112 / 112 — and takes the full corpus from 54 772 to 54 522. That
+setting was applied on the strength of the subset result and the full-corpus oracle caught it
+immediately. Finding the setting that fixes the failures is not the same as finding the right one.
 
 ### Finding 22 — smaller things, recorded and not acted on
 
@@ -1454,28 +1468,27 @@ pointed at the wrong function, and the thing that corrected it was a *count* —
 which the reference prints and the port now reports too (`PopStats`, surfaced per case by the
 oracle). A cheap aggregate beat a precise-looking local signal.
 
-**And the holdout says the job is not finished.** A second, *disjoint* 56-cluster Drosophila sample —
-same stratification, offset so it shares no cluster with the first — failed on 2 of 56 after the fix
-(one since fixed, one open).
-That is the reason for taking a holdout at all: the first corpus went green, and green on the corpus
-you debugged against is the weakest evidence there is. Both new failures are characterised, neither
-is fixed:
+**The holdout is what kept the job honest.** A second, *disjoint* 56-cluster Drosophila sample — same
+stratification, offset so it shares no cluster with the first — failed on 2 of 56 after finding 24's
+fix, when the first corpus had gone fully green. Green on the corpus you debugged against is the
+weakest evidence there is; both of those turned out to be real, and neither was the mechanism its
+symptoms suggested:
 
-- **`simplify_0002`** — **fixed**, and it was not what it looked like. **One** edge in the whole
-  graph, `"568, 601, 5" -> "532, 577, 6"`. Same 21 reads on both sides, same *set*, different
-  **multiplicities**: the reference had read 18 once more than the port, the port read 6 once more.
-  Finding it at all took extending the oracle to compare edge support as a **multiset** — a set
-  difference reports "no difference" on precisely this case, which is worse than reporting nothing.
-  My first reading was "a path-ordering difference in `prepare_adding_edges`", which was half right
-  and stopped one step short: the pop sequences turned out to be **byte-identical** (86 pops, same
-  order, same supports), so the divergence was inside a single pop, and it was the
-  `PYTHONHASHSEED`-dependent `conn_list[0]` pick of finding 14 — a case where **the reference has no
-  single answer to match**. See finding 14, now reclassified from latent to live.
-- **`simplify_0051`** — still open. Many surplus synthetic reads, the same signature pre-fix `0054`
-  had, so most likely another poppability divergence rather than a new mechanism.
+- **`simplify_0002`** — **one** edge in the whole graph. Same 21 reads on both sides, same *set*,
+  different **multiplicities**. Finding it took extending the oracle to compare edge support as a
+  multiset — a set difference reports "no difference" on precisely this case. My first reading, "a
+  path-ordering difference in `prepare_adding_edges`", was half right and one step short: the pop
+  sequences were **byte-identical** (86 pops), so the divergence was inside a single pop, and it was
+  the `PYTHONHASHSEED`-dependent `conn_list[0]` pick of finding 14 — a case where **the reference has
+  no single answer to match**.
+- **`simplify_0051`** — surplus synthetic reads, the same signature pre-fix `0054` had, and again the
+  same *class* of cause but not the same cause. Both sides computed byte-identical consensus
+  sequences and reached opposite verdicts, which moved the search out of `simplify.rs` and into the
+  aligner: finding 25, parasail's end-cell rule.
 
-Neither is a regression from Finding 24's fix: both corpora were recorded after it, and the first
-one's 56 cases pass.
+Both are fixed and the holdout is 56/56. Three of the four bugs in this stretch were found by a
+corpus the previous one could not reach, which is the argument for keeping a holdout rather than
+growing the corpus you debug against.
 
 ## Evaluating isONform
 
