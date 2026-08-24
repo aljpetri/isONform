@@ -44,6 +44,8 @@ struct Case {
     edges: Vec<(String, String, Vec<u32>)>,
     /// `equal_reads` after grouping and sub-isoform merging.
     groups: BTreeMap<u32, Vec<u32>>,
+    /// The same keys in record order.
+    group_order: Vec<u32>,
     /// `new_consensuses`.
     consensuses: BTreeMap<u32, Vec<u8>>,
 }
@@ -119,7 +121,9 @@ fn parse_case(path: &Path) -> Case {
                     .filter(|x| !x.is_empty())
                     .map(|x| x.parse().unwrap())
                     .collect();
-                c.groups.insert(k.parse().unwrap(), members);
+                let key: u32 = k.parse().unwrap();
+                c.group_order.push(key);
+                c.groups.insert(key, members);
             }
             "C" => {
                 let (k, v) = rest.split_once(' ').unwrap_or((rest, ""));
@@ -167,6 +171,9 @@ struct Outcome {
     /// order, which the port does not model --- see `PORTING.md` finding 28.
     set_order: Vec<String>,
     merging: Vec<String>,
+    /// What the ordering divergence actually costs, for cases where it fires:
+    /// `(reference isoforms, port isoforms, byte-identical consensuses)`.
+    cost: Option<(usize, usize, usize)>,
 }
 
 fn check(c: &Case) -> Outcome {
@@ -174,7 +181,7 @@ fn check(c: &Case) -> Outcome {
     let g = rebuild(c);
 
     // -- grouping ----------------------------------------------------------
-    let mut groups = compute_equal_reads(&g, &c.support);
+    let groups = compute_equal_reads(&g, &c.support);
     let got: BTreeMap<u32, Vec<u32>> = groups
         .iter()
         .map(|(k, v)| {
@@ -225,46 +232,82 @@ fn check(c: &Case) -> Outcome {
         }
     } else {
         // Same partition. Do the labels and the within-group order agree?
-        let raw_got: BTreeMap<u32, Vec<u32>> = groups.iter().cloned().collect();
-        if raw_got.keys().collect::<Vec<_>>() != c.groups.keys().collect::<Vec<_>>() {
-            let d: Vec<u32> = c
-                .groups
-                .keys()
-                .filter(|k| !raw_got.contains_key(k))
-                .copied()
-                .take(4)
-                .collect();
-            out.set_order.push(format!(
-                "same partition, different representative id(s): reference uses {d:?} where the port does not"
-            ));
-        }
-        for (k, w) in &c.groups {
-            if let Some(h) = raw_got.get(k) {
-                if h != w {
-                    out.set_order.push(format!(
-                        "group {k}: same members, different order --- reference {:?}, port {:?}",
-                        &w[..w.len().min(6)],
-                        &h[..h.len().min(6)]
+        //
+        // Compared group-by-group on *membership*, not by key: when the labels
+        // differ, key `k` names a different group on each side, and diffing those
+        // reports members as "missing" that are simply in the group next door.
+        let raw_got: Vec<(u32, Vec<u32>)> = groups.clone();
+        let mut label_diffs = 0usize;
+        let mut order_diffs = 0usize;
+        let mut first_order: Option<String> = None;
+        for (want_k, want_v) in c
+            .group_order
+            .iter()
+            .filter_map(|k| c.groups.get(k).map(|v| (*k, v)))
+        {
+            // The port's group holding the same reads, whatever it called it.
+            let mut sorted_want = want_v.clone();
+            sorted_want.sort_unstable();
+            let Some((got_k, got_v)) = raw_got.iter().find(|(_, v)| {
+                let mut sv = (*v).clone();
+                sv.sort_unstable();
+                sv == sorted_want
+            }) else {
+                continue;
+            };
+            if *got_k != want_k {
+                label_diffs += 1;
+            }
+            if got_v != want_v {
+                order_diffs += 1;
+                if first_order.is_none() {
+                    first_order = Some(format!(
+                        "e.g. reference {:?}, port {:?}",
+                        &want_v[..want_v.len().min(6)],
+                        &got_v[..got_v.len().min(6)]
                     ));
-                    break;
                 }
             }
+        }
+        if label_diffs > 0 {
+            out.set_order.push(format!(
+                "{label_diffs} group(s) carry a different representative id \
+                 (`list(set)[0]` --- finding 28)"
+            ));
+        }
+        if order_diffs > 0 {
+            out.set_order.push(format!(
+                "{order_diffs} group(s) hold the same reads in a different order. {}",
+                first_order.unwrap_or_default()
+            ));
         }
     }
 
     // -- merging -----------------------------------------------------------
-    // Only meaningful if the grouping agreed; otherwise the merge is being fed
-    // different input and would report a difference that is not its own.
-    if !out.grouping.is_empty() || !out.set_order.is_empty() {
-        out.merging.push(
-            "not evaluated: the grouping or its order differs, so the merge sees \
-             different input --- and spoa is order-sensitive"
-                .into(),
-        );
-        return out;
-    }
+    //
+    // Seeded with the **reference's own** grouping, read straight from the `Q`
+    // records, rather than with the port's. That is deliberate and it is what
+    // makes this a real gate: the port uses ascending order where the reference
+    // uses CPython's set order (finding 28), so on 28 of 114 cases the port's
+    // groups reach `merge_consensuses` in a different order. Feeding the port's
+    // groups here would mean those cases could never be checked at all --- the
+    // merge would be judged on input it was never meant to see.
+    //
+    // With the reference's order in, the merge must reproduce the reference's
+    // consensuses exactly, on every case. Anything else is this port's bug.
+    let mut seeded: Vec<(u32, Vec<u32>)> = c.groups.iter().map(|(k, v)| (*k, v.clone())).collect();
+    // `equal_reads` is a dict; `merge_consensuses` iterates it in insertion
+    // order, which for the recorded dump is the order `compute_equal_reads`
+    // inserted. The `Q` records are written sorted by key, so restore insertion
+    // order from the recorded sequence instead.
+    seeded.sort_by_key(|(k, _)| {
+        c.group_order
+            .iter()
+            .position(|x| x == k)
+            .unwrap_or(usize::MAX)
+    });
     let mut engine = SpoaParasailMerge;
-    let made = merge_consensuses(&mut engine, &mut groups, &c.reads, c.opts);
+    let made = merge_consensuses(&mut engine, &mut seeded, &c.reads, c.opts);
     let got: BTreeMap<u32, Vec<u8>> = made.into_iter().collect();
     if got.len() != c.consensuses.len() {
         out.merging.push(format!(
@@ -304,6 +347,24 @@ fn check(c: &Case) -> Outcome {
                 .push(format!("isoform {k}: extra, not in the reference"));
         }
     }
+    // -- what the ordering divergence costs ---------------------------------
+    //
+    // Not a gate. The port uses ascending order where the reference uses
+    // CPython's set order (finding 28, decided rather than pending), so on the
+    // cases where those differ the output differs too. Running the port's *own*
+    // grouping through the merge and comparing measures that, instead of leaving
+    // "it diverges" as an unquantified word.
+    if !out.set_order.is_empty() {
+        let mut own = groups.clone();
+        let mut engine = SpoaParasailMerge;
+        let made = merge_consensuses(&mut engine, &mut own, &c.reads, c.opts);
+        let identical = made
+            .iter()
+            .filter(|(_, seq)| c.consensuses.values().any(|w| w == seq))
+            .count();
+        out.cost = Some((c.consensuses.len(), made.len(), identical));
+    }
+
     out
 }
 
@@ -331,6 +392,7 @@ fn isoform_generation_matches_the_reference() {
     assert!(!cases.is_empty(), "no isoforms_*.txt in {}", dir.display());
 
     let (mut ok, mut bad_group, mut bad_order, mut bad_merge) = (0usize, 0usize, 0usize, 0usize);
+    let (mut cost_ref, mut cost_port, mut cost_same) = (0usize, 0usize, 0usize);
     let mut report = String::new();
     for path in &cases {
         let c = parse_case(path);
@@ -345,8 +407,13 @@ fn isoform_generation_matches_the_reference() {
         if !o.set_order.is_empty() {
             bad_order += 1;
         }
-        if !o.merging.is_empty() && o.grouping.is_empty() && o.set_order.is_empty() {
+        if !o.merging.is_empty() {
             bad_merge += 1;
+        }
+        if let Some((r, p, same)) = o.cost {
+            cost_ref += r;
+            cost_port += p;
+            cost_same += same;
         }
         let name = c.path.file_name().unwrap().to_string_lossy();
         let _ = writeln!(
@@ -362,10 +429,8 @@ fn isoform_generation_matches_the_reference() {
         for p in o.set_order.iter().take(2) {
             let _ = writeln!(report, "  SET-ORDER: {p}");
         }
-        if o.grouping.is_empty() && o.set_order.is_empty() {
-            for p in o.merging.iter().take(4) {
-                let _ = writeln!(report, "  MERGING:   {p}");
-            }
+        for p in o.merging.iter().take(4) {
+            let _ = writeln!(report, "  MERGING:   {p}");
         }
     }
     eprintln!(
@@ -386,8 +451,15 @@ fn isoform_generation_matches_the_reference() {
     );
     assert_eq!(
         bad_merge, 0,
-        "{bad_merge} case(s) agree on grouping and order but differ in merging:{report}"
+        "{bad_merge} case(s) differ in merging, given the reference's own grouping:{report}"
     );
+    if bad_order > 0 && cost_ref > 0 {
+        eprintln!(
+            "  ordering divergence, on the {bad_order} case(s) where it fires: \
+             reference emitted {cost_ref} isoform(s), the port {cost_port}, \
+             {cost_same} of them byte-identical"
+        );
+    }
     if bad_order > 0 {
         eprintln!(
             "\nNOTE: {bad_order} case(s) differ only in CPython set-iteration order \

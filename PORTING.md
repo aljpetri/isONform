@@ -121,12 +121,13 @@ Done so far:
   the gap where a wrong minimizer would have gone unnoticed — the graph oracle replays the
   *reference's* intervals, so nothing upstream of them was covered.
 
-- **Isoform generation is ported, with one open decision.** `isoforms` covers the live path of
-  `IsoformGeneration.py` — grouping reads by their route through the simplified graph, then merging
-  groups whose consensuses are similar. A fifth oracle diffs both halves. On 114 real cases:
-  **0 wrong partitions, 0 merging failures, 28 cases differing only in CPython set-iteration
-  order** — which names every isoform and orders every spoa call. See finding 28; that one needs
-  the owner's call.
+- **Isoform generation is ported.** `isoforms` covers the live path of `IsoformGeneration.py` —
+  grouping reads by their route through the simplified graph, then merging groups whose consensuses
+  are similar. A sixth oracle diffs both halves: **0 wrong partitions and 0 merging failures on all
+  114 real cases**. One deliberate divergence, decided and measured: the port orders group members
+  ascending where the reference uses CPython set-iteration order, which names every isoform and
+  orders every spoa call (finding 28). It fires on 28 of 114 cases and leaves 93% of isoform
+  sequences byte-identical there.
 
 **Every recorded corpus agrees, except finding 28's ordering.** Intervals 121/121, graph
 construction on all five corpora, simplification 56/56 on the disjoint holdout and on the first
@@ -1407,9 +1408,9 @@ Not a defect — it produces the right answer, just via code that cannot run. Re
 would reasonably assume it matters, because the port implements the reachable path only, and because
 anyone adding a second pass later needs to know this is already half-built.
 
-### Finding 28 — CPython set-iteration order names every isoform and orders every spoa call. **Open decision.**
+### Finding 28 — CPython set-iteration order names every isoform and orders every spoa call. **Deliberate divergence, measured.**
 
-`compute_equal_reads` groups reads by the route they take, then:
+`compute_equal_reads` does:
 
 ```python
 id = list(current_node_support)[0]
@@ -1417,45 +1418,50 @@ equal_reads[id] = list(current_node_support)
 ```
 
 Both the representative `id` and the member **order** come from iterating a Python
-`set`. That order is not arbitrary trivia here — it reaches the output twice:
+`set`, and both reach the output: the `id` becomes the **isoform's identifier** in
+`mapping.txt` and the consensus file, and the member order is the order sequences
+are fed to **spoa**, which is order-sensitive, so it changes the consensus
+*sequence*. Measured: `{3, 7, 8, 17}` iterates as `8, 17, 3, 7` and `{1, 5, 18}` as
+`1, 18, 5` — slot order in a size-8 table under `x & 7`.
 
-* the `id` becomes the **isoform's identifier** in `mapping.txt` and the consensus file;
-* the member order is the order sequences are fed to **spoa**, which is order-sensitive,
-  so it changes the consensus *sequence*.
+**This is the third time set order has reached output** (finding 12 in `find_paths`,
+finding 14 in `prepare_adding_edges`), and it differs from both in the way that
+decides the argument: read ids are ints and `hash(int) == int`, so this is **not**
+`PYTHONHASHSEED`-dependent. The reference is stable run to run here, so diverging
+buys no determinism — only simplicity.
 
-Measured: `{3, 7, 8, 17}` iterates as `8, 17, 3, 7` and `{1, 5, 18}` as `1, 18, 5` —
-slot order in a size-8 table under `x & 7`. Across 114 recorded real cases, **28
-differ from ascending order** (16 of 56 Drosophila sample, 12 of 56 holdout); the
-other 86 happen to coincide.
+**The decision, and why.** The port uses **ascending order**. Reproducing CPython's
+would mean modelling the probing scheme, the `fill * 5 >= mask * 3` resize rule,
+*and* insertion order propagated through `set()`, `.intersection()` and `-=`, since
+collisions resolve by insertion order — a simplified model (ascending insertion,
+linear probing) reproduces only 54 of 64 observed multi-member groups, so the
+remainder really does turn on those details. That is a large amount of machinery,
+coupled to a CPython implementation detail across versions, to preserve an order
+that carries no meaning and that any future fix to this stage would change anyway.
+A `BTreeSet` is both simpler and faster. Owner's call, taken on that basis.
 
-**This is the third place set order has reached output** (finding 12 in `find_paths`,
-finding 14 in `prepare_adding_edges`), and it differs from both in a way that
-matters: read ids are ints, `hash(int) == int`, so this is **not**
-`PYTHONHASHSEED`-dependent. The reference is stable run to run here. Diverging
-would therefore buy no determinism — only convenience — which is the opposite of
-the trade in findings 1 and 14.
+**What it costs, measured rather than asserted.** Over 114 recorded real cases the
+ordering differs on **28** (16 of 56 Drosophila sample, 12 of 56 holdout); on the
+other 86 the two orders coincide and the output is byte-identical. On the 28 where
+it does fire:
 
-**The port currently uses ascending order and the oracle does not fail on it.**
-`rust/tests/isoforms_oracle.rs` separates three things: a wrong *partition* (reads
-in the wrong groups) fails the build; a merging disagreement on cases where the
-order matched fails the build; a difference that is *only* set order is reported
-and counted. On 114 cases: **0 wrong partitions, 0 merging failures, 28 set-order
-differences.** So everything except the ordering is verified.
+| | reference | port |
+| --- | --- | --- |
+| isoforms emitted | 1 066 | 1 073 (+0.7%) |
+| byte-identical consensuses | — | **995 (93.3%)** |
 
-Closing it means one of two things, and it is the owner's call:
+So the divergence is confined to a quarter of cases, and within those it leaves
+93% of isoform sequences untouched and changes the isoform count by under one
+percent. What it does change is *labels*, on every affected group.
 
-* **Model CPython's set internals.** Byte-faithful. Needs the probing scheme
-  (linear probes then perturbed), the resize rule (`fill * 5 >= mask * 3`, growing
-  to `used * 4`), *and* the insertion order propagated through `set()`,
-  `.intersection()` and `-=`, since collisions resolve by insertion order. A
-  simplified model — ascending insertion, linear probing — reproduces 54 of 64
-  observed multi-member groups, so the remainder really does depend on those
-  details. It also couples the port to a CPython implementation detail across
-  versions.
-* **Keep a defined order and measure the cost.** Changes isoform ids and some
-  consensus sequences. Needs scoring on the SIRV and Drosophila corpora against
-  the reference's output before anyone can call it acceptable — that measurement
-  has not been done.
+**The rest of the stage is verified exactly.** `rust/tests/isoforms_oracle.rs`
+separates three outcomes: a wrong **partition** (reads in the wrong groups) fails
+the build; a **merging** disagreement fails; a difference that is *only* set order
+is reported, counted and costed. Crucially the merge is seeded with the
+**reference's own** grouping read from the dump, not the port's — otherwise the 28
+affected cases could never be checked at all, since the merge would be judged on
+input it was never meant to see. With that: **0 wrong partitions and 0 merging
+failures on all 114 cases.**
 
 ### Finding 29 — nearly a third of `IsoformGeneration.py` is unreachable
 

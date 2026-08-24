@@ -136,14 +136,15 @@ pub fn merge_isoform_paths(isoforms: &mut Vec<(u32, Vec<u32>)>) {
 ///
 /// Two reference behaviours are load-bearing and neither is obvious:
 ///
-/// * **`node_support_left.pop()` picks an arbitrary read.** For a set of ints
-///   CPython's order is deterministic for a given set but not meaningful, and it
-///   decides which read seeds each walk. This is the same defect
-///   `PORTING.md` finding 12 fixed in `find_paths` (there it became `min()`);
-///   here it is unfixed, so the port reproduces `min()`-free arbitrary choice by
-///   using the **smallest** id, which is what a `BTreeSet` gives and what the
-///   fixed sibling does. See finding 28 for why that is a divergence and how it
-///   was measured.
+/// * **`list(current_node_support)[0]` and the member order are CPython set order.**
+///   That order names the isoform and decides the order sequences reach spoa,
+///   which is order-sensitive. This port uses **ascending** order instead — a
+///   deliberate divergence, taken because reproducing CPython's would mean
+///   modelling its probing, resize rule and insertion-order propagation through
+///   `set()`/`.intersection()`/`-=`, to preserve an order that carries no meaning
+///   and is not even seed-dependent (read ids are ints, so `hash(int) == int`).
+///   Measured: it fires on 28 of 114 recorded cases and leaves 93% of isoform
+///   consensuses byte-identical there. `PORTING.md` finding 28.
 /// * **the pop is immediately undone.** `current_node_support = node_support_left`
 ///   aliases the set, and `.add(read)` puts the popped read straight back —
 ///   exactly the aliasing `find_paths` has. So the walk starts from the full

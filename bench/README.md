@@ -188,17 +188,24 @@ ISONFORM_ISOFORM_DUMPS=/tmp/o cargo test --manifest-path rust/Cargo.toml \
 ```
 
 It reports three outcomes, not one. A wrong **partition** — reads in the wrong
-groups — fails. A **merging** disagreement on a case whose grouping and order both
-matched fails. A difference that is *only* CPython **set-iteration order** — same
-reads, same groups, different representative id or different order within a group —
-is reported and counted but does **not** fail, because reproducing it means
-modelling CPython's set internals and that is an open decision (`PORTING.md`
-finding 28) rather than a settled one. On 114 real cases: 0 wrong partitions,
-0 merging failures, 28 set-order differences.
+groups — fails. A **merging** disagreement fails. A difference that is *only*
+CPython **set-iteration order** is reported, counted, and *costed*, because the
+port deliberately diverges there (`PORTING.md` finding 28). On 114 real cases:
+0 wrong partitions, 0 merging failures, 28 set-order differences.
 
-That split is worth copying rather than collapsing. "28 of 114 disagree" and
-"0 of 114 disagree on anything this port decides" are both true, and only the
-second one tells you where to look.
+Two details of how it gets there are worth copying rather than collapsing.
+
+**The merge is seeded with the reference's own grouping**, read from the dump,
+not with the port's. Otherwise the 28 cases where the ordering diverges could
+never be checked at all — the merge would be judged on input it was never meant
+to see, and a genuine merging bug in those cases would be invisible. That
+distinction is what lets the gate read "0 merging failures on **all** 114".
+
+**The `Q` records are written in dict order, not sorted.** `merge_consensuses`
+iterates `curr_best_seqs.items()`, so `equal_reads`' insertion order decides how
+equal-length consensuses tie-break in the merge scan. Sorting them in the dump
+made the oracle replay an order the reference never used — and hid two real
+merging disagreements until it was fixed.
 
 One boundary worth holding onto when reading a failure: the spoa result licenses
 "same inputs ⇒ same consensus", not "the port computes the same inputs". A

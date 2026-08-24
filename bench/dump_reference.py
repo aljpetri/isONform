@@ -481,8 +481,12 @@ def install_isoforms(outdir):
                 fh.write(f"N {node}\n")
             for u, v, supp in edges:
                 fh.write(f"E {u} -> {v} {','.join(str(x) for x in supp)}\n")
-            for k in sorted(state["equal_reads"] or {}):
-                v = state["equal_reads"][k]
+            # Dict order, NOT sorted. `merge_consensuses` iterates
+            # `curr_best_seqs.items()`, so `equal_reads`' insertion order decides
+            # how equal-length consensuses tie-break in the merge scan --- sorting
+            # here made the oracle judge the port on an order the reference never
+            # used, and hid two real merging disagreements.
+            for k, v in (state["equal_reads"] or {}).items():
                 fh.write(f"Q {k} {','.join(str(x) for x in v)}\n")
             for k in sorted(state["new_consensuses"] or {}):
                 fh.write(f"C {k} {state['new_consensuses'][k]}\n")
