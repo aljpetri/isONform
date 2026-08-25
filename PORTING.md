@@ -1174,6 +1174,13 @@ that measurement has not been made.
 
 ### Finding 19 — the popping loop has no termination guarantee
 
+> **Observed for real on 2026-08-25.** A stale `cargo test` process from a build
+> dated 2026-08-23 was found spinning at 100% CPU with **34 hours of CPU time**,
+> sampled inside `pop_bubbles` (`simplify.rs:1010`) under a test since renamed to
+> `a_three_path_bubble_pops_one_pair_then_gives_up`. The current guard makes it
+> pass in under 10 ms. So this finding is not theoretical: the unguarded loop does
+> hang, on a three-path bubble, and it hangs silently rather than crashing.
+
 `while has_combinations` exits on one of two conditions: no candidate survives
 filtering, or an iteration pops fewer than the threshold. Neither is guaranteed.
 If linearisation reaches a fixed point while every candidate is still *accepted*,
@@ -2454,6 +2461,86 @@ The remaining 29% is intra-batch — `merge_consensuses` declining to merge two
 consensuses of the same transcript within one batch — and is a separate question
 about the `delta` / `delta_len` / `delta_iso_len_*` thresholds, none of which has
 any accuracy measurement behind it (see *Deferred improvements*).
+
+### The four remaining unambiguous bugs, fixed and measured
+
+Fixed 2026-08-25: findings 32, 34, 37 and 30. Each is reversible through
+`ISONFORM_BUG_COMPAT` (`batch_names`, `cigar_diversity`, and the two that need no
+switch because they change no decision).
+
+**Finding 32 --- low-abundance support.** Writes the isoform's real read count
+instead of the literal 1. Unreachable from `isONform_parallel` (finding 35), so it
+changes no measured output.
+
+**Finding 37 --- `--keep_old`.** It looked for `isoforms.fastq`, a name that
+appears exactly once in the codebase, on the line looking for it. It now checks
+that the batch file holds one record per input read. Note the reference's test
+could never have passed even with the right filename: it compares `wc -l` of a
+fastq (four lines per read) against `wc -l` of the candidate.
+
+**Finding 34 --- the filename collision.** The batch key genuinely needs both
+components: `p_batch_id` distinguishes one `main` invocation from another (several
+write into one cluster folder under `--split_wrt_batches`), the loop index
+distinguishes batches within an invocation, and neither alone is unique. So the
+key is `p_batch_id` for a single-batch invocation and `{p}_{b}` for several,
+which leaves the common case byte-identical --- including the three-component
+`{cluster}_{batch}_{isoform}` id --- and only adds a component where the
+alternative was losing a batch. Measured on the four-batch case: **22 isoforms
+kept where 3 survived before**, so 86% of the work was being discarded.
+
+That made the batch id a *string*, which is why
+[`crate::batch_merge::batch_sort_key`] exists: lexicographically `"10" < "3"`,
+which would reorder batches and change which of two mergeable isoforms survives.
+
+#### Finding 30 was the judgement call, and it is the largest win of the four
+
+It was recorded as *not* obviously wrong --- counting mismatch *runs* rather than
+bases is a coherent similarity measure --- so fixing it changes the method, not
+just correctness. Fixed anyway under the new policy, and it dominates everything
+else here.
+
+The direction is the opposite of the obvious guess. Base-counting yields a
+*smaller* accumulator (a run longer than `delta_len` has already returned `False`,
+so a run contributes at most `delta_len`), and the test is
+`miss_match_length <= max_bp_diff`. Smaller accumulator, more permissive, more
+merging. On 56 Drosophila clusters:
+
+| `--iso_abundance` | finding 30 present | fixed |
+| --- | --- | --- |
+| 1 (no filter) | 930 isoforms | **265** |
+| 5 (the default) | 16 isoforms | **42** |
+
+Total reads represented is 1 192 either way, so nothing is lost or double-counted;
+maximum support rises 50 -> 136. The raw isoform count falls **3.5x** while the
+number surviving `--iso_abundance` rises **2.6x**: bigger groups carry enough
+support to clear the cutoff, so the count going *up* means fewer isoforms are now
+discarded for lack of support.
+
+On the full `droso` corpus, and this is the check that says the extra isoforms are
+correct rather than merely more numerous:
+
+| | isoforms | FSM | FSM rate | canonical | chains | genes | median error |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| four bugs still in | 507 | 447 | 88% | 0.983 | 357 | 428 | 0.0132 |
+| **all six fixed** | **533** | **470** | **88%** | **0.983** | **374** | **450** | 0.0136 |
+
+**+23 full splice matches across +22 genes, at an unchanged 88% FSM rate and an
+unchanged 0.983 canonical splice fraction**, with distinct intron chains rising
+357 -> 374. So the 26 extra isoforms are overwhelmingly correctly-reconstructed
+known transcripts with genuinely distinct splice structures, not admitted noise.
+Median error rises 0.0132 -> 0.0136, which is the one number that moves the wrong
+way and is 0.4% relative.
+
+SIRV barely notices it: `sirv_sim_gene` is unchanged and `sirv_real` moves by one
+isoform. That is consistent rather than puzzling --- SIRV consensuses carry few
+interior mismatches, and run-versus-base counting only diverges where there are
+many, which is what real cDNA has.
+
+The lesson for the method: this was the finding most likely to be left alone, on
+the correct observation that its behaviour was defensible. Leaving it alone would
+have cost 23 recovered transcripts. "Defensible" is not the same as "as good as
+the alternative", and the only way to tell them apart is to measure.
+
 
 ## Method
 

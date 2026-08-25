@@ -158,6 +158,7 @@ fn run(args: &ParallelArgs) -> std::io::Result<()> {
         delta_iso_len_3: args.delta_iso_len_3,
         delta_iso_len_5: args.delta_iso_len_5,
         max_seqs_to_spoa: args.max_seqs_to_spoa,
+        cigar_diversity_counts_runs: compat.cigar_diversity_counts_runs,
     };
     parallel::join_back_via_batch_merging(
         &outfolder,
@@ -205,6 +206,29 @@ fn line_count(path: &Path) -> usize {
     std::fs::read_to_string(path)
         .map(|t| t.lines().count())
         .unwrap_or(0)
+}
+
+/// Has this instance already produced complete output? (`--keep_old`.)
+///
+/// True when the batch file holds one record per read in the input fastq. A
+/// partial file --- an interrupted run --- has fewer and is recomputed.
+fn already_complete(inst: &parallel::Instance) -> bool {
+    let reads = line_count(&inst.fastq) / 4;
+    if reads == 0 {
+        return false;
+    }
+    // The batch file's name depends on how many batches `main` wrote; any of
+    // them being complete for this instance is what matters.
+    let Ok(entries) = std::fs::read_dir(&inst.outfolder) else {
+        return false;
+    };
+    for e in entries.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if name.ends_with("_batch") && line_count(&e.path()) == reads {
+            return true;
+        }
+    }
+    false
 }
 
 /// `Pool(processes=nr_cores).imap_unordered(isONform, instances)`.
@@ -262,12 +286,22 @@ fn run_one(exe: &Path, inst: &parallel::Instance, args: &ParallelArgs) -> std::i
     std::fs::create_dir_all(&inst.outfolder)?;
 
     if args.keep_old {
-        // `isoforms.fastq` is never written by anything in this codebase, so
-        // this check can only ever fail to match and `--keep_old` never skips
-        // anything. Reproduced; see PORTING.md finding 37.
+        // Finding 37, fixed. The reference looks for `isoforms.fastq`, a name
+        // that appears exactly once in the whole codebase --- on the line that
+        // looks for it. Nothing writes it, so the test is always false and
+        // `--keep_old` has never skipped anything.
         //
-        let candidate = inst.outfolder.join("isoforms.fastq");
-        if candidate.is_file() && line_count(&candidate) == line_count(&inst.fastq) {
+        // What it *meant* to ask is "did this instance already finish?", and the
+        // answer this port uses is: the batch file exists and holds one record
+        // per read in the input. That is the closest analogue of the reference's
+        // "same number of reads as the input, i.e. complete" --- note it cannot
+        // be a line-for-line comparison as the reference attempts, because a
+        // fastq has four lines per read and the batch file has one.
+        if already_complete(inst) {
+            println!(
+                "Skipping batch_id:{}.{} --- already complete",
+                inst.cl_id, inst.batch_id
+            );
             return Ok(false);
         }
     }

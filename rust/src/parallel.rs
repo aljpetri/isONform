@@ -279,7 +279,12 @@ pub fn discover_instances(
 pub struct ClusterBatches {
     /// `(batch_id, [(isoform_id, isoform)])`, in the order the batch files were
     /// listed --- which is the order records reach the output files.
-    pub batches: Vec<(u32, Vec<(u32, Isoform)>)>,
+    ///
+    /// The batch id is a **string** because it is not always a single number:
+    /// one `main` invocation that writes several batches names them
+    /// `{p_batch_id}_{batch_id}` so they cannot overwrite each other
+    /// (finding 34). Ordering uses [`crate::batch_merge::batch_sort_key`].
+    pub batches: Vec<(String, Vec<(u32, Isoform)>)>,
 }
 
 /// Read one cluster's `{id}_batch`, `spoa{id}` and `mapping{id}` files.
@@ -301,10 +306,17 @@ pub fn read_cluster(cl_dir: &Path) -> std::io::Result<ClusterBatches> {
         let Some(prefix) = name.strip_suffix("_batch") else {
             continue;
         };
-        // `int(batchfile.split('/')[-1].split('_')[0])`.
-        let Ok(batch_id) = prefix.split('_').next().unwrap_or("").parse::<u32>() else {
+        // The reference does `int(batchfile.split('_')[0])`, which cannot tell
+        // `3_0_batch` from `3_1_batch`. The whole prefix is the id here; it must
+        // be non-empty and all-numeric per component.
+        if prefix.is_empty()
+            || !prefix
+                .split('_')
+                .all(|c| !c.is_empty() && c.bytes().all(|b| b.is_ascii_digit()))
+        {
             continue;
-        };
+        }
+        let batch_id = prefix.to_string();
         let spoa = read_tsv(&cl_dir.join(format!("spoa{batch_id}")))?;
         let mapping = read_tsv(&cl_dir.join(format!("mapping{batch_id}")))?;
         let map: BTreeMap<&str, &str> = mapping
@@ -378,7 +390,7 @@ pub fn python_list_repr(items: &[String]) -> String {
 /// not depend on which batch triggered the call, this writes once; the surviving
 /// bytes are identical.
 pub fn write_final_output(
-    batches: &[(u32, Vec<(u32, Isoform)>)],
+    batches: &[(String, Vec<(u32, Isoform)>)],
     outfolder: &Path,
     cl_id: &str,
     iso_abundance: usize,
@@ -725,7 +737,7 @@ mod tests {
     #[test]
     fn the_final_output_names_and_formats_match_the_reference() {
         let d = tmp("final");
-        let batches = vec![(0u32, vec![(72u32, iso("ACGT", &["87", "37"]))])];
+        let batches = vec![("0".to_string(), vec![(72u32, iso("ACGT", &["87", "37"]))])];
         write_final_output(&batches, &d, "0", 1, false, false).unwrap();
         assert_eq!(
             std::fs::read_to_string(d.join("cluster0_merged.fa")).unwrap(),
@@ -750,7 +762,7 @@ mod tests {
         // finding 35: `isONform_parallel` hardcodes write_low_abundance = False,
         // so an isoform under --iso_abundance vanishes with no trace.
         let d = tmp("cutoff");
-        let batches = vec![(0u32, vec![(1u32, iso("ACGT", &["a"]))])];
+        let batches = vec![("0".to_string(), vec![(1u32, iso("ACGT", &["a"]))])];
         write_final_output(&batches, &d, "0", 5, false, false).unwrap();
         assert_eq!(
             std::fs::read_to_string(d.join("cluster0_merged.fa")).unwrap(),
@@ -803,7 +815,7 @@ mod tests {
         let got = read_cluster(&d).unwrap();
         assert_eq!(got.batches.len(), 1);
         let (bid, isoforms) = &got.batches[0];
-        assert_eq!(*bid, 3);
+        assert_eq!(bid, "3");
         assert_eq!(isoforms.len(), 2);
         assert_eq!(isoforms[0].0, 1);
         assert_eq!(isoforms[0].1.reads, vec!["acc1", "acc2"]);

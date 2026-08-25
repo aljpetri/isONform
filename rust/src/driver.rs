@@ -67,6 +67,8 @@ pub struct RunParams {
     pub delta_iso_len_5: usize,
     pub wis: WisOpts,
     pub build: BuildOpts,
+    /// Reproduce finding 30 in the intra-batch merge's diversity measure.
+    pub cigar_diversity_counts_runs: bool,
 }
 
 /// `w` for one batch, reproducing `main:394-404`.
@@ -218,6 +220,7 @@ pub fn run_batch(
         delta_iso_len_3: params.delta_iso_len_3,
         delta_iso_len_5: params.delta_iso_len_5,
         max_seqs_to_spoa: params.max_seqs_to_spoa,
+        cigar_diversity_counts_runs: params.cigar_diversity_counts_runs,
     };
     let consensuses = isoforms::merge_consensuses(&mut engine, &mut groups, &graph_reads, opts);
 
@@ -267,6 +270,8 @@ pub fn run_batch(
 /// | `stale_seq` | a node attribute computed from the wrong read's sequence | finding 9 |
 /// | `cycle_continuation` | the cycle-avoidance node severing the read's path | finding 11 |
 /// | `batch_merge` | cross-batch merging doing nothing at all | finding 31 |
+/// | `batch_names` | `--parallel` naming every batch's files identically, so all but the last are lost | finding 34 |
+/// | `cigar_diversity` | the diversity accumulator counting mismatch runs, not bases | finding 30 |
 ///
 /// An unrecognised name is an error rather than a silent no-op — a typo would
 /// quietly measure something other than what was asked for.
@@ -276,6 +281,12 @@ pub struct BugCompat {
     pub build: BuildOpts,
     /// Reproduce finding 31: `actual_merging_process` does nothing.
     pub batch_merge_no_op: bool,
+    /// Reproduce finding 34: under `--parallel`, every batch of one `main`
+    /// invocation writes the same four filenames, so only the last survives.
+    pub batch_name_collision: bool,
+    /// Reproduce finding 30: the diversity accumulator counts mismatch *runs*
+    /// times `delta_len` instead of their actual length.
+    pub cigar_diversity_counts_runs: bool,
 }
 
 impl Default for BugCompat {
@@ -285,6 +296,8 @@ impl Default for BugCompat {
             wis: WisOpts::default(),
             build: BuildOpts::default(),
             batch_merge_no_op: false,
+            batch_name_collision: false,
+            cigar_diversity_counts_runs: false,
         }
     }
 }
@@ -296,6 +309,8 @@ impl BugCompat {
             wis: WisOpts::reference(),
             build: BuildOpts::reference(),
             batch_merge_no_op: true,
+            batch_name_collision: true,
+            cigar_diversity_counts_runs: true,
         }
     }
 
@@ -313,6 +328,12 @@ impl BugCompat {
         }
         if self.batch_merge_no_op {
             v.push("batch_merge");
+        }
+        if self.batch_name_collision {
+            v.push("batch_names");
+        }
+        if self.cigar_diversity_counts_runs {
+            v.push("cigar_diversity");
         }
         v
     }
@@ -335,10 +356,13 @@ pub fn parse_bug_compat(raw: &str) -> Result<BugCompat, String> {
             "stale_seq" => c.build.fix_stale_seq = false,
             "cycle_continuation" => c.build.fix_cycle_continuation = false,
             "batch_merge" => c.batch_merge_no_op = true,
+            "batch_names" => c.batch_name_collision = true,
+            "cigar_diversity" => c.cigar_diversity_counts_runs = true,
             other => {
                 return Err(format!(
                     "unknown bug {other:?} in ISONFORM_BUG_COMPAT; known: all, \
-                     wis_p2, stale_seq, cycle_continuation, batch_merge"
+                     wis_p2, stale_seq, cycle_continuation, batch_merge, \
+                     batch_names, cigar_diversity"
                 ))
             }
         }
@@ -392,6 +416,7 @@ mod tests {
             delta_iso_len_5: 50,
             wis: WisOpts::default(),
             build: BuildOpts::default(),
+            cigar_diversity_counts_runs: false,
         }
     }
 
@@ -423,7 +448,14 @@ mod tests {
         assert_eq!(c, BugCompat::reference());
         assert_eq!(
             c.describe(),
-            vec!["wis_p2", "stale_seq", "cycle_continuation", "batch_merge"]
+            vec![
+                "wis_p2",
+                "stale_seq",
+                "cycle_continuation",
+                "batch_merge",
+                "batch_names",
+                "cigar_diversity"
+            ]
         );
     }
 

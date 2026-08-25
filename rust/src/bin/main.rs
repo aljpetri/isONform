@@ -132,15 +132,19 @@ fn run(args: &MainArgs) -> std::io::Result<()> {
         delta_iso_len_5: args.delta_iso_len_5,
         wis,
         build,
+        cigar_diversity_counts_runs: compat.cigar_diversity_counts_runs,
     };
 
     let batches = isonform::driver::run_cluster(&records, &params);
+    let n_batches = batches.len();
     for b in &batches {
         write_batch_outputs(
             &outfolder,
             b,
             args.parallel.is_set(),
             parallel_batch_id(fastq).as_deref(),
+            n_batches,
+            compat.batch_name_collision,
         )?;
     }
     Ok(())
@@ -184,13 +188,23 @@ fn write_batch_outputs(
     b: &isonform::driver::BatchOutput,
     parallel: bool,
     p_batch_id: Option<&str>,
+    n_batches: usize,
+    name_collision: bool,
 ) -> std::io::Result<()> {
     use std::io::Write as _;
 
     // The id in the filenames, and the suffix on the batch file: `"{id}_batch"`
     // under `--parallel`, `"{id}batch"` without it.
     let (id, batch_name) = match (parallel, p_batch_id) {
-        (true, Some(p)) => (p.to_string(), format!("{p}_batch")),
+        // finding 34 reproduced: every batch writes the same four names.
+        (true, Some(p)) if name_collision || n_batches <= 1 => {
+            (p.to_string(), format!("{p}_batch"))
+        }
+        (true, Some(p)) => {
+            let id = format!("{p}_{}", b.batch_id);
+            let name = format!("{id}_batch");
+            (id, name)
+        }
         _ => (b.batch_id.to_string(), format!("{}batch", b.batch_id)),
     };
 

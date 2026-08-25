@@ -47,14 +47,14 @@ struct Case {
     write_low_abundance: bool,
     cluster: String,
     /// `(batch_id, [(isoform_id, isoform)])`, in record order.
-    before: Vec<(u32, Vec<(u32, Isoform)>)>,
+    before: Vec<(String, Vec<(u32, Isoform)>)>,
     /// `(batch_id, isoform_id, merged, n_reads)` after merging.
-    after: Vec<(u32, u32, bool, usize)>,
+    after: Vec<(String, u32, bool, usize)>,
     /// `(destination, id, support, sequence)`.
     written: Vec<(String, String, usize, Vec<u8>)>,
 }
 
-fn push_isoform(v: &mut Vec<(u32, Vec<(u32, Isoform)>)>, b: u32, i: u32, iso: Isoform) {
+fn push_isoform(v: &mut Vec<(String, Vec<(u32, Isoform)>)>, b: String, i: u32, iso: Isoform) {
     match v.iter_mut().find(|(k, _)| *k == b) {
         Some(slot) => slot.1.push((i, iso)),
         None => v.push((b, vec![(i, iso)])),
@@ -90,7 +90,7 @@ fn parse_case(path: &Path) -> Case {
                 let n_reads: usize = p[3].parse().unwrap();
                 push_isoform(
                     &mut c.before,
-                    p[0].parse().unwrap(),
+                    p[0].to_string(),
                     p[1].parse().unwrap(),
                     Isoform {
                         sequence: p.get(4).map(|s| s.as_bytes().to_vec()).unwrap_or_default(),
@@ -105,7 +105,7 @@ fn parse_case(path: &Path) -> Case {
             "A" => {
                 let p: Vec<&str> = f[1].split_whitespace().collect();
                 c.after.push((
-                    p[0].parse().unwrap(),
+                    p[0].to_string(),
                     p[1].parse().unwrap(),
                     p[2] == "1",
                     p[3].parse().unwrap(),
@@ -155,11 +155,11 @@ fn check(c: &Case) -> Vec<String> {
     // The `A` records: what the reference had after merging. Since merging is a
     // no-op this equals `B`, and the point of checking is to notice if that ever
     // stops being true upstream.
-    let got_after: Vec<(u32, u32, bool, usize)> = batches
+    let got_after: Vec<(String, u32, bool, usize)> = batches
         .iter()
         .flat_map(|(b, v)| {
             v.iter()
-                .map(move |(i, iso)| (*b, *i, iso.merged, iso.reads.len()))
+                .map(move |(i, iso)| (b.clone(), *i, iso.merged, iso.reads.len()))
         })
         .collect();
     let mut want_after = c.after.clone();

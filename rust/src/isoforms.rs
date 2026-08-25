@@ -242,6 +242,17 @@ pub struct MergeOpts {
     pub delta_iso_len_3: usize,
     pub delta_iso_len_5: usize,
     pub max_seqs_to_spoa: usize,
+    /// Reproduce finding 30: accumulate `delta_len` per interior mismatch *run*
+    /// instead of the run's actual length.
+    ///
+    /// This is the one bug-compat switch that is a judgement call rather than a
+    /// clear defect. The accumulator is named `miss_match_length` and sits under
+    /// a comment saying "we want to add up all missmatches", but adds
+    /// `delta_len`; counting runs rather than bases is still a coherent
+    /// similarity measure, so fixing it changes the *method*, not just
+    /// correctness. Fixed by default under the bug-fix policy, and easy to put
+    /// back.
+    pub cigar_diversity_counts_runs: bool,
 }
 
 /// `parse_cigar_diversity_isoform_level_new`.
@@ -250,7 +261,7 @@ pub struct MergeOpts {
 /// questions: is anything structural in the middle, do the two ends diverge more
 /// than `delta_iso_len_5`/`_3` allows, and is the shared middle similar enough.
 ///
-/// # Every interior mismatch counts as exactly `delta_len`
+/// # Every interior mismatch counted as exactly `delta_len` (finding 30, fixed)
 ///
 /// The mismatch accumulator is `miss_match_length += delta_len`, **not**
 /// `+= cig_len`, immediately under a comment saying "we want to add up all
@@ -286,9 +297,13 @@ pub fn parse_cigar_diversity_isoform_level(
             } else if cig_len > opts.delta_len {
                 // Structural difference: not mergeable.
                 return false;
-            } else {
-                // `+= delta_len`, not `+= cig_len`. See the doc comment.
+            } else if opts.cigar_diversity_counts_runs {
+                // finding 30 reproduced: `+= delta_len`, not `+= cig_len`.
                 miss_match_length += opts.delta_len;
+            } else {
+                // finding 30 fixed: the run's actual length, which is what the
+                // variable is named for and what the comment above it describes.
+                miss_match_length += cig_len;
             }
         } else if this_start_pos < first_match {
             before_first_matches += cig_len;
@@ -614,6 +629,7 @@ mod tests {
             delta_iso_len_3: 1000,
             delta_iso_len_5: 1000,
             max_seqs_to_spoa: 200,
+            cigar_diversity_counts_runs: false,
         };
         let ops: Vec<CigarOp> = vec![(99, b'=')];
         assert!(
@@ -632,6 +648,7 @@ mod tests {
             delta_iso_len_3: 1000,
             delta_iso_len_5: 1000,
             max_seqs_to_spoa: 200,
+            cigar_diversity_counts_runs: false,
         };
         // A 6-base interior mismatch: longer than delta_len, so structural.
         let ops: Vec<CigarOp> = vec![(100, b'='), (6, b'X'), (100, b'=')];
@@ -644,16 +661,18 @@ mod tests {
     }
 
     #[test]
-    fn every_interior_mismatch_counts_as_delta_len_regardless_of_its_length() {
-        // The accumulator is `+= delta_len`, not `+= cig_len`. So one 1-base
-        // mismatch and one 5-base mismatch contribute the same, and two 1-base
-        // mismatches contribute twice as much as one 5-base one.
+    fn bug_compat_counts_every_interior_mismatch_as_delta_len() {
+        // finding 30 reproduced: the accumulator is `+= delta_len`, not
+        // `+= cig_len`. So one 1-base mismatch and one 5-base mismatch
+        // contribute the same, and two 1-base mismatches contribute twice as
+        // much as one 5-base one.
         let opts = MergeOpts {
             delta: 0.0,
             delta_len: 5,
             delta_iso_len_3: 1000,
             delta_iso_len_5: 1000,
             max_seqs_to_spoa: 200,
+            cigar_diversity_counts_runs: true,
         };
         // delta 0 means max_bp_diff is delta_len (5), so the budget is 5.
         // One mismatch of any interior length contributes exactly 5: at the
@@ -675,6 +694,37 @@ mod tests {
     }
 
     #[test]
+    fn the_fixed_diversity_measure_counts_bases_not_runs() {
+        // finding 30 fixed. Same budget, same two shapes, opposite verdicts from
+        // the bug-compat test above: counting bases, two 1-base mismatches cost
+        // 2 and one 5-base mismatch costs 5.
+        let opts = MergeOpts {
+            delta: 0.0,
+            delta_len: 5,
+            delta_iso_len_3: 1000,
+            delta_iso_len_5: 1000,
+            max_seqs_to_spoa: 200,
+            cigar_diversity_counts_runs: false,
+        };
+        // Budget is delta_len = 5 bases.
+        let two_singles: Vec<CigarOp> =
+            vec![(100, b'='), (1, b'X'), (50, b'='), (1, b'X'), (100, b'=')];
+        assert!(
+            parse_cigar_diversity_isoform_level(&two_singles, opts, 252, 0, 252),
+            "two single-base mismatches cost 2 of a 5-base budget"
+        );
+        // Under bug-compat the same shape costs 2 x delta_len = 10 and fails.
+        let runs = MergeOpts {
+            cigar_diversity_counts_runs: true,
+            ..opts
+        };
+        assert!(
+            !parse_cigar_diversity_isoform_level(&two_singles, runs, 252, 0, 252),
+            "and the reference charges 2 x delta_len = 10 for it"
+        );
+    }
+
+    #[test]
     fn short_alignments_get_twice_the_diversity_tolerance() {
         // `if overall_len < 200: delta = 2 * delta`.
         let opts = MergeOpts {
@@ -683,6 +733,7 @@ mod tests {
             delta_iso_len_3: 1000,
             delta_iso_len_5: 1000,
             max_seqs_to_spoa: 200,
+            cigar_diversity_counts_runs: false,
         };
         // similar_seq 150, four interior mismatches -> miss_match_length 4.
         // budget = max(delta * 150, 1); at delta 0.02 that is 3 -> refuse.

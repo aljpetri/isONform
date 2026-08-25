@@ -84,7 +84,7 @@ pub struct Isoform {
 /// [`crate::driver::BugCompat`].
 pub fn actual_merging_process<E: IsoformEngine>(
     engine: &mut E,
-    batches: &mut [(u32, Vec<(u32, Isoform)>)],
+    batches: &mut [(String, Vec<(u32, Isoform)>)],
     opts: MergeOpts,
     no_op: bool,
 ) {
@@ -93,8 +93,10 @@ pub fn actual_merging_process<E: IsoformEngine>(
         return;
     }
     // `sorted(all_infos_dict.items(), key=lambda x: x[0])` --- ascending, which
-    // is the one-character fix that makes the guard satisfiable.
-    batches.sort_by_key(|(b, _)| *b);
+    // is the one-character fix that makes the guard satisfiable. Sorted by the
+    // batch id's *numeric components* so `"3"` < `"3_0"` < `"3_1"` < `"10"`;
+    // a plain string sort would put `"10"` before `"3"`.
+    batches.sort_by_key(|(b, _)| batch_sort_key(b));
 
     // Work on indices: two batches are mutated per merge, so the borrow checker
     // wants the pair split rather than held.
@@ -141,6 +143,18 @@ pub fn actual_merging_process<E: IsoformEngine>(
     }
 }
 
+/// A batch id's numeric components, for ordering.
+///
+/// Batch ids are `"3"` for a single-batch invocation and `"3_1"` when one
+/// invocation wrote several (finding 34). Ordering has to be numeric per
+/// component: lexicographically `"10" < "3"`, which would put batches in the
+/// wrong order and change which of two mergeable isoforms survives.
+pub fn batch_sort_key(id: &str) -> Vec<u64> {
+    id.split('_')
+        .map(|p| p.parse::<u64>().unwrap_or(0))
+        .collect()
+}
+
 /// Indices of `isoforms` ordered by consensus length ascending, stably.
 fn length_order(isoforms: &[(u32, Isoform)]) -> Vec<usize> {
     let mut idx: Vec<usize> = (0..isoforms.len()).collect();
@@ -185,13 +199,19 @@ pub struct OutputRecord {
 /// clause is redundant — a read count is at least 1, so `>= 1` is already always
 /// true — but it makes the intent explicit: `--iso_abundance 1` keeps everything.
 ///
-/// **The low-abundance support count is always 1.** The reference writes
-/// `len(all_infos_dict[new_id].reads)` when `new_id in all_infos_dict` and `1`
-/// otherwise; `new_id` is a string like `"3_0_7"` while `all_infos_dict` is keyed
-/// by integer batch id, so the lookup never succeeds and the count is always the
-/// literal 1, whatever the isoform's real support. Reproduced.
+/// **The low-abundance support count was always 1, and is now the real count.**
+/// The reference writes `len(all_infos_dict[new_id].reads)` when
+/// `new_id in all_infos_dict` and `1` otherwise; `new_id` is a string like
+/// `"3_0_7"` while `all_infos_dict` is keyed by integer batch id, so the lookup
+/// never succeeds and the count is always the literal 1 whatever the isoform's
+/// real support. Finding 32, fixed --- the read count is what the main support
+/// file writes and plainly what was meant.
+///
+/// Note this path is unreachable from `isONform_parallel`, which hardcodes
+/// `write_low_abundance = False` (finding 35). It is reachable through
+/// `batch_merging_parallel` directly.
 pub fn select_output(
-    batches: &[(u32, Vec<(u32, Isoform)>)],
+    batches: &[(String, Vec<(u32, Isoform)>)],
     cluster: &str,
     iso_abundance: usize,
     write_low_abundance: bool,
@@ -217,8 +237,11 @@ pub fn select_output(
                     sequence: iso.sequence.clone(),
                     reads: iso.reads.clone(),
                     destination: Destination::LowAbundance,
-                    // Always 1: the reference's lookup cannot succeed.
-                    support: 1,
+                    // The isoform's real read count. The reference writes the
+                    // literal 1 here because `if new_id in all_infos_dict`
+                    // compares a string id against integer batch keys and can
+                    // never match --- finding 32, fixed.
+                    support: iso.reads.len(),
                 });
             } else {
                 out.push(OutputRecord {
@@ -274,14 +297,14 @@ mod tests {
         let seq = "ACGT".repeat(80);
         let mut batches = vec![
             (
-                0u32,
+                "0".to_string(),
                 vec![(1u32, iso(&seq, &["r1", "r2"])), (2, iso(&seq, &["r3"]))],
             ),
             (
-                1u32,
+                "1".to_string(),
                 vec![(1u32, iso(&seq, &["r4", "r5"])), (2, iso(&seq, &["r6"]))],
             ),
-            (2u32, vec![(1u32, iso(&seq, &["r7"]))]),
+            ("2".to_string(), vec![(1u32, iso(&seq, &["r7"]))]),
         ];
         let before = batches.clone();
         let mut engine = crate::isoforms::SpoaParasailMerge;
@@ -300,6 +323,7 @@ mod tests {
             delta_iso_len_3: 30,
             delta_iso_len_5: 50,
             max_seqs_to_spoa: 200,
+            cigar_diversity_counts_runs: false,
         }
     }
 
@@ -308,19 +332,19 @@ mod tests {
         // The repair. Reference behaviour is the test above: nothing merges.
         let seq = "ACGT".repeat(80);
         let mut batches = vec![
-            (0u32, vec![(1u32, iso(&seq, &["r1", "r2"]))]),
-            (1u32, vec![(1u32, iso(&seq, &["r3"]))]),
-            (2u32, vec![(1u32, iso(&seq, &["r4"]))]),
+            ("0".to_string(), vec![(1u32, iso(&seq, &["r1", "r2"]))]),
+            ("1".to_string(), vec![(1u32, iso(&seq, &["r3"]))]),
+            ("2".to_string(), vec![(1u32, iso(&seq, &["r4"]))]),
         ];
         let mut engine = crate::isoforms::SpoaParasailMerge;
         actual_merging_process(&mut engine, &mut batches, opts(), false);
 
-        let survivors: Vec<(u32, u32, usize)> = batches
+        let survivors: Vec<(String, u32, usize)> = batches
             .iter()
             .flat_map(|(b, v)| {
                 v.iter()
                     .filter(|(_, i)| !i.merged)
-                    .map(move |(id, i)| (*b, *id, i.reads.len()))
+                    .map(move |(id, i)| (b.clone(), *id, i.reads.len()))
             })
             .collect();
         assert_eq!(
@@ -337,8 +361,8 @@ mod tests {
         let a = "ACGT".repeat(80);
         let b: String = "TTGCAAGGCTTAACCGGATTCAGGTACGATCGATCGGCTA".repeat(8);
         let mut batches = vec![
-            (0u32, vec![(1u32, iso(&a, &["r1"]))]),
-            (1u32, vec![(1u32, iso(&b, &["r2"]))]),
+            ("0".to_string(), vec![(1u32, iso(&a, &["r1"]))]),
+            ("1".to_string(), vec![(1u32, iso(&b, &["r2"]))]),
         ];
         let mut engine = crate::isoforms::SpoaParasailMerge;
         actual_merging_process(&mut engine, &mut batches, opts(), false);
@@ -355,7 +379,7 @@ mod tests {
         // batch must survive this pass untouched.
         let seq = "ACGT".repeat(80);
         let mut batches = vec![(
-            0u32,
+            "0".to_string(),
             vec![(1u32, iso(&seq, &["r1"])), (2u32, iso(&seq, &["r2"]))],
         )];
         let mut engine = crate::isoforms::SpoaParasailMerge;
@@ -371,8 +395,8 @@ mod tests {
         let long = "ACGT".repeat(80);
         let short = long[..300].to_string();
         let mut batches = vec![
-            (0u32, vec![(7u32, iso(&short, &["r1"]))]),
-            (1u32, vec![(9u32, iso(&long, &["r2"]))]),
+            ("0".to_string(), vec![(7u32, iso(&short, &["r1"]))]),
+            ("1".to_string(), vec![(9u32, iso(&long, &["r2"]))]),
         ];
         let mut engine = crate::isoforms::SpoaParasailMerge;
         actual_merging_process(&mut engine, &mut batches, opts(), false);
@@ -381,12 +405,16 @@ mod tests {
             .flat_map(|(b, v)| {
                 v.iter()
                     .filter(|(_, i)| !i.merged)
-                    .map(move |(id, i)| (*b, *id, i))
+                    .map(move |(id, i)| (b.as_str(), *id, i))
             })
             .collect();
         assert_eq!(live.len(), 1);
         let (batch, id, iso) = &live[0];
-        assert_eq!((*batch, *id), (1, 9), "the longer isoform is the survivor");
+        assert_eq!(
+            (*batch, *id),
+            ("1", 9),
+            "the longer isoform is the survivor"
+        );
         assert_eq!(
             iso.sequence,
             long.as_bytes(),
@@ -401,9 +429,9 @@ mod tests {
         // its reads would be double-counted in the support file.
         let seq = "ACGT".repeat(80);
         let mut batches = vec![
-            (0u32, vec![(1u32, iso(&seq, &["r1"]))]),
-            (1u32, vec![(1u32, iso(&seq, &["r2"]))]),
-            (2u32, vec![(1u32, iso(&seq, &["r3"]))]),
+            ("0".to_string(), vec![(1u32, iso(&seq, &["r1"]))]),
+            ("1".to_string(), vec![(1u32, iso(&seq, &["r2"]))]),
+            ("2".to_string(), vec![(1u32, iso(&seq, &["r3"]))]),
         ];
         let mut engine = crate::isoforms::SpoaParasailMerge;
         actual_merging_process(&mut engine, &mut batches, opts(), false);
@@ -420,13 +448,13 @@ mod tests {
     fn every_unmerged_isoform_reaches_the_main_file_at_abundance_one() {
         let batches = vec![
             (
-                0u32,
+                "0".to_string(),
                 vec![
                     (1u32, iso("ACGT", &["r1"])),
                     (2, iso("TTTT", &["r2", "r3"])),
                 ],
             ),
-            (3u32, vec![(7u32, iso("GGGG", &["r4"]))]),
+            ("3".to_string(), vec![(7u32, iso("GGGG", &["r4"]))]),
         ];
         let got = select_output(&batches, "5", 1, false);
         assert_eq!(got.len(), 3);
@@ -440,7 +468,7 @@ mod tests {
     #[test]
     fn a_merged_isoform_is_skipped_entirely() {
         let mut batches = vec![(
-            0u32,
+            "0".to_string(),
             vec![(1u32, iso("ACGT", &["r1"])), (2, iso("TTTT", &["r2"]))],
         )];
         batches[0].1[0].1.merged = true;
@@ -452,7 +480,7 @@ mod tests {
     #[test]
     fn below_the_threshold_goes_to_low_abundance_or_is_dropped() {
         let batches = vec![(
-            0u32,
+            "0".to_string(),
             vec![
                 (1u32, iso("ACGT", &["r1"])),
                 (2, iso("TTTT", &["a", "b", "c"])),
@@ -471,20 +499,20 @@ mod tests {
     }
 
     #[test]
-    fn the_low_abundance_support_count_is_always_one() {
-        // The reference's `if new_id in all_infos_dict` compares a string id
-        // against integer batch keys, so it never matches and the count is the
-        // literal 1 --- not the isoform's actual support of 2.
-        let batches = vec![(0u32, vec![(1u32, iso("ACGT", &["r1", "r2"]))])];
+    fn the_low_abundance_support_count_is_the_real_read_count() {
+        // Finding 32 fixed. The reference's `if new_id in all_infos_dict`
+        // compares a string id against integer batch keys, never matches, and
+        // writes the literal 1 whatever the real support.
+        let batches = vec![("0".to_string(), vec![(1u32, iso("ACGT", &["r1", "r2"]))])];
         let got = select_output(&batches, "0", 5, true);
         assert_eq!(got[0].destination, Destination::LowAbundance);
-        assert_eq!(got[0].reads.len(), 2, "it really does have two reads");
-        assert_eq!(got[0].support, 1, "but the support file records 1");
+        assert_eq!(got[0].reads.len(), 2);
+        assert_eq!(got[0].support, 2, "the support file records the real count");
     }
 
     #[test]
     fn abundance_one_keeps_everything_even_though_the_second_clause_is_redundant() {
-        let batches = vec![(0u32, vec![(1u32, iso("ACGT", &["r1"]))])];
+        let batches = vec![("0".to_string(), vec![(1u32, iso("ACGT", &["r1"]))])];
         for low in [true, false] {
             let got = select_output(&batches, "0", 1, low);
             assert_eq!(got[0].destination, Destination::Main);
@@ -493,7 +521,12 @@ mod tests {
 
     #[test]
     fn fasta_and_fastq_differ_only_in_the_header_and_a_placeholder_quality() {
-        let rec = &select_output(&[(0u32, vec![(1u32, iso("ACGT", &["r1"]))])], "9", 1, false)[0];
+        let rec = &select_output(
+            &[("0".to_string(), vec![(1u32, iso("ACGT", &["r1"]))])],
+            "9",
+            1,
+            false,
+        )[0];
         assert_eq!(format_consensus(rec, false), b">9_0_1\nACGT\n".to_vec());
         assert_eq!(
             format_consensus(rec, true),
