@@ -10,6 +10,9 @@
 #
 #   bench/evaluate.sh corpora                    # build all three corpora
 #   bench/evaluate.sh run   <name> <impl> <tag>  # run isONform, tagged
+#                                                # <impl> is a dir holding main +
+#                                                # the parallel driver: the repo
+#                                                # root, or rust/target/release
 #   bench/evaluate.sh score <name> <tag>...      # score the tagged runs
 #                                                # (droso picks up
 #                                                #  $DROSO_ANNOTATION if present)
@@ -57,11 +60,25 @@
 # Determinism
 # ---------------------------------------------------------------------------
 #
-# Every isONform invocation here pins PYTHONHASHSEED, and `run` takes the seed
-# so the pre-fix implementation can be run at several. Before minimizer
-# selection was made lexicographic, that mattered enormously: the same input gave
-# a different transcriptome on every run. It is now a belt-and-braces measure —
-# bench/check_seed_sensitivity.py is what asserts it is no longer needed.
+# Every *Python* isONform invocation here pins PYTHONHASHSEED, and `run` takes
+# the seed so the reference can be run at several. Before minimizer selection was
+# made lexicographic, that mattered enormously: the same input gave a different
+# transcriptome on every run. It is no longer the dominant effect, but it is not
+# belt and braces either — PORTING.md finding 14 is a second, independent seed
+# dependency that survives the minimizer fix and fires on real data.
+#
+# So a single Python run is one *sample*, not a baseline. When comparing the Rust
+# port — which has no seeded hash to pin and gives the same answer every time —
+# run the reference at several seeds and ask whether the port's single result
+# sits inside that spread. `compare` does this for you.
+#
+# The Rust port is passed as an impl directory like any other:
+#
+#   bench/evaluate.sh run sirv_real "$PWD/rust/target/release" rs
+#
+# `run_one` decides Python-vs-native by reading the file, not by its name, because
+# macOS is case-insensitive and `isonform_parallel` would otherwise resolve to the
+# repository's `isONform_parallel`.
 
 set -uo pipefail
 

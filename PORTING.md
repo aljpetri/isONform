@@ -2185,6 +2185,96 @@ seeded hash a single run of it says nothing about what the tool does — the spr
 Extracting the old tree with `git archive` rather than checking it out means the working tree is
 never disturbed and both implementations are live at once.
 
+### What the port scores
+
+Run on 2026-08-24, `--t 8 --split_wrt_batches --iso_abundance 5`, reference at
+`PYTHONHASHSEED=0`. `bench/evaluate.sh run` takes either implementation as an
+impl directory — the repository root for the reference, `rust/target/release`
+for the port.
+
+| corpus | metric | reference | port |
+| --- | --- | --- | --- |
+| `sirv_sim_gene` | isoforms | 138 | 139 |
+| | strict recall | 91.2% (62/68) | **91.2% (62/68)** |
+| | strict precision | 98.6% | **98.6%** |
+| | strict F1 | 0.947 | **0.947** |
+| | identity | 0.9976 | **0.9976** |
+| | redundancy | 2.19 | 2.21 |
+| | wall clock | 377.7 s | **124.0 s** |
+| `sirv_real` | isoforms | 108 | 110 |
+| | strict F1 | 0.773 | **0.746** |
+| | strict recall | 72.1% (49/68) | **70.6% (48/68)** |
+| | lenient F1 | 0.892 | **0.892** |
+| | lenient recall | 82.4% | **82.4%** |
+| | identity (strict) | 0.9697 | **0.9717** |
+| | wall clock | 238.7 s | **187.2 s** |
+| `droso` | isoforms | 504 | 506 |
+| | FSM | 443 (88%) | **446 (88%)** |
+| | canonical splice | 0.983 | **0.983** |
+| | distinct intron chains | 357 | **357** |
+| | median error | 0.0134 | **0.0132** |
+| | FSM / tx in touched genes | 42.6% | **42.6%** |
+| | intron retention | 9 | 8 |
+| | wall clock | 48.7 s | **25.6 s** |
+
+Two of three corpora are a dead heat, and the port is 1.9–3.0× faster. `sirv_real`
+is the one that needs explaining, and it is worth doing properly because the first
+reading of it is wrong.
+
+**It is not seed noise.** The obvious hypothesis was that finding 14's live seed
+dependency was moving the reference around and the port had landed on one side of
+it. Measured instead of assumed: the reference is **bit-identical at seeds 0, 1
+and 2** on both SIRV corpora — same 108 isoforms, same 0.773, same 49 of 68. So
+the gap is reproducible and had to be looked at.
+
+**It is three transcripts, and the port wins one of them.**
+
+| transcript | reference identity | port identity | |
+| --- | --- | --- | --- |
+| SIRV206 | 0.9571 (pass) | 0.9485 (fail) | port worse by 0.009 |
+| SIRV305 | 0.9536 (pass) | 0.9432 (fail) | port worse by 0.010 |
+| SIRV615 | 0.9421 (fail) | **0.9824 (pass)** | port better by 0.040 |
+
+All six are inside the length tolerance; every one of them turns on identity
+alone, and two of the three sit within 0.01 of the 0.95 line. Aggregate identity
+is *higher* for the port (0.9717 against 0.9697) and at the lenient threshold the
+two sets are identical to three decimals on recall, F1 and identity. This is the
+case the two thresholds exist to distinguish: sequences moved **across a line**,
+not sequences that got worse. Quoting the strict F1 alone here would report a
+regression that the lenient row shows is not there.
+
+**Where it comes from, checked rather than assumed.** 21 of 26 clusters differ
+end to end on this corpus — a far higher rate than the Drosophila corpora's 16 of
+56 and 12 of 56, high enough that "probably finding 28" was not good enough. All
+four stage oracles were run against reference dumps of this corpus:
+
+| oracle | result |
+| --- | --- |
+| intervals | **30 of 30 agree** (9 968 reads in, 9 967 kept) |
+| graph | **30 cases clean** — 43 143 nodes and 50 596 edges reproduced exactly |
+| simplification | **30 of 30 pass** |
+| isoforms | **0 wrong partition, 0 merging**, 25 set-order only |
+
+So the whole divergence is finding 28 and nothing else: no wrong partition, no
+merging disagreement, and the front half of the pipeline exact on an order of
+magnitude more graph than any previous corpus. The higher rate is what finding 28
+predicts — its effect scales with how many groups reach the merge scan, and
+`sirv_real`'s clusters are much larger (cluster 0 has 4 595 reads and ~75
+isoforms, against 5–488 reads per cluster in the Drosophila sets).
+
+**What this licenses saying.** The port reproduces the reference's accuracy on
+simulated data and at transcriptome scale, and on real SIRV differs only by which
+side of a threshold three marginal consensuses land on, in both directions, as a
+consequence of one documented and deliberate divergence. It does not license
+"the port is more accurate" — SIRV615 is one transcript, and the aggregate
+identity difference is 0.002.
+
+**A caveat on the timings.** They are single runs on a shared laptop and the
+seed-1 and seed-2 reference runs overlapped with `droso` scoring, so treat the
+ratios as "roughly 2–3×" rather than as benchmarks. The three reference runs of
+`sirv_real` came in at 238.7, 239.3 and 240.5 s, which at least says the
+measurement is not wildly noisy.
+
 ## Method
 
 Carried over from the isONcorrect port. The full version, with the measurements behind each point, is

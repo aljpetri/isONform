@@ -351,6 +351,33 @@ Extracting the old tree with `git archive` rather than checking it out is the
 point — the working tree is never disturbed, and both implementations are live at
 once.
 
+## Scoring the Rust port
+
+The port is just another impl directory, and `run_one` works out which it is by
+reading the file rather than trusting its name — macOS is case-insensitive, so
+`$impl/isonform_parallel` happily resolves to the repository's
+`isONform_parallel`, and a name test would have scored the reference twice and
+called it perfect agreement.
+
+```bash
+cargo build --manifest-path rust/Cargo.toml --release
+bench/evaluate.sh run sirv_real "$PWD" py                    # reference
+bench/evaluate.sh run sirv_real "$PWD/rust/target/release" rs   # port
+bench/evaluate.sh score sirv_real py rs
+```
+
+Run the reference at more than one seed. It has no seeded hash left in minimizer
+selection, but `PORTING.md` finding 14 is a second dependency that survives that
+fix, so one run is a sample, not a baseline. On the SIRV corpora it happens to be
+bit-identical across seeds 0/1/2 — which is worth knowing, because it means a
+difference there is *real* and has to be explained rather than waved at.
+
+`PORTING.md`'s "What the port scores" holds the current numbers and, more
+usefully, the worked example of explaining a gap: `sirv_real`'s strict F1 differs,
+its lenient F1 does not, and running all four stage oracles against dumps of that
+corpus is what turned "probably finding 28" into "0 wrong partition, 0 merging,
+25 set-order only".
+
 ## The corpus
 
 `corpus/sirv_small` is not checked in — `corpus/README.md` says how to rebuild
