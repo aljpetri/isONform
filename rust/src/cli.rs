@@ -413,6 +413,23 @@ pub struct ParallelArgs {
     /// Output the final transcriptome as fastq rather than fasta
     #[arg(long = "write_fastq", action = ArgAction::SetTrue)]
     pub write_fastq: bool,
+
+    /// Also write the isoforms below `--iso_abundance` to
+    /// `transcriptome_low.*`, instead of discarding them silently.
+    ///
+    /// **This flag does not exist in the reference**, and is the port's first
+    /// deliberate addition to the argument surface. `isONform_parallel.main`
+    /// opens with `write_low_abundance = False`, a local that nothing ever
+    /// assigns again and no flag reaches, so every isoform under
+    /// `--iso_abundance` (default 5) is dropped with nothing recording it ---
+    /// 51 of cluster 0's 52 isoforms on `sirv_small`. `PORTING.md` finding 35.
+    ///
+    /// Added rather than reproduced because the alternative is a cutoff whose
+    /// discards are unobservable. Safe for the equivalence gates: they compare
+    /// the stray stdout prints and the output files, not `--help` layout, and
+    /// this entry point does not echo an argparse Namespace.
+    #[arg(long = "write_low_abundance", action = ArgAction::SetTrue)]
+    pub write_low_abundance: bool,
 }
 
 /// What the caller should do after argument handling.
@@ -818,6 +835,28 @@ mod tests {
                 "{f} should not exist on main"
             );
         }
+    }
+
+    #[test]
+    fn write_low_abundance_is_off_by_default_and_absent_from_main() {
+        // The port's one deliberate addition to the argument surface
+        // (finding 35). Off by default, so a default run is unchanged.
+        let a = match parse_parallel(&["--fastq_folder", "d"]).1 {
+            Action::Run(a) => *a,
+            other => panic!("expected Run, got {other:?}"),
+        };
+        assert!(!a.write_low_abundance);
+        let a = match parse_parallel(&["--fastq_folder", "d", "--write_low_abundance"]).1 {
+            Action::Run(a) => *a,
+            other => panic!("expected Run, got {other:?}"),
+        };
+        assert!(a.write_low_abundance);
+        // It belongs to the parallel driver only --- `main` never writes the
+        // low-abundance files, because it never reaches batch merging.
+        assert!(
+            MainArgs::try_parse_from(["main", "--write_low_abundance"]).is_err(),
+            "should not exist on main"
+        );
     }
 
     #[test]

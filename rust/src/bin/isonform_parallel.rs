@@ -85,9 +85,11 @@ fn run(args: &ParallelArgs) -> std::io::Result<()> {
     // `restructure_isoncorrect_output` — this is destructive, and deliberately so.
     parallel::restructure_isoncorrect_output(directory)?;
 
-    // `write_low_abundance = False`, a local that nothing ever assigns again:
-    // no flag reaches it. PORTING.md finding 35.
-    let write_low_abundance = false;
+    // The reference hardcodes this to `False` with no flag reaching it, so its
+    // `--iso_abundance` discards are unobservable (finding 35). The port adds
+    // `--write_low_abundance`; the default is still false, so default runs are
+    // unchanged.
+    let write_low_abundance = args.write_low_abundance;
 
     // Known bugs are fixed by default; `ISONFORM_BUG_COMPAT` puts named ones
     // back. Read here as well as in `main` because cross-batch merging (finding

@@ -125,12 +125,15 @@ pre_work_stderr() {
   sed '/^Traceback (most recent call last):/,$d' "$1"
 }
 
-# `port_stderr FILE` — the port's stderr with its "not yet implemented" notice
-# stripped. Every line of that notice is prefixed with a sentinel precisely so
-# it can be removed here; when the algorithm lands the notice goes and this
-# becomes the identity.
+# `port_stderr FILE` — the port's stderr with its fatal-error line stripped.
+#
+# This used to strip the "[port-unimplemented]" notice, which is gone now that
+# the algorithm is ported. What it strips instead is the port's own fatal-error
+# line, which is the analogue of the Python traceback that `pre_work_stderr`
+# removes from the reference's side: both mark "validation passed, then the run
+# failed", and neither's wording is part of any contract.
 port_stderr() {
-  grep -v '^\[port-unimplemented\] ' "$1"
+  grep -vE '^(isONform|isONform_parallel): ' "$1"
 }
 
 # cli_case DESC ENTRY EXPECT [args...]
@@ -141,7 +144,8 @@ port_stderr() {
 #                clap and argparse phrase it differently and nothing parses it.)
 #     rejected   the reference's own validation rejects it: both exit 1 and the
 #                whole of stderr matches, verbatim.
-#     accepted   validation passes on both sides. The reference goes on to the
+#     accepted   validation passes on both sides, so both exit the same way. The
+#                reference goes on to the
 #                algorithm; the port stops at exit 3. Compared: the reference's
 #                pre-work stderr against the port's stderr, and the first line
 #                of stdout. Asserted separately: the reference did *not* exit 2,
@@ -188,10 +192,17 @@ cli_case() {
         bad "$desc" "reference rejected it at parse time — the case expects it to be accepted"
         return
       fi
-      if [[ "$rs_ec" != 3 ]]; then
-        # 3 is the port's "argument handling done, algorithm not ported" marker.
-        # Anything else means it disagreed with the reference about validity.
-        bad "$desc" "port exited $rs_ec, expected 3 (accepted-but-unimplemented)"
+      if [[ "$rs_ec" != "$py_ec" ]]; then
+        # Both sides accepted the arguments, so both must then succeed or fail
+        # the same way. These cases point at a nonexistent input on purpose, so
+        # in practice both exit 1 --- the reference with a FileNotFoundError
+        # traceback, the port with a one-line message.
+        #
+        # This used to demand exit 3, the marker the port returned while its
+        # argument handling was ported and its algorithm was not. That
+        # expectation went stale the moment the driver landed, and it is the
+        # reason this script reported 17 failures against a working port.
+        bad "$desc" "exit code: reference $py_ec, port $rs_ec"
         return
       fi
       pre_work_stderr "$WORK/py.err" >"$WORK/py.pre"

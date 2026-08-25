@@ -1701,10 +1701,31 @@ Two separate consequences, and it is worth keeping them apart:
   carry some other read's length. That is new, and it is the more serious half,
   because `start_mini_end`/`end_mini_start` on the sink are positions.
 
-Reproduced, not repaired. Repairing it means choosing what the table was *meant* to
-be keyed by, and both candidates change output: keyed by graph id over
-`new_all_reads` the phantom entries vanish, keyed by file read id the sink stops
-being indexable by graph id at all. That is an upstream design decision.
+**Correction, 2026-08-25: this needs no design decision, and the earlier note
+here saying it did was wrong.** The two adjacent loops that build the source and
+sink settle it:
+
+```python
+for i in range(1, len(all_intervals_for_graph) + 1):   # source: GRAPH ids
+    reads_at_start_dict[i] = Read_infos(0, 0, True)
+    reads_for_isoforms.append(i)
+for i in range(1, len(read_len_dict) + 1):             # sink: FILE read ids
+    reads_at_end_dict[i] = Read_infos(read_len_dict[i], read_len_dict[i], True)
+```
+
+The source iterates the *graph's* reads and the sink iterates the *file's*, two
+lines apart, for what is obviously meant to be the same set --- every read has one
+path, from source to sink. `reads_for_isoforms` is built in the source loop, which
+pins graph ids as `1..len(all_intervals_for_graph)`. So the sink's range is simply
+the wrong one, and the fix is to use the source's: one entry per graph read,
+carrying that read's own length.
+
+It is still a real behaviour change, because the sink's positions are consumed by
+bubble popping --- `summation += (positions.end_mini_start - positions.start_mini_end)`
+and the bubble start/end positions in `SimplifyGraph` --- and because dropping the
+phantom entries shrinks the sink's read set, which is what bubble support is
+counted from. So it wants measuring like the others. But there is only one
+coherent target, not two.
 
 **This one bit the port.** The first version of the driver derived the lengths from
 the batch rather than the file — a reading of "all reads" that is right in English
@@ -1823,7 +1844,21 @@ intended cutoff behaviour is a product question; that it is unconfigurable is no
 obvious from `--help`, which describes `--iso_abundance` as a cutoff without
 saying the remainder is dropped.
 
-Reproduced, flag and all.
+**Fixed on 2026-08-25 by adding `--write_low_abundance`** to `isONform_parallel`,
+the port's first deliberate addition to the argument surface. Default is still
+false, so a default run is byte-identical; with the flag, the discarded isoforms
+land in `transcriptome_low.fasta` and the per-cluster
+`cluster*_merged_low_abundance.*` files.
+
+Added rather than reproduced because the alternative is a cutoff whose discards
+are unobservable. Safe for the gates: `bench/equivalence.sh` deliberately does not
+compare `--help` layout, and this entry point echoes only `len(sys.argv)`, not an
+argparse Namespace.
+
+Measured on `sirv_small`: 2 isoforms in the main transcriptome and **20 in the
+low-abundance file** that were previously written nowhere. It also makes
+finding 32's fix observable for the first time --- the support counts come out 1,
+2 and 3 rather than the reference's uniform literal 1.
 
 ### Finding 36 — the parallel entry point rewrites its **input** folder in place
 
