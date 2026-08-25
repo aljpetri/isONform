@@ -132,10 +132,41 @@ fn run(args: &MainArgs) -> std::io::Result<()> {
         delta_iso_len_5: args.delta_iso_len_5,
         wis,
         build,
+        merge_delta_len: isonform::driver::merge_delta_len_from_env(args.delta_len)
+            .map_err(std::io::Error::other)?,
         cigar_diversity_counts_runs: compat.cigar_diversity_counts_runs,
     };
 
     let batches = isonform::driver::run_cluster(&records, &params);
+    if std::env::var_os("ISONFORM_MERGE_STATS").is_some() {
+        let st = isonform::isoforms::merge_stats();
+        eprintln!(
+            "merge-stats calls={} min_len<100={} no_start={} no_end={} ends={} \
+             shared<100={} structural={} diverse={} merged={} mean_min_len={:.0}",
+            st.calls,
+            st.min_len_under_100,
+            st.no_start_match,
+            st.no_end_match,
+            st.ends_too_long,
+            st.shared_under_100,
+            st.structural,
+            st.too_diverse,
+            st.merged,
+            if st.calls > 0 {
+                st.sum_min_len as f64 / st.calls as f64
+            } else {
+                0.0
+            }
+        );
+        eprintln!(
+            "merge-stats structural run lengths: 6-10={} 11-20={} 21-50={} 51-100={} 101-200={} 201+={}",
+            st.run_6_10, st.run_11_20, st.run_21_50, st.run_51_100, st.run_101_200, st.run_201_plus
+        );
+        eprintln!(
+            "merge-stats len-diff: largest among merges={}  smallest among structural rejects={}",
+            st.diff_merged_max, st.diff_struct_min
+        );
+    }
     let n_batches = batches.len();
     for b in &batches {
         write_batch_outputs(

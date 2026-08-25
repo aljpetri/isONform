@@ -26,4 +26,5 @@ pub mod parasail;
 pub mod poa;
 pub mod reads;
 pub mod simplify;
+pub mod sketch;
 pub mod wis;

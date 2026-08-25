@@ -67,6 +67,17 @@ pub struct RunParams {
     pub delta_iso_len_5: usize,
     pub wis: WisOpts,
     pub build: BuildOpts,
+    /// The structural threshold used by the *merge* only.
+    ///
+    /// `--delta_len` drives three separate things: the graph's edge-length
+    /// tolerance, simplification, and the merge's "an internal indel run longer
+    /// than this makes the pair unmergeable" test. Sweeping the flag therefore
+    /// measures all three at once, which is fine for asking what the flag does
+    /// and useless for attributing the effect.
+    ///
+    /// This isolates the third. It defaults to `delta_len`, so behaviour is
+    /// unchanged unless `ISONFORM_MERGE_DELTA_LEN` sets it.
+    pub merge_delta_len: usize,
     /// Reproduce finding 30 in the intra-batch merge's diversity measure.
     pub cigar_diversity_counts_runs: bool,
 }
@@ -216,7 +227,7 @@ pub fn run_batch(
     let mut engine = SpoaParasailMerge;
     let opts = MergeOpts {
         delta: params.delta,
-        delta_len: params.delta_len as usize,
+        delta_len: params.merge_delta_len,
         delta_iso_len_3: params.delta_iso_len_3,
         delta_iso_len_5: params.delta_iso_len_5,
         max_seqs_to_spoa: params.max_seqs_to_spoa,
@@ -374,6 +385,22 @@ pub fn parse_bug_compat(raw: &str) -> Result<BugCompat, String> {
     Ok(c)
 }
 
+/// `ISONFORM_MERGE_DELTA_LEN`: the merge-only structural threshold.
+///
+/// An environment variable rather than a flag, for now. It is a *sweep* knob, and
+/// env vars reach the `main` processes `isONform_parallel` spawns without
+/// `run_one` having to forward anything --- which is what makes
+/// `ISONFORM_MERGE_DELTA_LEN=20 bench/evaluate.sh run ...` work end to end. It
+/// becomes a real flag when a default has been chosen on evidence.
+pub fn merge_delta_len_from_env(default: usize) -> Result<usize, String> {
+    match std::env::var("ISONFORM_MERGE_DELTA_LEN") {
+        Err(_) => Ok(default),
+        Ok(v) => v.trim().parse::<usize>().map_err(|_| {
+            format!("ISONFORM_MERGE_DELTA_LEN must be a non-negative integer, got {v:?}")
+        }),
+    }
+}
+
 pub fn run_cluster(records: &[crate::fastq::Record], params: &RunParams) -> Vec<BatchOutput> {
     // `{i + 1: (acc, remove_read_polyA_ends(seq, 12, 1), qual)}` --- ids are
     // 1-based over the whole file and survive batching.
@@ -420,6 +447,7 @@ mod tests {
             delta_iso_len_5: 50,
             wis: WisOpts::default(),
             build: BuildOpts::default(),
+            merge_delta_len: 5,
             cigar_diversity_counts_runs: false,
         }
     }

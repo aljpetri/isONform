@@ -2612,6 +2612,77 @@ have cost 23 recovered transcripts. "Defensible" is not the same as "as good as
 the alternative", and the only way to tell them apart is to measure.
 
 
+### The merge threshold is already optimal, and both directions are worse
+
+`--delta_len` (default 5) sets the internal-indel run length above which a pair of
+consensuses is "structural" and refuses to merge. Profiling said 82% of all
+rejected pairs are rejected by that test, so it looked like the knob controlling
+redundancy. Swept properly, it is not a knob to turn --- it is already at its
+optimum.
+
+**First, the confound had to go.** `--delta_len` drives three separate things: the
+graph's edge-length tolerance, simplification, and the merge test. Sweeping the
+flag measures all three at once. `ISONFORM_MERGE_DELTA_LEN` isolates the third; it
+defaults to `--delta_len`, so nothing changes unless it is set. Verified to
+isolate: on one 1 000-read batch, `--delta_len 5` gives 64 isoforms, `--delta_len
+20` gives 28, and `--delta_len 5` with the merge-only threshold at 20 gives **25**
+--- distinct from both, and it shows the merge test accounts for essentially all
+of the isoform reduction.
+
+**Then the sweep, on `sirv_real` where 68 transcripts are known:**
+
+| merge threshold | isoforms | strict recall | strict F1 | redundancy | lenient recall | lenient F1 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2 | 153 | 66.2% | 0.734 | 2.80 | 75.0% | 0.852 |
+| 3 | 106 | 66.2% | 0.725 | 1.89 | 77.9% | 0.869 |
+| **5 (default)** | **85** | **70.6%** | **0.734** | **1.35** | **82.4%** | **0.873** |
+| 10 | 73 | 61.8% | 0.656 | 1.21 | 79.4% | 0.869 |
+| 20 | 67 | 58.8% | 0.640 | 1.18 | 76.5% | 0.831 |
+| 50 | 63 | 51.5% | 0.575 | 1.17 | 72.1% | 0.802 |
+
+Recall peaks at 5 on both thresholds, lenient F1 peaks at 5, and 5 dominates every
+alternative. The two sides fail for different reasons, which is what makes this a
+real optimum rather than a coincidence:
+
+* **above 5** --- distinct transcripts are collapsed. Recall falls 48 -> 35
+  recovered transcripts by 50, and lenient recall falls with it, so these are
+  genuine losses rather than threshold crossings;
+* **below 5** --- merging is too timid. Redundancy blows up to 2.80 and recall
+  *also* falls, to 66.2%. Counter-intuitive until the mechanism is clear: merging
+  pools reads, so a merged consensus is more accurate than its fragments.
+  Under-merging leaves poorer consensuses that fail the identity test outright.
+
+So merging buys accuracy until it starts destroying distinctions, and 5 is where
+those two curves cross. The shipped default is right, and now has evidence behind
+it rather than assumption.
+
+#### Two mistakes this sweep caught, both mine
+
+**Reading a count as a metric.** On a Drosophila batch, raising the threshold took
+isoform count 64 -> 25 and I called it a redundancy improvement. Drosophila has no
+per-isoform truth, so "collapsed duplicates" and "destroyed distinct transcripts"
+look identical there --- and with truth available it is mostly the latter. That is
+exactly what method point 4 exists to prevent, walked into by reading a number
+with no denominator.
+
+**Reading a distribution as a conclusion.** The run-length profile is sound data:
+of 5 017 structural rejects, 2 085 have runs of 6-10 bases, 2 265 of 11-20, 654 of
+21-50, and only 13 above 50, with an empty band at 101-200. I read "artefact
+scale, therefore safe to merge". The sweep says otherwise: those short indels do
+separate genuine isoforms. The histogram was right; the inference from it was not.
+
+#### What this means for the merge cost
+
+Raising the threshold made the cross-batch merge 3.8x faster with 19x fewer
+alignments --- by merging more. Since merging more costs recall, that speed is not
+available. The cliff from finding 31 (8 hours on one 26-batch cluster) has to be
+solved *without* changing which pairs merge, which leaves the vectorised DP and a
+candidate filter with a **bounded** false-negative rate. A minhash sketch was
+built and then rejected on exactly that ground: it gives no window guarantee, and
+a filter that decides which pairs are never examined cannot rest on a rate
+measured on one corpus.
+
+
 ## Method
 
 Carried over from the isONcorrect port. The full version, with the measurements behind each point, is

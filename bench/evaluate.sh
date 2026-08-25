@@ -90,6 +90,10 @@ ENV_NAME="${ISONFORM_REF_ENV:-isonform-ref}"
 SIRV_SIM_FASTQ="${SIRV_SIM_FASTQ:-$HOME/data/lrRNA-seq/sirv/reads_10k_err7%.fastq}"
 SIRV_REAL_FASTQ="${SIRV_REAL_FASTQ:-$HOME/data/lrRNA-seq/sirv/SIRV_real_10k.fastq}"
 DROSO_FASTQ="${DROSO_FASTQ:-$HOME/data/lrRNA-seq/droso/full_length_output_first_20k.fq}"
+# The deep corpus. 1M reads rather than 20k, because at 20k *no* cluster reaches
+# --max_seqs and cross-batch merging is therefore untested on real biology --- see
+# corpus_droso_deep.
+DROSO_DEEP_FASTQ="${DROSO_DEEP_FASTQ:-$HOME/data/lrRNA-seq/droso/full_length_output_first_1M.fq}"
 SIRV_TRANSCRIPTOME="${SIRV_TRANSCRIPTOME:-$HOME/source/isONcorrect/test_data/sirv_transcriptome.fasta}"
 DROSO_GENOME="${DROSO_GENOME:-$HOME/data/genomes/fruitfly.fa}"
 # Optional. When present, the droso corpus is additionally scored into the SQANTI
@@ -163,6 +167,37 @@ corpus_sirv_real() {
   [[ -f "$SIRV_REAL_FASTQ" ]] || die "real SIRV reads not found: $SIRV_REAL_FASTQ"
   note "sirv_real: isONclust on real ONT SIRV reads"
   cluster "$SIRV_REAL_FASTQ" "$d"
+  correct "$d/clusters" "$d/corrected"
+}
+
+# The deep Drosophila corpus, and why it exists.
+#
+# `droso` is built from the first 20 000 reads, and *none* of its 561 clusters
+# reaches the default --max_seqs of 1000 (5-488 reads each). So batch merging ---
+# the stage findings 31 and 34 both live in --- has never been exercised on real
+# biology by any corpus here. The evidence for the largest accuracy change made so
+# far (redundancy 2.26 -> 1.38, from repairing cross-batch merging) rests on four
+# clusters in sirv_sim_gene and one in sirv_real: five clusters, all synthetic or
+# spike-in, one locus set.
+#
+# 1M reads fixes that. isONclust's own progress log reports clusters of 3910, 2021
+# and 1162 reads within the first 50 000 processed, so this corpus has clusters
+# spanning several batches --- and it is also the first thing here that exercises
+# --max_seqs_to_spoa (200, which never binds on the other corpora) and the
+# all-pairs merge loop at a scale where a speed measurement means something.
+#
+# Every cluster is corrected, not just the deep ones: isONcorrect's Rust build is
+# an order of magnitude faster than the Python, so there is no reason to bias the
+# corpus toward deep clusters to save time. `droso` stays as a separate corpus ---
+# taking the most abundant clusters from more reads concentrates the sample on
+# highly-expressed genes, so the deep corpus is the worse one for the long tail.
+corpus_droso_deep() {
+  local d="$WORK/droso_deep"
+  [[ -f "$DROSO_DEEP_FASTQ" ]] || die "deep Drosophila reads not found: $DROSO_DEEP_FASTQ
+  build it once with:
+    head -n 4000000 $HOME/data/lrRNA-seq/droso/full_length_output.fq > $DROSO_DEEP_FASTQ"
+  note "droso_deep: isONclust on 1M real ONT Drosophila reads"
+  cluster "$DROSO_DEEP_FASTQ" "$d"
   correct "$d/clusters" "$d/corrected"
 }
 
@@ -276,7 +311,7 @@ score_corpus() {
       "$PY_BIN" "$REPO_ROOT/bench/accuracy_isoforms.py" \
         --transcriptome "$SIRV_TRANSCRIPTOME" "${specs[@]}"
       ;;
-    droso)
+    droso|droso_deep)
       local -a ann=()
       if [[ -f "$DROSO_ANNOTATION" ]]; then
         ann=(--annotation "$DROSO_ANNOTATION")
@@ -300,6 +335,7 @@ case "$cmd" in
     corpus_sirv_sim_gene
     corpus_sirv_real
     corpus_droso
+    corpus_droso_deep
     note "corpora in $WORK"
     ;;
 
@@ -322,7 +358,7 @@ case "$cmd" in
     [[ $# -eq 2 ]] || die "usage: evaluate.sh compare <impl-a-dir> <impl-b-dir>"
     a="$1"; b="$2"
     mkdir -p "$WORK/eval"
-    for corpus in sirv_sim_gene sirv_real droso; do
+    for corpus in sirv_sim_gene sirv_real droso droso_deep; do
       [[ -d "$WORK/$corpus/corrected" ]] || die "corpus '$corpus' not built; run: bench/evaluate.sh corpora"
       run_one "$corpus" "$a" a 0
       run_one "$corpus" "$b" b0 0

@@ -156,7 +156,10 @@ fn run(args: &ParallelArgs) -> std::io::Result<()> {
     // because the merge never ran. Now they matter.
     let merge_opts = isonform::isoforms::MergeOpts {
         delta: args.delta,
-        delta_len: args.delta_len,
+        // The merge-only threshold, isolated from `--delta_len`'s graph and
+        // simplification roles. See `driver::merge_delta_len_from_env`.
+        delta_len: isonform::driver::merge_delta_len_from_env(args.delta_len)
+            .map_err(std::io::Error::other)?,
         delta_iso_len_3: args.delta_iso_len_3,
         delta_iso_len_5: args.delta_iso_len_5,
         max_seqs_to_spoa: args.max_seqs_to_spoa,

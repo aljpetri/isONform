@@ -34,7 +34,20 @@
 //! What the stage does do is [`select_output`] — decide which isoforms are
 //! written where — which is live, and is what produces the transcriptome.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use crate::isoforms::{align_to_merge, IsoformEngine, MergeOpts};
+
+/// Cross-batch merge counters, for `ISONFORM_SKETCH_VERIFY`.
+///
+/// `skipped_would_merge` is the number that matters: pairs the sketch filter
+/// declined to align that alignment says *would* have merged. That is the
+/// filter's false-negative count, and it is measured rather than assumed.
+pub static PAIRS_SEEN: AtomicU64 = AtomicU64::new(0);
+pub static PAIRS_SKIPPED: AtomicU64 = AtomicU64::new(0);
+pub static PAIRS_ALIGNED: AtomicU64 = AtomicU64::new(0);
+pub static SKIPPED_WOULD_MERGE: AtomicU64 = AtomicU64::new(0);
+pub static MERGES: AtomicU64 = AtomicU64::new(0);
 
 /// One isoform carried through batch merging: `Read(sequence, reads, merged)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,9 +142,18 @@ pub fn actual_merging_process<E: IsoformEngine>(
                         };
                     let long_seq = batches[li].1[la].1.sequence.clone();
                     let short_seq = batches[si].1[sa].1.sequence.clone();
+
+                    // No candidate filter in this path. A minhash sketch was
+                    // built and rejected: it gives no bound on false negatives,
+                    // and a filter deciding which pairs are *never* examined
+                    // cannot rest on a rate measured on one corpus. `crate::sketch`
+                    // keeps the code and the reasoning; the merge does not use it.
+                    PAIRS_SEEN.fetch_add(1, Ordering::Relaxed);
+                    PAIRS_ALIGNED.fetch_add(1, Ordering::Relaxed);
                     if !align_to_merge(engine, &long_seq, &short_seq, opts) {
                         continue;
                     }
+                    MERGES.fetch_add(1, Ordering::Relaxed);
                     // The longer consensus survives unchanged; the shorter
                     // isoform's reads move into it and it is marked merged.
                     let moved = batches[si].1[sa].1.reads.clone();

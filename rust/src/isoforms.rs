@@ -296,6 +296,20 @@ pub fn parse_cigar_diversity_isoform_level(
                 }
             } else if cig_len > opts.delta_len {
                 // Structural difference: not mergeable.
+                bump(|s| {
+                    s.structural += 1;
+                    match cig_len {
+                        0..=10 => s.run_6_10 += 1,
+                        11..=20 => s.run_11_20 += 1,
+                        21..=50 => s.run_21_50 += 1,
+                        51..=100 => s.run_51_100 += 1,
+                        101..=200 => s.run_101_200 += 1,
+                        _ => s.run_201_plus += 1,
+                    }
+                    if s.diff_struct_min == 0 || s.last_diff < s.diff_struct_min {
+                        s.diff_struct_min = s.last_diff;
+                    }
+                });
                 return false;
             } else if opts.cigar_diversity_counts_runs {
                 // finding 30 reproduced: `+= delta_len`, not `+= cig_len`.
@@ -315,6 +329,7 @@ pub fn parse_cigar_diversity_isoform_level(
     let mergeable_start = before_first_matches + before_first_nomatch < opts.delta_iso_len_5;
     let mergeable_end = after_last_matches + after_last_nomatch < opts.delta_iso_len_3;
     if !mergeable_end || !mergeable_start {
+        bump(|s| s.ends_too_long += 1);
         return false;
     }
 
@@ -322,6 +337,7 @@ pub fn parse_cigar_diversity_isoform_level(
     // "just to make sure that we only merge reads that have at least 100 nt
     // similar" --- a hard floor, independent of every tuning parameter.
     if similar_seq < 100 {
+        bump(|s| s.shared_under_100 += 1);
         return false;
     }
     let diversity = miss_match_length as f64 / similar_seq as f64;
@@ -332,7 +348,80 @@ pub fn parse_cigar_diversity_isoform_level(
         opts.delta
     };
     let max_bp_diff = (delta * similar_seq as f64).max(opts.delta_len as f64);
-    diversity <= max_bp_diff / similar_seq as f64
+    let ok = diversity <= max_bp_diff / similar_seq as f64;
+    bump(|s| {
+        if ok {
+            s.merged += 1;
+            if s.last_diff > s.diff_merged_max {
+                s.diff_merged_max = s.last_diff;
+            }
+        } else {
+            s.too_diverse += 1
+        }
+    });
+    ok
+}
+
+/// Why a pair was rejected, for `ISONFORM_MERGE_STATS`.
+///
+/// Every call to [`align_to_merge`] pays a full O(n*m) alignment before any
+/// condition is evaluated, and profiling says that alignment is ~100% of
+/// isONform's runtime. A prefilter is only worth building for the condition that
+/// actually rejects most pairs, so this counts them rather than guessing.
+///
+/// Set `ISONFORM_MERGE_STATS=1` and the totals are printed to stderr when the
+/// process exits.
+#[derive(Default, Debug, Clone, Copy)]
+pub struct MergeStats {
+    pub calls: u64,
+    pub no_start_match: u64,
+    pub no_end_match: u64,
+    pub ends_too_long: u64,
+    pub shared_under_100: u64,
+    pub too_diverse: u64,
+    pub structural: u64,
+    pub merged: u64,
+    /// Histogram of the internal indel/mismatch run length that triggered the
+    /// `structural` rejection, bucketed: 6-10, 11-20, 21-50, 51-100, 101-200,
+    /// 201+. This is what decides whether raising `delta_len` would merge
+    /// consensus artefacts (short runs) or real isoform differences (long ones).
+    pub run_6_10: u64,
+    pub run_11_20: u64,
+    pub run_21_50: u64,
+    pub run_51_100: u64,
+    pub run_101_200: u64,
+    pub run_201_plus: u64,
+    /// Sum of `min(len1, len2)` over all calls, for sizing a length prefilter.
+    pub sum_min_len: u64,
+    pub min_len_under_100: u64,
+    /// `|len1 - len2|` histogram, split by outcome, to test whether a length
+    /// prefilter could separate the structural rejects from the merges.
+    pub diff_merged_max: u64,
+    pub diff_struct_min: u64,
+    pub diff_struct_under_merged_max: u64,
+    pub last_diff: u64,
+}
+
+thread_local! {
+    static MERGE_STATS: std::cell::RefCell<MergeStats> =
+        const { std::cell::RefCell::new(MergeStats {
+            calls: 0, no_start_match: 0, no_end_match: 0, ends_too_long: 0,
+            shared_under_100: 0, too_diverse: 0, structural: 0, merged: 0,
+            run_6_10: 0, run_11_20: 0, run_21_50: 0, run_51_100: 0,
+            run_101_200: 0, run_201_plus: 0,
+            sum_min_len: 0, min_len_under_100: 0,
+            diff_merged_max: 0, diff_struct_min: 0,
+            diff_struct_under_merged_max: 0, last_diff: 0,
+        }) };
+}
+
+fn bump(f: impl Fn(&mut MergeStats)) {
+    MERGE_STATS.with(|s| f(&mut s.borrow_mut()));
+}
+
+/// The counts gathered so far on this thread.
+pub fn merge_stats() -> MergeStats {
+    MERGE_STATS.with(|s| *s.borrow())
 }
 
 /// `align_to_merge`: should these two consensuses become one isoform?
@@ -342,12 +431,23 @@ pub fn align_to_merge<E: IsoformEngine>(
     consensus2: &[u8],
     opts: MergeOpts,
 ) -> bool {
+    let min_len = consensus1.len().min(consensus2.len()) as u64;
+    let diff = consensus1.len().abs_diff(consensus2.len()) as u64;
+    bump(|s| {
+        s.calls += 1;
+        s.sum_min_len += min_len;
+        s.last_diff = diff;
+        if min_len < 100 {
+            s.min_len_under_100 += 1;
+        }
+    });
     let (ops, a, b) = engine.align_merge(consensus1, consensus2);
     let overall_len = overall_alignment_len(&ops);
     const WINDOW: usize = 30;
     const THRESHOLD: f64 = 0.7;
 
     let Some(start_match) = find_first_significant_match(&a, &b, WINDOW, THRESHOLD) else {
+        bump(|s| s.no_start_match += 1);
         return false;
     };
     // The same scan over the reversed alignments, which is the last significant
@@ -357,6 +457,7 @@ pub fn align_to_merge<E: IsoformEngine>(
         b.iter().rev().copied().collect(),
     );
     let Some(end_match) = find_first_significant_match(&ra, &rb, WINDOW, THRESHOLD) else {
+        bump(|s| s.no_end_match += 1);
         return false;
     };
     let end_match_pos = overall_len.saturating_sub(end_match);

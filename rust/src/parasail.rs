@@ -420,6 +420,191 @@ fn forward(s1: &[u8], s2: &[u8], sc: Scoring, tb: TieBreak, half: Option<usize>)
     table
 }
 
+/// [`forward`], evaluated along anti-diagonals instead of rows.
+///
+/// # Why this order, and why it is exact
+///
+/// The row-wise loop has a serial dependency: `e_cur[j]` reads `h_cur[j - 1]` and
+/// `e_cur[j - 1]`, so a row cannot be filled in parallel. That is the dependency
+/// Farrar's striped SIMD works around with a lazy-F correction pass, and getting
+/// the *per-cell tie-break byte* bit-exact through that correction is delicate.
+///
+/// On an anti-diagonal `d = i + j` there is no such dependency. Every input a
+/// cell needs sits on `d - 1` or `d - 2`:
+///
+/// | needed | cell | diagonal |
+/// | --- | --- | --- |
+/// | `H(i, j-1)`, `E(i, j-1)` | left | `d - 1` |
+/// | `H(i-1, j)`, `F(i-1, j)` | above | `d - 1` |
+/// | `H(i-1, j-1)` | diagonal | `d - 2` |
+///
+/// So the cells of one diagonal are mutually independent and the recurrence is
+/// unchanged --- same arithmetic, same comparisons, same tie-break, evaluated in
+/// a different but equally valid order. That makes this a stepping stone rather
+/// than a rewrite: it is verified against [`forward`] by
+/// `wavefront_matches_the_row_order_exactly` and by the `parasail::oracle`, and
+/// the SIMD kernel then only has to match *this*.
+///
+/// Indexing everything by row `i` is what keeps it readable: on diagonal `d`,
+/// `prev1[i]` is the cell to the left and `prev1[i - 1]` the cell above.
+///
+/// Scalar, this is *slower* than [`forward`] --- strided access, and a diagonal's
+/// length varies. Its value is that it is exact and parallel.
+fn forward_wavefront(s1: &[u8], s2: &[u8], sc: Scoring, tb: TieBreak) -> Table {
+    let (n, m) = (s1.len(), s2.len());
+    let mut table = Table {
+        m,
+        packed: vec![0u8; n * m],
+        last_col: vec![NEG; n + 1],
+        last_row: vec![NEG; m + 1],
+    };
+    table.last_col[0] = 0;
+    // The degenerate shapes, matching `forward` exactly. With `m == 0` its row
+    // loop still runs and sets `h_cur[0] = 0` before finding an empty inner
+    // range, so every last-column entry is 0, not NEG. With `n == 0` the row
+    // loop never runs and the last row stays row 0, which is all zeros.
+    if m == 0 {
+        table.last_col.fill(0);
+        table.last_row[0] = 0;
+        return table;
+    }
+    if n == 0 {
+        table.last_row.fill(0);
+        return table;
+    }
+
+    let choice_lut = choice_lut(tb);
+
+    // Indexed by row, 0..=n. Diagonal d holds rows max(1, d-m)..=min(n, d-1).
+    // The row-0 and column-0 boundaries are seeded exactly as `forward` does:
+    // H is 0 on both, E is 0 on row 0 and NEG on column 0, F is NEG on row 0 and
+    // 0 on column 0.
+    let mut p2_h = vec![NEG; n + 1];
+    let mut p1_h = vec![NEG; n + 1];
+    let mut p1_e = vec![NEG; n + 1];
+    let mut p1_f = vec![NEG; n + 1];
+    let mut cur_h = vec![NEG; n + 1];
+    let mut cur_e = vec![NEG; n + 1];
+    let mut cur_f = vec![NEG; n + 1];
+    let mut scratch = vec![0i32; n + 1];
+    // `s2` reversed once, so the diagonal's backwards walk over it is a
+    // contiguous forward read.
+    let s2_rev: Vec<u8> = s2.iter().rev().copied().collect();
+
+    // d = 0: only (0, 0).
+    p2_h[0] = 0;
+    // d = 1: (0, 1) and (1, 0), both boundary cells.
+    p1_h[0] = 0; // (0, 1)
+    p1_e[0] = 0; // E(0, j) = 0
+    p1_f[0] = NEG; // F(0, j) = NEG for j >= 1
+    if n >= 1 {
+        p1_h[1] = 0; // (1, 0)
+        p1_e[1] = NEG; // E(i, 0) = NEG
+        p1_f[1] = 0; // F(i, 0) = 0
+    }
+
+    for d in 2..=(n + m) {
+        let lo = d.saturating_sub(m).max(1);
+        let hi = n.min(d - 1);
+        // The boundary cells of this diagonal, if it touches an edge.
+        if d <= m {
+            cur_h[0] = 0;
+            cur_e[0] = 0;
+            cur_f[0] = NEG;
+        }
+        if d <= n {
+            cur_h[d] = 0;
+            cur_e[d] = NEG;
+            cur_f[d] = 0;
+        }
+        // Split into phases over contiguous slices so the arithmetic is
+        // vectorisable: `e`, `f` and `h` are elementwise over runs of `i`, and
+        // only the packed-byte store is scattered (its index strides by `m - 1`).
+        let width = hi + 1 - lo;
+        let e = &mut cur_e[lo..=hi];
+        let f = &mut cur_f[lo..=hi];
+
+        // E(i, j) from the cell to the left: both inputs at row `i` on d-1.
+        for (k, ev) in e.iter_mut().enumerate() {
+            let i = lo + k;
+            *ev = (p1_h[i] - sc.open).max(p1_e[i] - sc.ext);
+        }
+        // F(i, j) from the cell above: both inputs at row `i - 1` on d-1.
+        for (k, fv) in f.iter_mut().enumerate() {
+            let i = lo + k;
+            *fv = (p1_h[i - 1] - sc.open).max(p1_f[i - 1] - sc.ext);
+        }
+        // The diagonal score. `j = d - i` runs backwards as `i` runs forwards, so
+        // `s2` is read in reverse --- taken from a reversed copy made once, which
+        // keeps this a contiguous load rather than a gather.
+        let s2r_from = m - (d - lo);
+        for k in 0..width {
+            let i = lo + k;
+            scratch[k] = p2_h[i - 1] + subst(sc, s1[i - 1], s2_rev[s2r_from + k]);
+        }
+        for k in 0..width {
+            let i = lo + k;
+            cur_h[i] = scratch[k].max(e[k]).max(f[k]);
+        }
+
+        // Tie-break bytes. Scattered store, so scalar --- but the comparisons are
+        // over values already in cache from the phases above.
+        for k in 0..width {
+            let i = lo + k;
+            let j = d - i;
+            let best = cur_h[i];
+            let (ev, fv) = (e[k], f[k]);
+            let mask = usize::from(scratch[k] == best)
+                | usize::from(ev == best) << 1
+                | usize::from(fv == best) << 2;
+            let d_leaves = if tb.prefer_open {
+                p1_h[i] - sc.open >= p1_e[i] - sc.ext
+            } else {
+                p1_h[i] - sc.open > p1_e[i] - sc.ext
+            };
+            let i_leaves = if tb.prefer_open {
+                p1_h[i - 1] - sc.open >= p1_f[i - 1] - sc.ext
+            } else {
+                p1_h[i - 1] - sc.open > p1_f[i - 1] - sc.ext
+            };
+            table.packed[(i - 1) * m + (j - 1)] =
+                choice_lut[mask] | (u8::from(d_leaves) << 2) | (u8::from(i_leaves) << 3);
+            if j == m {
+                table.last_col[i] = best;
+            }
+            if i == n {
+                table.last_row[j] = best;
+            }
+        }
+        std::mem::swap(&mut p2_h, &mut p1_h);
+        std::mem::swap(&mut p1_h, &mut cur_h);
+        std::mem::swap(&mut p1_e, &mut cur_e);
+        std::mem::swap(&mut p1_f, &mut cur_f);
+        cur_h.fill(NEG);
+        cur_e.fill(NEG);
+        cur_f.fill(NEG);
+    }
+    table.last_row[0] = 0;
+    table
+}
+
+/// The mask-to-winner table, shared by both fill orders.
+fn choice_lut(tb: TieBreak) -> [u8; 8] {
+    std::array::from_fn(|mask| {
+        for step in tb.h_order {
+            let (bit, code) = match step {
+                Step::Diagonal => (0, 0u8),
+                Step::Delete => (1, 1),
+                Step::Insert => (2, 2),
+            };
+            if mask >> bit & 1 == 1 {
+                return code;
+            }
+        }
+        0
+    })
+}
+
 /// [`semiglobal`] with an explicit tie-break, for the sweep.
 ///
 /// # Banding: measured, and rejected
@@ -451,7 +636,23 @@ fn forward(s1: &[u8], s2: &[u8], sc: Scoring, tb: TieBreak, half: Option<usize>)
 /// because it does not change the recurrence.
 pub fn semiglobal_with(s1: &[u8], s2: &[u8], sc: Scoring, tb: TieBreak) -> Alignment {
     // Every cell, always: banding was implemented, measured and rejected above.
-    traceback(s1, s2, tb, &forward(s1, s2, sc, tb, None))
+    //
+    // Which fill order runs is a one-time read, not a per-call branch. The
+    // wavefront is exact --- verified cell-for-cell against the row order and on
+    // 54 884 real-library cases --- and exists as the base the SIMD kernel is
+    // built and checked against. It is *slower* scalar, so the row order stays
+    // the default until the vectorised kernel lands.
+    if wavefront_enabled() {
+        traceback(s1, s2, tb, &forward_wavefront(s1, s2, sc, tb))
+    } else {
+        traceback(s1, s2, tb, &forward(s1, s2, sc, tb, None))
+    }
+}
+
+/// `ISONFORM_WAVEFRONT=1` selects the anti-diagonal fill. Read once.
+fn wavefront_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("ISONFORM_WAVEFRONT").is_some())
 }
 
 // ---------------------------------------------------------------------------
@@ -645,6 +846,114 @@ fn encode(ops: &[u8]) -> (String, Vec<CigarOp>) {
 
 #[cfg(test)]
 mod tests {
+
+    /// Row order vs wavefront on realistic consensus lengths, so the choice is
+    /// made on a measurement rather than on which one looks faster.
+    ///
+    /// Not a `#[test]` assertion --- it prints and is read. Run with
+    /// `cargo test --release --lib bench_fill_orders -- --nocapture --ignored`.
+    #[test]
+    #[ignore]
+    fn bench_fill_orders() {
+        let mut seed = 0x9E3779B97F4A7C15u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        // 1364 bp is the measured mean consensus length on droso_deep.
+        let len = 1364usize;
+        let pairs: Vec<(Vec<u8>, Vec<u8>)> = (0..12)
+            .map(|_| {
+                let a: Vec<u8> = (0..len).map(|_| b"ACGT"[(next() % 4) as usize]).collect();
+                // A near-copy, which is what merge candidates actually look like.
+                let mut b = a.clone();
+                for _ in 0..len / 50 {
+                    let p = (next() as usize) % len;
+                    b[p] = b"ACGT"[(next() % 4) as usize];
+                }
+                (a, b)
+            })
+            .collect();
+
+        // The full call, so the fill's share of it is visible: vectorising the
+        // fill can only ever win back the fill's share.
+        let t_full = std::time::Instant::now();
+        let mut sink2 = 0i64;
+        for (a, b) in &pairs {
+            sink2 += semiglobal_with(a, b, Scoring::MERGE, TieBreak::PARASAIL).score as i64;
+        }
+        eprintln!(
+            "  FULL semiglobal_with (fill + traceback + strings): {:.3}s  (sink {sink2})",
+            t_full.elapsed().as_secs_f64()
+        );
+
+        for (name, f) in [("row      ", 0u8), ("wavefront", 1u8)] {
+            let t0 = std::time::Instant::now();
+            let mut sink = 0i64;
+            for (a, b) in &pairs {
+                let t = if f == 0 {
+                    forward(a, b, Scoring::MERGE, TieBreak::PARASAIL, None)
+                } else {
+                    forward_wavefront(a, b, Scoring::MERGE, TieBreak::PARASAIL)
+                };
+                sink += t.last_row[t.m] as i64;
+            }
+            let el = t0.elapsed().as_secs_f64();
+            let cells = pairs.len() as f64 * (len * len) as f64;
+            eprintln!(
+                "  {name}: {:.2}s for {} pairs of {len}bp -> {:.0}M cells/s (sink {sink})",
+                el,
+                pairs.len(),
+                cells / el / 1e6
+            );
+        }
+    }
+
+    /// A tie-break deliberately different from parasail's, so the comparison
+    /// covers the `prefer_open` and ordering branches rather than one path.
+    fn alt_tiebreak() -> TieBreak {
+        let mut tb = TieBreak::PARASAIL;
+        tb.prefer_open = !tb.prefer_open;
+        tb.h_order = [Step::Insert, Step::Delete, Step::Diagonal];
+        tb
+    }
+
+    /// The anti-diagonal fill must reproduce the row fill exactly --- every
+    /// traceback byte, every last-row and last-column score. This is what makes
+    /// the wavefront a safe base for the SIMD kernel: if this holds, the only
+    /// thing SIMD has to match is a function already known to equal `forward`.
+    #[test]
+    fn wavefront_matches_the_row_order_exactly() {
+        let mut seed = 0x2545F4914F6CDD1Du64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut checked = 0usize;
+        for case in 0..400 {
+            // Include the degenerate shapes: empty, length 1, and very uneven.
+            let n = (next() % 40) as usize + case % 3;
+            let m = (next() % 40) as usize + (case / 3) % 3;
+            let mk = |len: usize, f: &mut dyn FnMut() -> u64| -> Vec<u8> {
+                (0..len).map(|_| b"ACGT"[(f() % 4) as usize]).collect()
+            };
+            let s1 = mk(n, &mut next);
+            let s2 = mk(m, &mut next);
+            for tb in [TieBreak::PARASAIL, alt_tiebreak()] {
+                let a = forward(&s1, &s2, Scoring::MERGE, tb, None);
+                let b = forward_wavefront(&s1, &s2, Scoring::MERGE, tb);
+                assert_eq!(a.packed, b.packed, "traceback bytes differ, n={n} m={m}");
+                assert_eq!(a.last_col, b.last_col, "last column differs, n={n} m={m}");
+                assert_eq!(a.last_row, b.last_row, "last row differs, n={n} m={m}");
+                checked += 1;
+            }
+        }
+        assert!(checked >= 800, "only {checked} comparisons ran");
+    }
     use super::*;
 
     /// The scoring these semantics tests were originally verified against.
