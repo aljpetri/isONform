@@ -1720,12 +1720,47 @@ pins graph ids as `1..len(all_intervals_for_graph)`. So the sink's range is simp
 the wrong one, and the fix is to use the source's: one entry per graph read,
 carrying that read's own length.
 
-It is still a real behaviour change, because the sink's positions are consumed by
-bubble popping --- `summation += (positions.end_mini_start - positions.start_mini_end)`
-and the bubble start/end positions in `SimplifyGraph` --- and because dropping the
-phantom entries shrinks the sink's read set, which is what bubble support is
-counted from. So it wants measuring like the others. But there is only one
-coherent target, not two.
+There is only one coherent target, not two.
+
+**Fixed and measured, 2026-08-25.** `ISONFORM_BUG_COMPAT=sink_read_len` puts it
+back. The result is the useful part:
+
+| corpus | effect of the fix |
+| --- | --- |
+| `sirv_sim_gene` | **byte-identical** |
+| `sirv_real` | **byte-identical** |
+| `droso` | **byte-identical** |
+| `sirv_small`, `--max_seqs 25`, 4 batches | 16 isoforms -> **14** |
+
+So it changes nothing on any evaluation corpus and does change output on the smoke
+corpus, and the reason is one number: **the interval filter's skip rate.**
+
+Graph ids are handed out only to reads that survived the filter, so graph id *i*
+is file read *i* exactly when nothing before *i* was skipped. Measured:
+
+* `droso_sample`: 1 257 reads, **0 skipped** --- graph ids and file read ids
+  coincide everywhere, so the bug is inert;
+* `sirv_real` (interval oracle): 9 968 reads in, 9 967 kept, 0.01% skipped ---
+  effectively inert;
+* `bench/corpus/sirv_small`: 100 reads, **16 skipped** --- the two indexings
+  diverge and the sink's lengths belong to other reads.
+
+The three evaluation corpora all go through isONcorrect, and corrected reads pass
+the interval-abundance filter almost without exception --- the same reason the
+input contract exists at all (run on raw isONclust output and the graph comes out
+with 2 nodes and 0 edges). `sirv_small` is raw, which is why it is the one corpus
+that moves.
+
+That makes finding 33 a correctness fix with no measurable accuracy effect on the
+data the tool is documented to be run on, and a real effect outside that contract.
+Worth having for the second reason: the distortion was silent, and its size was
+set by a quantity nobody was watching.
+
+The positions do reach bubble popping ---
+`summation += (positions.end_mini_start - positions.start_mini_end)` and the
+bubble start/end positions in `SimplifyGraph` --- and dropping the phantom entries
+shrinks the read set bubble support is counted from, so the 16-to-14 move on
+`sirv_small` is that mechanism showing through rather than noise.
 
 **This one bit the port.** The first version of the driver derived the lengths from
 the batch rather than the file — a reading of "all reads" that is right in English

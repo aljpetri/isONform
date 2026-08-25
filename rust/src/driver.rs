@@ -326,6 +326,9 @@ impl BugCompat {
         if !self.build.fix_cycle_continuation {
             v.push("cycle_continuation");
         }
+        if !self.build.fix_sink_read_len {
+            v.push("sink_read_len");
+        }
         if self.batch_merge_no_op {
             v.push("batch_merge");
         }
@@ -355,6 +358,7 @@ pub fn parse_bug_compat(raw: &str) -> Result<BugCompat, String> {
             "wis_p2" => c.wis.fix_p2 = false,
             "stale_seq" => c.build.fix_stale_seq = false,
             "cycle_continuation" => c.build.fix_cycle_continuation = false,
+            "sink_read_len" => c.build.fix_sink_read_len = false,
             "batch_merge" => c.batch_merge_no_op = true,
             "batch_names" => c.batch_name_collision = true,
             "cigar_diversity" => c.cigar_diversity_counts_runs = true,
@@ -362,7 +366,7 @@ pub fn parse_bug_compat(raw: &str) -> Result<BugCompat, String> {
                 return Err(format!(
                     "unknown bug {other:?} in ISONFORM_BUG_COMPAT; known: all, \
                      wis_p2, stale_seq, cycle_continuation, batch_merge, \
-                     batch_names, cigar_diversity"
+                     sink_read_len, batch_names, cigar_diversity"
                 ))
             }
         }
@@ -452,6 +456,7 @@ mod tests {
                 "wis_p2",
                 "stale_seq",
                 "cycle_continuation",
+                "sink_read_len",
                 "batch_merge",
                 "batch_names",
                 "cigar_diversity"

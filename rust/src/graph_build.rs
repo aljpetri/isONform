@@ -71,6 +71,24 @@ pub struct BuildOpts {
     /// Continue the read's path from the node `cycle_added` just created, rather
     /// than from the one whose incoming edge it removed. Fixes finding 11.
     pub fix_cycle_continuation: bool,
+    /// Seed the sink with the **graph's** reads and their own lengths, as the
+    /// source loop two lines above already does, rather than with one entry per
+    /// read in the whole *file* indexed as though those were graph ids.
+    /// Fixes finding 33.
+    ///
+    /// The reference's two loops are adjacent and disagree:
+    ///
+    /// ```python
+    /// for i in range(1, len(all_intervals_for_graph) + 1):   # source: graph ids
+    /// for i in range(1, len(read_len_dict) + 1):             # sink: file read ids
+    /// ```
+    ///
+    /// Every read has one path, source to sink, so these are the same set. The
+    /// source's range is the correct one --- `reads_for_isoforms` is built from
+    /// it. Two consequences follow from the sink's being wrong: phantom entries
+    /// for graph ids that do not exist, and, for the ids that do, some other
+    /// read's length.
+    pub fix_sink_read_len: bool,
 }
 
 impl Default for BuildOpts {
@@ -79,6 +97,7 @@ impl Default for BuildOpts {
         Self {
             fix_stale_seq: true,
             fix_cycle_continuation: true,
+            fix_sink_read_len: true,
         }
     }
 }
@@ -89,6 +108,7 @@ impl BuildOpts {
         Self {
             fix_stale_seq: false,
             fix_cycle_continuation: false,
+            fix_sink_read_len: false,
         }
     }
 }
@@ -165,16 +185,35 @@ pub fn generate_graph_from_intervals(
         );
     }
     let t = g.add_node(NodeKey::Sink);
-    for &(r, len) in input.read_len {
-        g.set_read(
-            t,
-            r,
-            ReadInfo {
-                start_mini_end: len as i64,
-                end_mini_start: len as i64,
-                original_support: true,
-            },
-        );
+    if opts.fix_sink_read_len {
+        // finding 33 fixed: the sink carries the *graph's* reads, each with its
+        // own length --- the same range the source loop two lines above uses.
+        for i in 1..=n_graph_reads {
+            let len = input.reads.get(&i).map(|sq| sq.len()).unwrap_or(0);
+            g.set_read(
+                t,
+                i,
+                ReadInfo {
+                    start_mini_end: len as i64,
+                    end_mini_start: len as i64,
+                    original_support: true,
+                },
+            );
+        }
+    } else {
+        // finding 33 reproduced: `range(1, len(read_len_dict) + 1)` over the
+        // *whole file*, indexed as though it were graph ids.
+        for &(r, len) in input.read_len {
+            g.set_read(
+                t,
+                r,
+                ReadInfo {
+                    start_mini_end: len as i64,
+                    end_mini_start: len as i64,
+                    original_support: true,
+                },
+            );
+        }
     }
     let reads_for_isoforms: Vec<u32> = (1..=n_graph_reads).collect();
 
@@ -516,7 +555,42 @@ mod tests {
     }
 
     #[test]
-    fn the_sink_read_set_comes_from_read_len_not_from_the_graph() {
+    fn the_fixed_sink_carries_the_graphs_reads_with_their_own_lengths() {
+        // finding 33 fixed. Same input as the bug-compat test below: the file has
+        // three reads of lengths 60, 55, 51, but only read 1 has intervals, so
+        // the graph has exactly one read. Its own length is 60.
+        let seq = "A".repeat(60);
+        let r = reads(&[(1, &seq)]);
+        let intervals = vec![(1u32, vec![iv(10, 20, &[1, 0, 20])])];
+        let input = BuildInput {
+            k: 4,
+            delta_len: 5,
+            intervals: &intervals,
+            reads: &r,
+            // Deliberately a *different* length for id 1 than the read really
+            // has, so a test that passed by coincidence cannot.
+            read_len: &[(1, 999), (2, 55), (3, 51)],
+        };
+        let (g, _) = generate_graph_from_intervals(&input, BuildOpts::default()).unwrap();
+        let t = g.lookup(&NodeKey::Sink).unwrap();
+        let ids: Vec<u32> = g.reads(t).iter().map(|(r, _)| *r).collect();
+        assert_eq!(ids, vec![1], "no phantom entries for reads with no path");
+        let s = g.lookup(&NodeKey::Source).unwrap();
+        assert_eq!(
+            g.reads(s).len(),
+            g.reads(t).len(),
+            "source and sink carry the same reads --- every path runs between them"
+        );
+        let (_, info) = g.reads(t)[0];
+        assert_eq!(
+            info.end_mini_start, 60,
+            "the graph read's own length, not read_len_dict's 999"
+        );
+        assert_eq!(info.start_mini_end, 60);
+    }
+
+    #[test]
+    fn bug_compat_seeds_the_sink_from_read_len_not_from_the_graph() {
         // read_len_dict is built over all reads in `main`, including those the
         // interval filter skipped, so the sink claims reads with no path. This
         // asserts the faithful behaviour, not the desirable one; see PORTING.md.
