@@ -60,8 +60,10 @@ pub struct BuildInput<'a> {
     pub read_len: &'a [(u32, u32)],
 }
 
-/// Deliberate divergences, off by default.
-#[derive(Debug, Clone, Copy, Default)]
+/// Bug fixes. **On by default** since the bug-fix policy changed; use
+/// [`BuildOpts::reference`] to reproduce the reference's behaviour, which is what
+/// the oracles replay against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuildOpts {
     /// Bind `seq` from the read being processed, as every other branch does.
     /// Fixes finding 9.
@@ -69,6 +71,26 @@ pub struct BuildOpts {
     /// Continue the read's path from the node `cycle_added` just created, rather
     /// than from the one whose incoming edge it removed. Fixes finding 11.
     pub fix_cycle_continuation: bool,
+}
+
+impl Default for BuildOpts {
+    /// Correct behaviour: bugs fixed.
+    fn default() -> Self {
+        Self {
+            fix_stale_seq: true,
+            fix_cycle_continuation: true,
+        }
+    }
+}
+
+impl BuildOpts {
+    /// Reproduce the reference's bugs exactly. What the oracles replay against.
+    pub fn reference() -> Self {
+        Self {
+            fix_stale_seq: false,
+            fix_cycle_continuation: false,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -466,7 +488,7 @@ mod tests {
             reads: &r,
             read_len: &[(1, 60)],
         };
-        let (g, rfi) = generate_graph_from_intervals(&input, BuildOpts::default()).unwrap();
+        let (g, rfi) = generate_graph_from_intervals(&input, BuildOpts::reference()).unwrap();
         assert_eq!(rfi, vec![1]);
         // s, t, and one node per interval.
         assert_eq!(g.node_count(), 4);
@@ -508,7 +530,7 @@ mod tests {
             reads: &r,
             read_len: &[(1, 60), (2, 55), (3, 51)],
         };
-        let (g, _) = generate_graph_from_intervals(&input, BuildOpts::default()).unwrap();
+        let (g, _) = generate_graph_from_intervals(&input, BuildOpts::reference()).unwrap();
         let t = g.lookup(&NodeKey::Sink).unwrap();
         let ids: Vec<u32> = g.reads(t).iter().map(|(r, _)| *r).collect();
         assert_eq!(ids, vec![1, 2, 3]);
@@ -539,7 +561,7 @@ mod tests {
             reads: &r,
             read_len: &[(1, 120), (2, 120)],
         };
-        let (g, _) = generate_graph_from_intervals(&input, BuildOpts::default()).unwrap();
+        let (g, _) = generate_graph_from_intervals(&input, BuildOpts::reference()).unwrap();
         let shared = g
             .lookup(&NodeKey::Interval {
                 start: 10,
@@ -615,7 +637,7 @@ mod tests {
         // 2 reaches the split there *is* a leaked value --- and it happens to be
         // the right one here, since both reads share a sequence. The point of
         // this test is that the path is exercised and does not panic.
-        let (g, _) = generate_graph_from_intervals(&input, BuildOpts::default()).unwrap();
+        let (g, _) = generate_graph_from_intervals(&input, BuildOpts::reference()).unwrap();
         assert!(
             g.lookup(&NodeKey::Interval {
                 start: 14,
@@ -695,7 +717,7 @@ mod tests {
             reads: &r,
             read_len: &[(1, 120), (2, 120)],
         };
-        let (g, _) = generate_graph_from_intervals(&input, BuildOpts::default()).unwrap();
+        let (g, _) = generate_graph_from_intervals(&input, BuildOpts::reference()).unwrap();
 
         let n1 = g
             .lookup(&NodeKey::Interval {
@@ -803,7 +825,7 @@ mod tests {
             reads: &r,
             read_len: &[(1, 120), (2, 120)],
         };
-        let (g_ref, _) = generate_graph_from_intervals(&input, BuildOpts::default()).unwrap();
+        let (g_ref, _) = generate_graph_from_intervals(&input, BuildOpts::reference()).unwrap();
         let (g_fix, _) = generate_graph_from_intervals(
             &input,
             BuildOpts {

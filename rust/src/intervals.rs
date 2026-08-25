@@ -273,7 +273,7 @@ mod tests {
             (3, shared.into()),
             (4, lonely.into()),
         ];
-        let got = build_batch(&reads, 10, 5, 1, 40, 5, WisOpts::default());
+        let got = build_batch(&reads, 10, 5, 1, 40, 5, WisOpts::reference());
         assert!(
             got.skipped.contains(&4),
             "the unrelated read is skipped, got {:?}",
@@ -291,7 +291,7 @@ mod tests {
         let reads: Vec<(u32, Vec<u8>)> = (1..=3u32)
             .map(|r| (r, shared.as_bytes().to_vec()))
             .collect();
-        let got = build_batch(&reads, 10, 5, 1, 40, 5, WisOpts::default());
+        let got = build_batch(&reads, 10, 5, 1, 40, 5, WisOpts::reference());
         assert!(!got.by_graph_id.is_empty(), "these reads share anchors");
         let mut ids: Vec<u32> = got.read_of_graph_id.keys().copied().collect();
         ids.sort_unstable();
@@ -313,7 +313,7 @@ mod tests {
         let reads: Vec<(u32, Vec<u8>)> = (1..=4u32)
             .map(|r| (r, shared.as_bytes().to_vec()))
             .collect();
-        let got = build_batch(&reads, 10, 5, 1, 40, 5, WisOpts::default());
+        let got = build_batch(&reads, 10, 5, 1, 40, 5, WisOpts::reference());
         for ivs in got.by_graph_id.values() {
             for pair in ivs.windows(2) {
                 assert!(

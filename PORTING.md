@@ -851,6 +851,10 @@ have; if a real dataset ever reaches it, the port says so instead of silently di
 
 ### Finding 9 — a node attribute is computed from the wrong read's sequence
 
+> **Measured 2026-08-25.** `ISONFORM_FIX=stale_seq` changes output on all three
+> corpora and improves none of them (F1 0.947 → 0.939 on `sirv_sim_gene`, flat
+> elsewhere). See *The three opt-in fixes, measured*.
+
 `GraphGeneration.py:431` reads `seq` on a path that never binds it:
 
 ```python
@@ -896,6 +900,11 @@ re-run on any future corpus.
 The fix is one line — bind `seq = all_reads[r_id][1]` on that path, as every sibling branch does.
 
 ### Finding 11 — the cycle-avoidance node is a dead end, and the read's path is severed
+
+> **Measured 2026-08-25.** `ISONFORM_FIX=cycle_continuation` produces
+> **byte-identical** output on all three corpora, 561 Drosophila clusters
+> included. The branch is unreached in practice, so there is no evidence either
+> way. See *The three opt-in fixes, measured*.
 
 **Found by the oracle, not by reading**, which is the point of having one. On real Drosophila data
 one edge in one of 40 recorded graphs disagreed: the reference drew it from `"104, 142, 133"` where
@@ -1365,7 +1374,12 @@ says something about the search space.
 setting was applied on the strength of the subset result and the full-corpus oracle caught it
 immediately. Finding the setting that fixes the failures is not the same as finding the right one.
 
-### Finding 26 — `fill_p2` is off by one, so `solve_WIS` is measurably suboptimal. **Fix built, off by default.**
+### Finding 26 — `fill_p2` is off by one, so `solve_WIS` is measurably suboptimal. **Fix built, measured, and it makes accuracy worse.**
+
+> **Measured 2026-08-25.** `ISONFORM_FIX=wis_p2` is net negative: it loses a
+> transcript at *every* threshold on `sirv_sim_gene` and only crosses a threshold
+> on `sirv_real`. A more optimal interval selection is not a better
+> transcriptome. See *The three opt-in fixes, measured*.
 
 `fill_p2` builds `p[j]`, the largest index whose interval finishes at or before interval `j` starts,
 and `solve_WIS` then evaluates `OPT[p[j]]` against the **1-based** `OPT` array. `fill_p2` stores a
@@ -1549,13 +1563,56 @@ and an isoform present in two batches is emitted twice, with different ids
 nothing is lost, which is why it has gone unnoticed; on larger clusters the
 transcriptome carries duplicates.
 
-**The port reproduces the no-op and does not offer a fix flag.** Everywhere else a
-reference defect has an opt-in fix (`WisOpts::fix_p2`, `BuildOpts`) there was a
-defensible correct behaviour to switch to. Here there is not: making it merge means
-inventing the read-sequence lookup `generate_consensus_path` is missing, and
-inventing behaviour is the one thing the working agreements forbid. Fixing it
-properly is an upstream change, and it needs the owner to decide what
-`all_sequences` was meant to be.
+**Fixed on 2026-08-25, by the owner's decision that merging should compare the
+consensus sequences directly and use no read data at all.** Two changes:
+
+* the batch list is sorted **ascending**, which makes every later batch a higher id
+  and the guard's intent --- compare each batch against every later batch ---
+  actually happen;
+* `generate_consensus_path` is **removed, not repaired**. Comparing stored
+  consensuses needs no read data, so it has no role. That is a better outcome than
+  fixing its key, because its fallback branch is worse than the `KeyError` it
+  avoids: `if not (id in all_sequences): sequence = id` writes the accession
+  *string* into the fasta as though it were DNA.
+
+When two isoforms merge the longer consensus is kept verbatim and the shorter's
+reads are absorbed. That is not invented --- it is what the reference already does
+on its well-supported branch, where `len(infos_long.reads) > 50` leaves
+`infos_long.sequence` untouched. Both branches now behave that way, which applies
+the reference's own high-confidence behaviour uniformly.
+
+Traversal order is preserved, because it decides which of several mergeable
+isoforms wins: batches ascending, isoforms within a batch ascending by consensus
+length, `>=` favouring the later batch's isoform on a tie.
+
+**Measured effect**, isolating the merge against a run with the other three fixes
+already on:
+
+| corpus | isoforms | redundancy | lenient recall |
+| --- | --- | --- | --- |
+| `sirv_sim_gene` | 139 -> **85** | 2.26 -> **1.38** | 89.7% -> **89.7%** |
+| `sirv_real` | 108 -> **84** | 1.80 -> **1.38** | 82.4% -> **82.4%** |
+| `droso` | 507 -> 507 | unchanged | unchanged |
+
+**39% fewer isoforms on simulated data and 24% fewer on real SIRV, without losing
+a single recovered transcript.** The duplicate decomposition predicted 1.35; the
+measurement is 1.38.
+
+`droso` does not move, and the reason is worth stating because it is the corpus on
+which this bug stayed invisible: with `--max_seqs 1000`, **0 of its 561 clusters
+are big enough to split into more than one batch** (5-488 reads each), so
+cross-batch merging has nothing to do. `sirv_sim_gene` has 4 such clusters;
+`sirv_real` has 1, of 4 595 reads and five batches, which is why a single cluster
+moves that corpus by 24 isoforms.
+
+Strict recall does drop two transcripts on `sirv_real` while lenient holds --- the
+threshold effect again, since surviving consensuses are the longer ones and some
+fall outside the 10% length window. Lenient precision slips 96.3% -> 94.0% there,
+which is arithmetic rather than new junk: collapsing the *matching* duplicates
+leaves the unmergeable non-matching isoforms a larger share of a smaller set.
+
+`ISONFORM_BUG_COMPAT=batch_merge` reproduces the no-op, and the batch-merge oracle
+uses it --- 56 of 56 agree, 910 output records.
 
 The rest of the stage — `write_final_output`, which chooses each isoform's
 destination, id and support count — is live, ported, and verified.
@@ -1694,6 +1751,45 @@ because `--max_seqs` defaults to 1000 and clusters that large are rare, and the 
 then runs once. Reproduced: the port writes the batches in order and lets the last
 truncate the rest, which leaves the same files with the same contents.
 
+### The bug-fix policy changed on 2026-08-25
+
+Until this point the rule was: reference defects are reproduced by default, fixes
+are opt-in and measured. That produced a verified baseline and 38 findings, and
+then stopped being the right rule. The rule now is **known bugs are fixed by
+default** --- a bug-free implementation is what methodological improvement can be
+built on, and a bug-compatible one with better scores is the worse artefact.
+
+This deliberately accepts lower scores where fixing a bug costs accuracy.
+`wis_p2` does exactly that (finding 26) and is on anyway.
+
+The mechanism is `ISONFORM_BUG_COMPAT` --- a comma-separated list of bug names, or
+`all` --- which puts the named bugs **back**:
+
+| name | reproduces | finding |
+| --- | --- | --- |
+| `wis_p2` | `fill_p2` off-by-one, a measurably suboptimal WIS | 26 |
+| `stale_seq` | a node attribute from the wrong read's sequence | 9 |
+| `cycle_continuation` | the cycle-avoidance node severing a read's path | 11 |
+| `batch_merge` | cross-batch merging doing nothing at all | 31 |
+
+It has two legitimate callers and no others: the differential oracles, which
+replay recorded reference behaviour and therefore need the reference's bugs, and
+bisecting an accuracy change to one bug. An unknown name is an error, not a silent
+no-op.
+
+`WisOpts::default()` and `BuildOpts::default()` are now the *correct* behaviour and
+`::reference()` is the opt-in. The inversion is explicit in the type system rather
+than a flipped boolean because several call sites used `default()` to mean "the
+reference", and silently changing what that meant would have been a trap --- the
+kind that makes an oracle pass while testing nothing.
+
+`bench/compare_end_to_end.py` sets `ISONFORM_BUG_COMPAT=all` on every port
+invocation, which is what keeps it an equivalence gate rather than a diff of two
+programs meant to differ; `--no-bug-compat` shows what the fixes changed. Getting
+that wrong is not hypothetical: the first attempt plumbed the variable through the
+parallel path but not the main-entry loop, and the gate immediately reported two
+disagreeing clusters.
+
 ### Finding 35 — `--iso_abundance` discards silently, because `write_low_abundance` is a local
 
 `isONform_parallel.main` opens with
@@ -1786,7 +1882,15 @@ writes it. So `os.path.isfile` is always false, `compute` stays true, and
 worked. The intended name was probably `corrected_reads.fastq` (what the isONcorrect
 script this was adapted from produced) or one of the `cluster*_merged.*` files.
 
-All seven reproduced, since a port that made them live would change results.
+All seven reproduced as measured, since a port that made them live would have
+changed results.
+
+**Two of them stopped being inert when finding 31 was fixed.** `--delta` and
+`--max_seqs_to_spoa` were dead *only because the merge they feed never ran*. With
+cross-batch merging working, `--delta` is the diversity threshold deciding which
+isoforms fold together across batches, and it is live. Worth flagging rather than
+quietly correcting: this table measured a real property of the reference, and
+fixing a different bug changed it.
 
 ### Finding 38 — output record order is filesystem directory order
 
@@ -2274,6 +2378,82 @@ seed-1 and seed-2 reference runs overlapped with `droso` scoring, so treat the
 ratios as "roughly 2–3×" rather than as benchmarks. The three reference runs of
 `sirv_real` came in at 238.7, 239.3 and 240.5 s, which at least says the
 measurement is not wildly noisy.
+
+### The three opt-in fixes, measured: all three are dead ends
+
+`ISONFORM_FIX` (comma-separated, or `all`) turns on the fixes built behind
+`WisOpts` and `BuildOpts`. An environment variable rather than a flag because both
+entry points' argument surfaces are asserted to match the reference's and
+`bench/equivalence.sh` drives both binaries — the same convention as
+`ISONFORM_TRACE_POPS`. An unknown name exits 1 rather than no-opping, because a
+typo would silently measure the baseline twice and read as "the fix changed
+nothing".
+
+Baseline is the port with no fixes. Twelve runs, four configurations across all
+three corpora:
+
+| fix | `sirv_sim_gene` | `sirv_real` | `droso` |
+| --- | --- | --- | --- |
+| `cycle_continuation` (finding 11) | **byte-identical** | **byte-identical** | **byte-identical** |
+| `stale_seq` (finding 9) | F1 0.947 → 0.939, recall 62 → 61 | F1 0.746 → 0.745 | FSM 446 → 446, chains 357 → 357 |
+| `wis_p2` (finding 26) | F1 0.947 → 0.943, recall 62 → 61 | F1 0.746 → **0.764**, recall 48 → **49** | FSM 446 → 446, chains 357 → 357 |
+| `all` | F1 0.947 → 0.943, recall 62 → 61 | F1 0.746 → **0.765** | FSM 446 → 447 |
+
+**`cycle_continuation` never fires.** Identical output on all three corpora,
+including 561 Drosophila clusters. Finding 11's branch is real in the source and
+unreached in practice, so there is no evidence for or against fixing it and no
+reason to carry it as a live option. Consistent with the original measurement: one
+occurrence in 19 831 calls.
+
+**`stale_seq` changes output and improves nothing.** It moves every corpus and
+helps none: worse on simulated, flat on real, flat on Drosophila.
+
+**`wis_p2` is net negative, and the strict numbers alone would have said the
+opposite.** On `sirv_real` it gains a transcript at the strict threshold, which
+looks like a win. But its **lenient** recall is unchanged at 82.4%, so that gain
+is a threshold crossing, not a recovered transcript. On `sirv_sim_gene` the
+lenient recall drops 91.2% → 89.7% — a transcript lost at *every* threshold, which
+is a real loss. One genuine loss against one threshold crossing.
+
+**Finding 26 needs re-reading in this light.** `fix_p2` is provably the more
+correct maximum-weight independent set — brute force says the reference is worse on
+2 085 of 3 000 random cases — and it makes isoform reconstruction slightly *worse*.
+A better interval selection is not a better transcriptome. The natural reading of
+finding 26 was that the off-by-one was costing accuracy; measured, it is not.
+Interval-selection optimality is not this tool's bottleneck.
+
+**What did not move at all: redundancy.** 2.21 → 2.26 on simulated, 1.81 → 1.78 on
+real, 357 distinct intron chains on Drosophila in every configuration. So none of
+these three touches the thing most worth fixing, and the decomposition below still
+points where it pointed.
+
+### Where the redundancy actually comes from
+
+Measured on `sirv_sim_gene`, strict matches, port baseline: 137 matching isoforms
+for 62 transcripts, redundancy **2.21**. Decomposing the 75 excess isoforms by
+whether the duplicate sits in the same batch or a different one:
+
+| | excess isoforms | share |
+| --- | --- | --- |
+| same transcript, **different batches of one cluster** | 53 | **71%** |
+| same transcript, same batch | 22 | 29% |
+
+SIRV301 is emitted seven times — three isoforms from batch 0 and four from batch 1
+of cluster 2. Cross-batch duplication is exactly what finding 31 predicts: batch
+merging is a no-op, so an isoform present in two batches is emitted twice under
+different ids and nothing ever collapses them.
+
+Making cross-batch merging work would take redundancy **2.21 → 1.35** with no
+change to recall or precision, which is a larger effect than anything else measured
+so far and the reason finding 31 is the next thing to do. It needs a decision that
+is not the porting project's to make: `generate_consensus_path` looks up read
+accessions in `all_sequences`, which is keyed by batch id, so the lookup it needs
+does not exist and inventing one is a design change.
+
+The remaining 29% is intra-batch — `merge_consensuses` declining to merge two
+consensuses of the same transcript within one batch — and is a separate question
+about the `delta` / `delta_len` / `delta_iso_len_*` thresholds, none of which has
+any accuracy measurement behind it (see *Deferred improvements*).
 
 ## Method
 

@@ -23,18 +23,22 @@
 //! `join_back_via_batch_merging` in the parent, after `pool.join()`, so a
 //! recording wrapper survives to see it.
 //!
-//! # It asserts that merging does nothing, on purpose
+//! # It asserts the *reference's* merging does nothing, on purpose
 //!
-//! `actual_merging_process`'s body is unreachable (`PORTING.md` finding 31), so
-//! the `A` records must equal the `B` records. That is checked rather than
-//! assumed: if a future reference ever fixes the guard, this is the test that
-//! notices, and it will fail loudly instead of the port silently continuing to do
-//! nothing.
+//! The reference's `actual_merging_process` body is unreachable (`PORTING.md`
+//! finding 31), so its `A` records equal its `B` records. This replays with
+//! `no_op = true` and checks that, which keeps it a real gate on the recorded
+//! data: if a future reference ever fixes the guard, this fails loudly instead of
+//! the dump silently disagreeing.
+//!
+//! The port itself **does** merge across batches by default; that repair is
+//! covered by the unit tests in `batch_merge.rs` and measured in `PORTING.md`.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use isonform::batch_merge::{actual_merging_process, select_output, Destination, Isoform};
+use isonform::isoforms::{MergeOpts, SpoaParasailMerge};
 
 #[derive(Default)]
 struct Case {
@@ -134,7 +138,19 @@ fn check(c: &Case) -> Vec<String> {
     let mut problems = Vec::new();
     let mut batches = c.before.clone();
 
-    actual_merging_process(&mut batches);
+    // The oracle replays the *reference*, whose merging step never executes
+    // (finding 31). The port fixes that by default, so this asks for the bug
+    // back explicitly --- exactly as the interval and graph oracles ask for
+    // `WisOpts::reference()`.
+    let mut engine = SpoaParasailMerge;
+    actual_merging_process(
+        &mut engine,
+        &mut batches,
+        // Unused with `no_op = true`; the reference's dump records no merge
+        // thresholds because its merge never ran to need them.
+        MergeOpts::default(),
+        true,
+    );
 
     // The `A` records: what the reference had after merging. Since merging is a
     // no-op this equals `B`, and the point of checking is to notice if that ever

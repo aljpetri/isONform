@@ -236,7 +236,7 @@ fn check(c: &Case) -> Vec<String> {
         reads: &c.reads,
         read_len: &c.read_len,
     };
-    let (g, rfi) = match generate_graph_from_intervals(&input, BuildOpts::default()) {
+    let (g, rfi) = match generate_graph_from_intervals(&input, BuildOpts::reference()) {
         Ok(v) => v,
         Err(e) => {
             problems.push(format!("port returned an error: {e:?}"));

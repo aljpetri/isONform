@@ -54,12 +54,31 @@ pub struct Interval {
 /// `epsilon` in `solve_WIS`, so a zero-length span still carries some weight.
 const EPSILON: f64 = 0.0001;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WisOpts {
     /// Store 1-based predecessor indices, as the maximum-weight independent set
-    /// actually requires. **Off by default**: the reference is off by one and
-    /// that is what the recorded goldens contain. See the module docs.
+    /// actually requires. **On by default** since the bug-fix policy changed:
+    /// `fill_p2` is unambiguously off by one, so the port fixes it and
+    /// [`WisOpts::reference`] is how the oracles ask for the old behaviour.
+    ///
+    /// Note this fix does *not* improve accuracy --- it slightly worsens it. It is
+    /// on because it is correct, not because it scores better. `PORTING.md`
+    /// finding 26.
     pub fix_p2: bool,
+}
+
+impl Default for WisOpts {
+    /// Correct behaviour: bugs fixed.
+    fn default() -> Self {
+        Self { fix_p2: true }
+    }
+}
+
+impl WisOpts {
+    /// Reproduce the reference's bugs exactly. What the oracles replay against.
+    pub fn reference() -> Self {
+        Self { fix_p2: false }
+    }
 }
 
 /// `p[j]`: the index whose interval finishes at or before interval `j` starts,
@@ -211,7 +230,7 @@ mod tests {
             "the fix reaches the optimum"
         );
 
-        let reference = solve(&ivs, WisOpts::default());
+        let reference = solve(&ivs, WisOpts::reference());
         assert!(
             score(&ivs, &reference) < best,
             "the reference does not: got {}, optimum {best}",
@@ -241,7 +260,7 @@ mod tests {
                 })
                 .collect();
             ivs.sort_by_key(|x| x.stop);
-            for opts in [WisOpts::default(), WisOpts { fix_p2: true }] {
+            for opts in [WisOpts::reference(), WisOpts { fix_p2: true }] {
                 let picked = solve(&ivs, opts);
                 let mut chosen: Vec<Interval> = picked.iter().map(|&j| ivs[j]).collect();
                 chosen.sort_by_key(|x| x.stop);
@@ -279,7 +298,7 @@ mod tests {
             ivs.sort_by_key(|x| x.stop);
             let best = brute_force(&ivs);
             let f = score(&ivs, &solve(&ivs, WisOpts { fix_p2: true }));
-            let r = score(&ivs, &solve(&ivs, WisOpts::default()));
+            let r = score(&ivs, &solve(&ivs, WisOpts::reference()));
             if (f - best).abs() < 1e-9 {
                 fixed_optimal += 1;
             }
@@ -315,12 +334,12 @@ mod tests {
     fn a_span_nothing_else_supports_is_worth_nothing() {
         // support == 1 means only the read itself, so `w - 1` is zero.
         assert_eq!(weight(&iv(0, 100, 1)), 0.0);
-        assert!(solve(&[iv(0, 100, 1)], WisOpts::default()).is_empty());
+        assert!(solve(&[iv(0, 100, 1)], WisOpts::reference()).is_empty());
     }
 
     #[test]
     fn no_intervals_is_empty_rather_than_a_panic() {
-        assert!(solve(&[], WisOpts::default()).is_empty());
+        assert!(solve(&[], WisOpts::reference()).is_empty());
         assert!(intervals_to_correct(&[], &[]).is_empty());
     }
 }

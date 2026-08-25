@@ -141,7 +141,9 @@ fn check(c: &Case) -> Vec<String> {
         c.x_high,
         c.delta_len,
         // The reference is off by one in `fill_p2`; the goldens contain that.
-        WisOpts::default(),
+        // The oracle replays the reference, so it asks for reference behaviour
+        // explicitly. The port's own default has the bugs fixed.
+        WisOpts::reference(),
     );
 
     // -- graph_id assignment ----------------------------------------------

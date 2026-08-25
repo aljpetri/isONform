@@ -11,6 +11,13 @@ catches that.
     bench/compare_end_to_end.py --fastq-folder bench/corpus/sirv_small \
         --workdir /tmp/e2e [--parallel]
 
+The port **fixes known reference bugs by default**, so an equivalence comparison
+has to ask it not to. Every port invocation here sets `ISONFORM_BUG_COMPAT=all`,
+which puts every reproduced-bug back and is what makes this script an equivalence
+test rather than a diff of two deliberately different programs. Pass
+`--no-bug-compat` to compare the port's *corrected* output against the reference
+instead --- useful for seeing what the fixes changed, useless as a gate.
+
 Three of `main`'s four outputs are Python pickles (`{id}_batch`, `spoa{id}`,
 `mapping{id}`); the port writes the same content as tab-separated text, because
 a Rust program has no business emitting pickles and nothing downstream of a
@@ -108,6 +115,21 @@ def first_diff(a, b):
     return ""
 
 
+def port_env(args):
+    """The port's environment: reference-bug-compatible unless told otherwise.
+
+    The port fixes known bugs by default (PORTING.md's bug-fix policy), so
+    without this the comparison would diff two programs that are *meant* to
+    differ and report every fix as a failure.
+    """
+    env = dict(os.environ)
+    if args.no_bug_compat:
+        env.pop("ISONFORM_BUG_COMPAT", None)
+    else:
+        env["ISONFORM_BUG_COMPAT"] = "all"
+    return env
+
+
 def compare_parallel(args, root):
     """Run `isONform_parallel` both ways over one folder and diff the output.
 
@@ -136,6 +158,7 @@ def compare_parallel(args, root):
     )
     r2 = subprocess.run(
         [port_exe, *common, "--outfolder", port_dir], capture_output=True, cwd=root,
+        env=port_env(args),
     )
     if r1.returncode or r2.returncode:
         print(f"run failed: reference exit {r1.returncode}, port exit {r2.returncode}")
@@ -203,6 +226,11 @@ def main():
     ap.add_argument("--w", type=int, default=31)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument(
+        "--no-bug-compat", action="store_true",
+        help="do NOT set ISONFORM_BUG_COMPAT=all on the port. Shows what the "
+             "port's bug fixes changed; not an equivalence gate.",
+    )
+    ap.add_argument(
         "--max-disagreeing", type=int, default=0,
         help="exit 0 while at most this many clusters disagree. Use ONLY to pin a "
              "divergence that is already measured and written down --- today that "
@@ -252,7 +280,7 @@ def main():
         )
         r2 = subprocess.run(
             [os.path.join(root, args.port), *common, "--outfolder", port_dir],
-            capture_output=True, cwd=root,
+            capture_output=True, cwd=root, env=port_env(args),
         )
         if r1.returncode or r2.returncode:
             failed += 1

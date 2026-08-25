@@ -95,6 +95,19 @@ fn run(args: &MainArgs) -> std::io::Result<()> {
         .clone()
         .unwrap_or_else(|| std::path::PathBuf::from("."));
 
+    // Known bugs are fixed by default. `ISONFORM_BUG_COMPAT` puts named ones
+    // back, for the oracles and for bisecting. See `driver::bug_compat_from_env`.
+    let compat = isonform::driver::bug_compat_from_env().map_err(std::io::Error::other)?;
+    let (wis, build) = (compat.wis, compat.build);
+    let reproduced = compat.describe();
+    if !reproduced.is_empty() {
+        // stderr, not stdout: stdout is the reference's compared contract.
+        eprintln!(
+            "isONform: reproducing reference bugs: {}",
+            reproduced.join(",")
+        );
+    }
+
     let text = std::fs::read_to_string(fastq)?;
     let records = isonform::fastq::read_fastq(&text);
 
@@ -117,8 +130,8 @@ fn run(args: &MainArgs) -> std::io::Result<()> {
         delta: 0.15,
         delta_iso_len_3: args.delta_iso_len_3,
         delta_iso_len_5: args.delta_iso_len_5,
-        wis: Default::default(),
-        build: Default::default(),
+        wis,
+        build,
     };
 
     let batches = isonform::driver::run_cluster(&records, &params);

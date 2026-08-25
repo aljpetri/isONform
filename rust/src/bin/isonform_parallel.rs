@@ -89,6 +89,18 @@ fn run(args: &ParallelArgs) -> std::io::Result<()> {
     // no flag reaches it. PORTING.md finding 35.
     let write_low_abundance = false;
 
+    // Known bugs are fixed by default; `ISONFORM_BUG_COMPAT` puts named ones
+    // back. Read here as well as in `main` because cross-batch merging (finding
+    // 31) lives on this side of the fork.
+    let compat = isonform::driver::bug_compat_from_env().map_err(std::io::Error::other)?;
+    let reproduced = compat.describe();
+    if !reproduced.is_empty() {
+        eprintln!(
+            "isONform_parallel: reproducing reference bugs: {}",
+            reproduced.join(",")
+        );
+    }
+
     let mut split_tmp: Option<PathBuf> = None;
     let split_directory = if args.split_wrt_batches {
         let tmp_work_dir = match &args.tmpdir {
@@ -137,11 +149,23 @@ fn run(args: &ParallelArgs) -> std::io::Result<()> {
 
     println!("Merging...");
     let file_handling = Instant::now();
+    // `delta` and `max_seqs_to_spoa` reach cross-batch merging and nothing else,
+    // which is why finding 37 lists them as inert --- they were inert only
+    // because the merge never ran. Now they matter.
+    let merge_opts = isonform::isoforms::MergeOpts {
+        delta: args.delta,
+        delta_len: args.delta_len,
+        delta_iso_len_3: args.delta_iso_len_3,
+        delta_iso_len_5: args.delta_iso_len_5,
+        max_seqs_to_spoa: args.max_seqs_to_spoa,
+    };
     parallel::join_back_via_batch_merging(
         &outfolder,
         args.iso_abundance,
         args.write_fastq,
         write_low_abundance,
+        merge_opts,
+        compat.batch_merge_no_op,
     )?;
     parallel::generate_full_output(&outfolder, args.write_fastq, write_low_abundance)?;
     parallel::remove_folders(&outfolder)?;

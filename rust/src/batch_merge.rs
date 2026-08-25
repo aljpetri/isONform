@@ -34,6 +34,8 @@
 //! What the stage does do is [`select_output`] — decide which isoforms are
 //! written where — which is live, and is what produces the transcriptome.
 
+use crate::isoforms::{align_to_merge, IsoformEngine, MergeOpts};
+
 /// One isoform carried through batch merging: `Read(sequence, reads, merged)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Isoform {
@@ -43,14 +45,107 @@ pub struct Isoform {
     pub merged: bool,
 }
 
-/// `actual_merging_process`, reproduced: it does nothing.
+/// `actual_merging_process`: fold duplicate isoforms across batches together.
 ///
-/// Takes `&mut` because the reference's signature mutates `all_infos_dict`, and a
-/// caller reading this signature should see that the *intent* was to mutate. It
-/// does not, and the test below is what says so.
-pub fn actual_merging_process(_batches: &mut [(u32, Vec<(u32, Isoform)>)]) {
-    // Deliberately empty. See the module docs: the reference's body is
-    // unreachable, and the code behind it raises `KeyError` if reached.
+/// # The reference's version has never executed, and this is the repair
+///
+/// `PORTING.md` finding 31. Two stacked defects:
+///
+/// 1. the batch list is sorted **descending** and then sliced from `b_i + 1`, so
+///    `batchid2 < batchid` always and the guard `if not batchid2 <= batchid` is
+///    never true. The body is unreachable;
+/// 2. behind it, `generate_consensus_path` looks up read *accessions* in a dict
+///    keyed by *batch id*, and its fallback branch is worse than a `KeyError` --
+///    `if not (id in all_sequences): sequence = id` writes the accession string
+///    itself into the fasta as though it were DNA.
+///
+/// The first is fixed by sorting **ascending**, which makes every later batch a
+/// higher id and the intent ("compare each batch against every later batch")
+/// actually happen.
+///
+/// The second is not repaired but removed. Merging compares the two stored
+/// **consensus sequences** directly and needs no read data at all, so
+/// `generate_consensus_path` has no role. When two isoforms merge, the longer
+/// one's consensus is kept and the shorter one's reads are absorbed into it --
+/// which is exactly what the reference already does on its well-supported branch
+/// (`len(infos_long.reads) > 50` keeps `infos_long.sequence` untouched). Making
+/// both branches behave that way is the reference's own high-confidence
+/// behaviour applied uniformly, not a new invention.
+///
+/// # What is preserved from the reference
+///
+/// The traversal order, because it decides which of several mergeable isoforms
+/// wins: batches ascending by id, and within a batch isoforms ascending by
+/// consensus length. Long/short is by consensus length with `>=` favouring the
+/// *later* batch's isoform on a tie, as the reference's branch does. A merged
+/// isoform is skipped on both sides.
+///
+/// Pass `no_op = true` to reproduce the reference exactly --- see
+/// [`crate::driver::BugCompat`].
+pub fn actual_merging_process<E: IsoformEngine>(
+    engine: &mut E,
+    batches: &mut [(u32, Vec<(u32, Isoform)>)],
+    opts: MergeOpts,
+    no_op: bool,
+) {
+    if no_op {
+        // Finding 31 reproduced: the reference's body is unreachable.
+        return;
+    }
+    // `sorted(all_infos_dict.items(), key=lambda x: x[0])` --- ascending, which
+    // is the one-character fix that makes the guard satisfiable.
+    batches.sort_by_key(|(b, _)| *b);
+
+    // Work on indices: two batches are mutated per merge, so the borrow checker
+    // wants the pair split rather than held.
+    for i in 0..batches.len().saturating_sub(1) {
+        for j in (i + 1)..batches.len() {
+            // `sorted(id_dict.items(), key=lambda x: len(x[1].sequence))` ---
+            // ascending by consensus length, recomputed per pair as the
+            // reference does, so merges made earlier in this pass are seen.
+            let order_i = length_order(&batches[i].1);
+            let order_j = length_order(&batches[j].1);
+
+            for &a in &order_i {
+                if batches[i].1[a].1.merged {
+                    continue;
+                }
+                for &b in &order_j {
+                    if batches[i].1[a].1.merged {
+                        break;
+                    }
+                    if batches[j].1[b].1.merged {
+                        continue;
+                    }
+                    // `if len(infos2.sequence) >= len(infos.sequence)` --- the
+                    // later batch's isoform is the long one on a tie.
+                    let (li, la, si, sa) =
+                        if batches[j].1[b].1.sequence.len() >= batches[i].1[a].1.sequence.len() {
+                            (j, b, i, a)
+                        } else {
+                            (i, a, j, b)
+                        };
+                    let long_seq = batches[li].1[la].1.sequence.clone();
+                    let short_seq = batches[si].1[sa].1.sequence.clone();
+                    if !align_to_merge(engine, &long_seq, &short_seq, opts) {
+                        continue;
+                    }
+                    // The longer consensus survives unchanged; the shorter
+                    // isoform's reads move into it and it is marked merged.
+                    let moved = batches[si].1[sa].1.reads.clone();
+                    batches[li].1[la].1.reads.extend(moved);
+                    batches[si].1[sa].1.merged = true;
+                }
+            }
+        }
+    }
+}
+
+/// Indices of `isoforms` ordered by consensus length ascending, stably.
+fn length_order(isoforms: &[(u32, Isoform)]) -> Vec<usize> {
+    let mut idx: Vec<usize> = (0..isoforms.len()).collect();
+    idx.sort_by_key(|&i| isoforms[i].1.sequence.len());
+    idx
 }
 
 /// Where one isoform is written.
@@ -172,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn the_merging_step_merges_nothing() {
+    fn bug_compat_reproduces_the_reference_merging_nothing() {
         // The reference's guard is unreachable --- measured, not inferred: on data
         // engineered so every pair is mergeable, its body was entered 0 times and
         // 0 of 5 consensuses were marked merged. This pins the same outcome.
@@ -189,12 +284,136 @@ mod tests {
             (2u32, vec![(1u32, iso(&seq, &["r7"]))]),
         ];
         let before = batches.clone();
-        actual_merging_process(&mut batches);
+        let mut engine = crate::isoforms::SpoaParasailMerge;
+        actual_merging_process(&mut engine, &mut batches, MergeOpts::default(), true);
         assert_eq!(batches, before, "nothing is merged, and nothing else moves");
         assert!(
             batches.iter().flat_map(|(_, v)| v).all(|(_, i)| !i.merged),
             "identical sequences across batches stay unmerged"
         );
+    }
+
+    fn opts() -> MergeOpts {
+        MergeOpts {
+            delta: 0.15,
+            delta_len: 5,
+            delta_iso_len_3: 30,
+            delta_iso_len_5: 50,
+            max_seqs_to_spoa: 200,
+        }
+    }
+
+    #[test]
+    fn identical_consensuses_in_different_batches_are_folded_together() {
+        // The repair. Reference behaviour is the test above: nothing merges.
+        let seq = "ACGT".repeat(80);
+        let mut batches = vec![
+            (0u32, vec![(1u32, iso(&seq, &["r1", "r2"]))]),
+            (1u32, vec![(1u32, iso(&seq, &["r3"]))]),
+            (2u32, vec![(1u32, iso(&seq, &["r4"]))]),
+        ];
+        let mut engine = crate::isoforms::SpoaParasailMerge;
+        actual_merging_process(&mut engine, &mut batches, opts(), false);
+
+        let survivors: Vec<(u32, u32, usize)> = batches
+            .iter()
+            .flat_map(|(b, v)| {
+                v.iter()
+                    .filter(|(_, i)| !i.merged)
+                    .map(move |(id, i)| (*b, *id, i.reads.len()))
+            })
+            .collect();
+        assert_eq!(
+            survivors.len(),
+            1,
+            "three identical consensuses collapse to one, got {survivors:?}"
+        );
+        assert_eq!(survivors[0].2, 4, "and it carries every read: 2 + 1 + 1");
+    }
+
+    #[test]
+    fn unrelated_consensuses_in_different_batches_are_left_alone() {
+        // The check that stops the repair from being a collapse-everything bug.
+        let a = "ACGT".repeat(80);
+        let b: String = "TTGCAAGGCTTAACCGGATTCAGGTACGATCGATCGGCTA".repeat(8);
+        let mut batches = vec![
+            (0u32, vec![(1u32, iso(&a, &["r1"]))]),
+            (1u32, vec![(1u32, iso(&b, &["r2"]))]),
+        ];
+        let mut engine = crate::isoforms::SpoaParasailMerge;
+        actual_merging_process(&mut engine, &mut batches, opts(), false);
+        assert!(
+            batches.iter().flat_map(|(_, v)| v).all(|(_, i)| !i.merged),
+            "nothing mergeable, nothing merged"
+        );
+    }
+
+    #[test]
+    fn merging_never_touches_isoforms_inside_one_batch() {
+        // Cross-batch only: intra-batch merging is `merge_consensuses`' job and
+        // happens earlier, per cluster. Two identical consensuses in the *same*
+        // batch must survive this pass untouched.
+        let seq = "ACGT".repeat(80);
+        let mut batches = vec![(
+            0u32,
+            vec![(1u32, iso(&seq, &["r1"])), (2u32, iso(&seq, &["r2"]))],
+        )];
+        let mut engine = crate::isoforms::SpoaParasailMerge;
+        actual_merging_process(&mut engine, &mut batches, opts(), false);
+        assert!(batches[0].1.iter().all(|(_, i)| !i.merged));
+    }
+
+    #[test]
+    fn the_longer_consensus_survives_and_keeps_its_own_sequence() {
+        // No read data is consulted and no new consensus is computed: the longer
+        // sequence is kept verbatim, which is what the reference's own
+        // `len(reads) > 50` branch does.
+        let long = "ACGT".repeat(80);
+        let short = long[..300].to_string();
+        let mut batches = vec![
+            (0u32, vec![(7u32, iso(&short, &["r1"]))]),
+            (1u32, vec![(9u32, iso(&long, &["r2"]))]),
+        ];
+        let mut engine = crate::isoforms::SpoaParasailMerge;
+        actual_merging_process(&mut engine, &mut batches, opts(), false);
+        let live: Vec<_> = batches
+            .iter()
+            .flat_map(|(b, v)| {
+                v.iter()
+                    .filter(|(_, i)| !i.merged)
+                    .map(move |(id, i)| (*b, *id, i))
+            })
+            .collect();
+        assert_eq!(live.len(), 1);
+        let (batch, id, iso) = &live[0];
+        assert_eq!((*batch, *id), (1, 9), "the longer isoform is the survivor");
+        assert_eq!(
+            iso.sequence,
+            long.as_bytes(),
+            "its consensus is unchanged --- not recomputed"
+        );
+        assert_eq!(iso.reads.len(), 2, "and it absorbed the shorter's reads");
+    }
+
+    #[test]
+    fn a_merged_isoform_is_not_merged_again() {
+        // Once absorbed, an isoform must not also be absorbed by a third batch:
+        // its reads would be double-counted in the support file.
+        let seq = "ACGT".repeat(80);
+        let mut batches = vec![
+            (0u32, vec![(1u32, iso(&seq, &["r1"]))]),
+            (1u32, vec![(1u32, iso(&seq, &["r2"]))]),
+            (2u32, vec![(1u32, iso(&seq, &["r3"]))]),
+        ];
+        let mut engine = crate::isoforms::SpoaParasailMerge;
+        actual_merging_process(&mut engine, &mut batches, opts(), false);
+        let total: usize = batches
+            .iter()
+            .flat_map(|(_, v)| v)
+            .filter(|(_, i)| !i.merged)
+            .map(|(_, i)| i.reads.len())
+            .sum();
+        assert_eq!(total, 3, "each read counted exactly once, got {total}");
     }
 
     #[test]

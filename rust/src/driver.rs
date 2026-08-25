@@ -247,6 +247,105 @@ pub fn run_batch(
 /// The whole of `main`'s per-cluster work: read the file, trim, batch, run.
 ///
 /// `reads` are already parsed, so the caller owns file IO and this stays testable.
+/// Which reference bugs to *reproduce*, selected by `ISONFORM_BUG_COMPAT`.
+///
+/// **The port fixes known bugs by default.** That is a deliberate policy: a
+/// bug-free base is what methodological improvement can be built on, and some of
+/// these fixes make the scores slightly *worse* (`PORTING.md` finding 26).
+/// Correctness first, accuracy second.
+///
+/// `ISONFORM_BUG_COMPAT` takes a comma-separated list of bug names, or `all`, and
+/// puts the named bugs *back*. It exists for two reasons and no others:
+///
+/// * the differential oracles replay recorded reference behaviour, so they need
+///   the reference's bugs;
+/// * bisecting an accuracy change to one bug.
+///
+/// | name | reproduces | `PORTING.md` |
+/// | --- | --- | --- |
+/// | `wis_p2` | `fill_p2` off-by-one, a measurably suboptimal WIS | finding 26 |
+/// | `stale_seq` | a node attribute computed from the wrong read's sequence | finding 9 |
+/// | `cycle_continuation` | the cycle-avoidance node severing the read's path | finding 11 |
+/// | `batch_merge` | cross-batch merging doing nothing at all | finding 31 |
+///
+/// An unrecognised name is an error rather than a silent no-op — a typo would
+/// quietly measure something other than what was asked for.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BugCompat {
+    pub wis: WisOpts,
+    pub build: BuildOpts,
+    /// Reproduce finding 31: `actual_merging_process` does nothing.
+    pub batch_merge_no_op: bool,
+}
+
+impl Default for BugCompat {
+    /// Everything fixed.
+    fn default() -> Self {
+        Self {
+            wis: WisOpts::default(),
+            build: BuildOpts::default(),
+            batch_merge_no_op: false,
+        }
+    }
+}
+
+impl BugCompat {
+    /// Reproduce every known reference bug. What the oracles replay against.
+    pub fn reference() -> Self {
+        Self {
+            wis: WisOpts::reference(),
+            build: BuildOpts::reference(),
+            batch_merge_no_op: true,
+        }
+    }
+
+    /// The bugs being reproduced, for logging. Empty means fully fixed.
+    pub fn describe(&self) -> Vec<&'static str> {
+        let mut v = Vec::new();
+        if !self.wis.fix_p2 {
+            v.push("wis_p2");
+        }
+        if !self.build.fix_stale_seq {
+            v.push("stale_seq");
+        }
+        if !self.build.fix_cycle_continuation {
+            v.push("cycle_continuation");
+        }
+        if self.batch_merge_no_op {
+            v.push("batch_merge");
+        }
+        v
+    }
+}
+
+pub fn bug_compat_from_env() -> Result<BugCompat, String> {
+    match std::env::var_os("ISONFORM_BUG_COMPAT") {
+        None => Ok(BugCompat::default()),
+        Some(raw) => parse_bug_compat(&raw.to_string_lossy()),
+    }
+}
+
+/// The parsing half of [`bug_compat_from_env`], separated so it can be tested.
+pub fn parse_bug_compat(raw: &str) -> Result<BugCompat, String> {
+    let mut c = BugCompat::default();
+    for name in raw.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        match name {
+            "all" | "1" => c = BugCompat::reference(),
+            "wis_p2" => c.wis.fix_p2 = false,
+            "stale_seq" => c.build.fix_stale_seq = false,
+            "cycle_continuation" => c.build.fix_cycle_continuation = false,
+            "batch_merge" => c.batch_merge_no_op = true,
+            other => {
+                return Err(format!(
+                    "unknown bug {other:?} in ISONFORM_BUG_COMPAT; known: all, \
+                     wis_p2, stale_seq, cycle_continuation, batch_merge"
+                ))
+            }
+        }
+    }
+    Ok(c)
+}
+
 pub fn run_cluster(records: &[crate::fastq::Record], params: &RunParams) -> Vec<BatchOutput> {
     // `{i + 1: (acc, remove_read_polyA_ends(seq, 12, 1), qual)}` --- ids are
     // 1-based over the whole file and survive batching.
@@ -294,6 +393,49 @@ mod tests {
             wis: WisOpts::default(),
             build: BuildOpts::default(),
         }
+    }
+
+    #[test]
+    fn bugs_are_fixed_unless_compat_asks_for_them() {
+        let c = parse_bug_compat("").unwrap();
+        assert_eq!(
+            c,
+            BugCompat::default(),
+            "the default is correct behaviour, not reference behaviour"
+        );
+        assert!(c.wis.fix_p2 && c.build.fix_stale_seq && c.build.fix_cycle_continuation);
+        assert!(!c.batch_merge_no_op, "cross-batch merging runs");
+        assert!(c.describe().is_empty(), "nothing reproduced");
+    }
+
+    #[test]
+    fn bug_compat_puts_named_bugs_back() {
+        let c = parse_bug_compat("wis_p2").unwrap();
+        assert!(!c.wis.fix_p2, "this bug is back");
+        assert!(
+            c.build.fix_stale_seq && !c.batch_merge_no_op,
+            "the others are not"
+        );
+        let c = parse_bug_compat("batch_merge").unwrap();
+        assert!(c.batch_merge_no_op && c.wis.fix_p2);
+        assert_eq!(c.describe(), vec!["batch_merge"]);
+        let c = parse_bug_compat("all").unwrap();
+        assert_eq!(c, BugCompat::reference());
+        assert_eq!(
+            c.describe(),
+            vec!["wis_p2", "stale_seq", "cycle_continuation", "batch_merge"]
+        );
+    }
+
+    #[test]
+    fn an_unknown_bug_name_is_an_error_not_a_silent_no_op() {
+        // A typo would quietly measure something other than what was asked for.
+        let e = parse_bug_compat("wis_p3").unwrap_err();
+        assert!(e.contains("wis_p3") && e.contains("known:"), "{e}");
+        assert!(
+            parse_bug_compat("wis_p2,typo").is_err(),
+            "one bad name fails the whole list"
+        );
     }
 
     #[test]

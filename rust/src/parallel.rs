@@ -432,15 +432,19 @@ pub fn write_final_output(
     Ok(())
 }
 
-/// `join_back_via_batch_merging`: read every cluster back and write its output.
+/// `join_back_via_batch_merging`: read every cluster back, merge across its
+/// batches, and write its output.
 ///
-/// The merging step it is named after does nothing (finding 31); what is live is
-/// reading the intermediates and deciding what to write.
+/// The merging step is repaired here rather than reproduced --- see
+/// [`crate::batch_merge::actual_merging_process`] and `PORTING.md` finding 31.
+/// `batch_merge_no_op` puts the reference's do-nothing behaviour back.
 pub fn join_back_via_batch_merging(
     outdir: &Path,
     iso_abundance: usize,
     write_fastq: bool,
     write_low_abundance: bool,
+    opts: crate::isoforms::MergeOpts,
+    batch_merge_no_op: bool,
 ) -> std::io::Result<()> {
     println!("Batch Merging");
     for cl_dir in subdirectories(outdir)? {
@@ -450,7 +454,13 @@ pub fn join_back_via_batch_merging(
             .to_string_lossy()
             .to_string();
         let mut cluster = read_cluster(&cl_dir)?;
-        crate::batch_merge::actual_merging_process(&mut cluster.batches);
+        let mut engine = crate::isoforms::SpoaParasailMerge;
+        crate::batch_merge::actual_merging_process(
+            &mut engine,
+            &mut cluster.batches,
+            opts,
+            batch_merge_no_op,
+        );
         // The reference calls `write_final_output` inside its per-batch loop, so
         // a cluster with no batch files at all is never written. Same here.
         if cluster.batches.is_empty() {
