@@ -3062,14 +3062,32 @@ verdict flips from finding 41, not the final pass. Note also that the aligner on
 becomes worth having *after* POA is fixed: alignment is 25% of the FC batch
 against 17% of the reference one.
 
-#### It is a deviation, and here is exactly what differs
+#### On by default, and it is a deviation
 
-The reference's per-merge rebuild concatenates **id1's reads then id2's**; the
-final pass POAs the group's member list in its own order (id2's originals, then
-id1's appended). spoa is order-sensitive, so the emitted consensus differs even on
-an identical read set. Merge *decisions* also differ, because they now compare
-un-rebuilt consensuses. Both defaults are therefore left at the reference's
-behaviour pending a decision to flip them.
+Both defaults are flipped on: `MergeOpts::merge_rebuild_max` is **0** and
+`MergeOpts::final_consensus_pass` is **true**. Verified end to end --- a run with
+no environment set reproduces the measured configuration exactly, metric for
+metric, on all three corpora. `ISONFORM_MERGE_REBUILD_MAX=50
+ISONFORM_FINAL_CONSENSUS=0` restores the reference's schedule.
+
+Exactly what differs: the reference's per-merge rebuild concatenates **id1's
+reads then id2's**, while the final pass POAs the group's member list in its own
+order (id2's originals, then id1's appended). spoa is order-sensitive, so the
+emitted consensus differs even on an identical read set. Merge *decisions* also
+differ, because they now compare un-rebuilt consensuses.
+
+`ISONFORM_BUG_COMPAT=all` deliberately does **not** cover this --- it is a method
+deviation, not a bug fix. Anything comparing the port against Python must pin the
+reference's schedule itself, and three places now do: `tests/isoforms_oracle.rs`,
+`bench/compare_end_to_end.py`'s `port_env`, and the `isoforms.rs` unit tests.
+
+The scheduling lives in [`MergeOpts`] rather than in environment globals so that
+tests and oracles are not at the mercy of the environment. One trap worth
+recording: `#[derive(Default)]` would have produced `merge_rebuild_max: 0` **and**
+`final_consensus_pass: false` --- the rebuild off with nothing replacing it, which
+is precisely finding 43's accuracy-losing configuration --- and the isoform oracle
+builds its options from `Default`, so it would have silently run that one. The
+impl is written out by hand for this reason.
 
 ## Method
 

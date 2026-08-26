@@ -37,6 +37,9 @@ use rustc_hash::FxHashMap;
 #[derive(Default)]
 struct Case {
     path: PathBuf,
+    /// Always the *reference's* POA schedule --- see `reference_schedule`. This
+    /// oracle asks whether the port reproduces Python, and finding 44's default
+    /// deliberately does not.
     opts: MergeOpts,
     reads: FxHashMap<u32, Vec<u8>>,
     support: Vec<u32>,
@@ -70,6 +73,16 @@ fn parse_case(path: &Path) -> Case {
     let text = std::fs::read_to_string(path).expect("dump readable");
     let mut c = Case {
         path: path.to_path_buf(),
+        // The reference's POA schedule, not the port's default. This oracle asks
+        // whether the port reproduces Python's `merge_consensuses`, and finding
+        // 44 changes when the consensus is rebuilt on purpose --- so comparing
+        // under the new default would report a deliberate improvement as a
+        // failure.
+        opts: MergeOpts {
+            merge_rebuild_max: 50,
+            final_consensus_pass: false,
+            ..Default::default()
+        },
         ..Default::default()
     };
     for line in text.lines() {

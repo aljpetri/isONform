@@ -77,6 +77,8 @@ fn opts() -> MergeOpts {
         delta_iso_len_3: 30,
         delta_iso_len_5: 50,
         max_seqs_to_spoa: 200,
+        merge_rebuild_max: 50,
+        final_consensus_pass: false,
         cigar_diversity_counts_runs: false,
     }
 }

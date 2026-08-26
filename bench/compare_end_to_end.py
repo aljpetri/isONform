@@ -127,6 +127,14 @@ def port_env(args):
         env.pop("ISONFORM_BUG_COMPAT", None)
     else:
         env["ISONFORM_BUG_COMPAT"] = "all"
+    # Finding 44 is a deliberate *method* deviation, not a bug fix, so
+    # ISONFORM_BUG_COMPAT does not cover it: the port rebuilds each group's
+    # consensus once at the end instead of once per merge, which changes both the
+    # emitted sequence (spoa is order-sensitive) and which merges happen. Pin the
+    # reference's schedule here, or every run would diff two programs that are
+    # meant to differ.
+    env["ISONFORM_MERGE_REBUILD_MAX"] = "50"
+    env["ISONFORM_FINAL_CONSENSUS"] = "0"
     return env
 
 

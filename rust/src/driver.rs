@@ -322,12 +322,16 @@ pub fn run_batch(
     let t_group = t3.elapsed().as_secs_f64();
     let t4 = std::time::Instant::now();
     let mut engine = SpoaParasailMerge;
+    // Finding 44's POA schedule, from the environment. See `poa_schedule_from_env`.
+    let poa_sched = isoforms::poa_schedule_from_env();
     let opts = MergeOpts {
         delta: params.delta,
         delta_len: params.merge_delta_len,
         delta_iso_len_3: params.delta_iso_len_3,
         delta_iso_len_5: params.delta_iso_len_5,
         max_seqs_to_spoa: params.max_seqs_to_spoa,
+        merge_rebuild_max: poa_sched.0,
+        final_consensus_pass: poa_sched.1,
         cigar_diversity_counts_runs: params.cigar_diversity_counts_runs,
     };
     let consensuses = isoforms::merge_consensuses(&mut engine, &mut groups, &graph_reads, opts);
@@ -467,7 +471,7 @@ impl Default for BugCompat {
             build: BuildOpts::default(),
             batch_merge_no_op: false,
             batch_name_collision: false,
-            cigar_diversity_counts_runs: false,
+        cigar_diversity_counts_runs: false,
         }
     }
 }
@@ -480,7 +484,7 @@ impl BugCompat {
             build: BuildOpts::reference(),
             batch_merge_no_op: true,
             batch_name_collision: true,
-            cigar_diversity_counts_runs: true,
+        cigar_diversity_counts_runs: true,
         }
     }
 
@@ -607,7 +611,7 @@ mod tests {
             wis: WisOpts::default(),
             build: BuildOpts::default(),
             merge_delta_len: 5,
-            cigar_diversity_counts_runs: false,
+        cigar_diversity_counts_runs: false,
         }
     }
 

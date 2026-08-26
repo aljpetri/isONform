@@ -154,6 +154,7 @@ fn run(args: &ParallelArgs) -> std::io::Result<()> {
     // `delta` and `max_seqs_to_spoa` reach cross-batch merging and nothing else,
     // which is why finding 37 lists them as inert --- they were inert only
     // because the merge never ran. Now they matter.
+    let isonform_poa_sched = isonform::isoforms::poa_schedule_from_env();
     let merge_opts = isonform::isoforms::MergeOpts {
         delta: args.delta,
         // The merge-only threshold, isolated from `--delta_len`'s graph and
@@ -163,6 +164,8 @@ fn run(args: &ParallelArgs) -> std::io::Result<()> {
         delta_iso_len_3: args.delta_iso_len_3,
         delta_iso_len_5: args.delta_iso_len_5,
         max_seqs_to_spoa: args.max_seqs_to_spoa,
+        merge_rebuild_max: isonform_poa_sched.0,
+        final_consensus_pass: isonform_poa_sched.1,
         cigar_diversity_counts_runs: compat.cigar_diversity_counts_runs,
     };
     parallel::join_back_via_batch_merging(

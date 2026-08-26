@@ -37,69 +37,20 @@ pub trait IsoformEngine {
     fn align_merge(&mut self, s1: &[u8], s2: &[u8]) -> (Vec<CigarOp>, Vec<u8>, Vec<u8>);
 }
 
-/// Above how many supporting reads a merge skips rebuilding the consensus.
-///
-/// The reference hard-codes 50 (`IsoformGeneration.py`), testing the *target*
-/// group's read count rather than the size of the union it would POA. Every
-/// successful merge below the threshold calls `generate_new_full_consensus`,
-/// which rebuilds a full POA from both groups' raw reads --- about 259 of the 278
-/// POA calls on `sirv_sim_gene`'s critical-path batch, and POA is 77% of that
-/// batch. Exposed so the threshold can be swept against accuracy rather than
-/// assumed; `0` never rebuilds. See finding 42.
-pub fn rebuild_threshold() -> usize {
-    static T: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-    *T.get_or_init(|| {
-        std::env::var("ISONFORM_MERGE_REBUILD_MAX")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(50)
-    })
-}
-
-/// Rebuild each surviving group's consensus **once**, after all merging is done,
-/// instead of once per merge.
-///
-/// The per-merge rebuild serves two purposes that do not need the same treatment:
-/// it supplies the consensus that later merge *decisions* compare against, and it
-/// supplies the base accuracy of the emitted *sequence*. Finding 43 separated
-/// them: with the rebuild switched off entirely the isoform structure survived
-/// (droso FSM even rose, sirv_real held at lenient) while sequence accuracy fell
-/// (`sirv_sim_gene` identity 0.9968 -> 0.9927, and 5 sirv_real transcripts dropped
-/// below strict identity).
-///
-/// So pay for the accuracy without paying for the ~259 intermediate rebuilds:
-/// merge using the consensuses already in hand, then POA each surviving group once
-/// over the union of its reads. That is `generate_all_consensuses` again on the
-/// final membership --- roughly 80 + 19 calls where the reference makes 278.
-///
-/// Requires `ISONFORM_MERGE_REBUILD_MAX=0` to be worth anything; on its own it
-/// would rebuild twice.
-pub fn final_consensus_pass() -> bool {
-    static F: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *F.get_or_init(|| {
-        matches!(
-            std::env::var("ISONFORM_FINAL_CONSENSUS").ok().as_deref(),
-            Some("1") | Some("on")
-        )
-    })
-}
-
 /// Order the reads handed to spoa by **decreasing length**.
 ///
 /// POA is incremental: the first sequence becomes the graph's backbone and every
-/// later one is aligned onto it. Seeding with the longest read gives a
-/// full-length backbone, so truncated reads align as subsequences instead of
-/// repeatedly extending the graph --- and within a group the reads are meant to be
-/// the same isoform, so most of the length variation *is* truncation.
+/// later one is aligned onto it, so seeding with the longest read gives a
+/// full-length backbone. There is a second, separate effect: the cap keeps the
+/// **first** `max_seqs_to_spoa` reads, so sorting changes *which* reads a group
+/// larger than the cap uses.
 ///
-/// There is a second, separate effect: the cap keeps the **first**
-/// `max_seqs_to_spoa` reads, so sorting changes *which* reads a group larger than
-/// the cap actually uses --- the longest, rather than the first in whatever order
-/// grouping produced.
-///
-/// A deliberate divergence: spoa is order-sensitive, so this changes the emitted
-/// consensus even on an identical read set. The failure mode to watch for is a
-/// chimeric long read becoming the backbone.
+/// **Measured and rejected as a default** (finding 44): no runtime benefit (~5%
+/// slower), neutral on `sirv_sim_gene`, better on droso (FSM 476 -> 481), but
+/// clearly worse on **real** ONT data --- `sirv_real` strict F1 0.735 -> 0.700 and
+/// lenient 0.884 -> 0.865. The simulated/real split fits the failure mode: the
+/// longest real reads are the likeliest to be chimeric, and a chimeric backbone
+/// propagates into the consensus. Kept behind `ISONFORM_SPOA_SORT=1`, off.
 pub fn spoa_sort_by_length() -> bool {
     static F: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *F.get_or_init(|| {
@@ -127,6 +78,29 @@ fn ordered_for_spoa(
     }
     v.truncate(max_seqs_to_spoa);
     v
+}
+
+/// The two POA-scheduling defaults, overridable from the environment.
+///
+/// `ISONFORM_MERGE_REBUILD_MAX` (default 0) and `ISONFORM_FINAL_CONSENSUS`
+/// (default on, `0`/`off` to disable). Together at their defaults these are
+/// finding 44's scheme; `MERGE_REBUILD_MAX=50 FINAL_CONSENSUS=0` restores the
+/// reference's. Read once, and only by the binaries --- library callers pass
+/// [`MergeOpts`] explicitly so tests and oracles are not at the mercy of the
+/// environment.
+pub fn poa_schedule_from_env() -> (usize, bool) {
+    static S: std::sync::OnceLock<(usize, bool)> = std::sync::OnceLock::new();
+    *S.get_or_init(|| {
+        let max = std::env::var("ISONFORM_MERGE_REBUILD_MAX")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let fin = !matches!(
+            std::env::var("ISONFORM_FINAL_CONSENSUS").ok().as_deref(),
+            Some("0") | Some("off")
+        );
+        (max, fin)
+    })
 }
 
 /// Nanoseconds spent inside consensus building and inside pairwise alignment.
@@ -354,7 +328,7 @@ pub fn find_first_significant_match(
 }
 
 /// Tuning constants for the merge decision, as `main` passes them.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct MergeOpts {
     pub delta: f64,
     pub delta_len: usize,
@@ -372,6 +346,57 @@ pub struct MergeOpts {
     /// correctness. Fixed by default under the bug-fix policy, and easy to put
     /// back.
     pub cigar_diversity_counts_runs: bool,
+    /// Above how many supporting reads a merge skips rebuilding the consensus.
+    ///
+    /// The reference hard-codes 50, testing the *target* group's read count
+    /// rather than the size of the union it would POA. Since most groups sit far
+    /// below any threshold the check almost never fires, so every merge pays for
+    /// a full POA over both groups' raw reads --- about 259 of the 278 POA calls
+    /// on `sirv_sim_gene`'s critical-path batch, where POA is 77% of the wall
+    /// clock (finding 42).
+    ///
+    /// **Defaults to 0**, i.e. never rebuild mid-merge, which only makes sense
+    /// together with [`MergeOpts::final_consensus_pass`]. Set to 50 for the
+    /// reference's behaviour.
+    pub merge_rebuild_max: usize,
+    /// Rebuild each surviving group's consensus once, after all merging is done.
+    ///
+    /// The per-merge rebuild serves two unrelated purposes: it supplies the
+    /// consensus later merge *decisions* compare against, and it supplies the
+    /// base accuracy of the emitted *sequence*. Finding 43 separated them ---
+    /// switching it off kept the isoform structure but cost accuracy. Only the
+    /// second purpose needs the union of both read sets, and it needs it once.
+    ///
+    /// So merge with the consensuses already in hand, then POA each surviving
+    /// group once over its final membership: 93 POA calls where the reference
+    /// makes 278, and better accuracy on all three corpora (finding 44).
+    ///
+    /// **Defaults to true.** A deviation: the reference concatenates id1's reads
+    /// then id2's, while this POAs the member list in its own order, and spoa is
+    /// order-sensitive --- so the consensus differs even on an identical read set,
+    /// and merge decisions differ because they compare un-rebuilt consensuses.
+    pub final_consensus_pass: bool,
+}
+
+impl Default for MergeOpts {
+    /// Finding 44's POA schedule, matching what the binaries do without any
+    /// environment set. Deriving this would silently give
+    /// `merge_rebuild_max: 0` **and** `final_consensus_pass: false` --- rebuild
+    /// off with nothing replacing it, which is the one configuration measured to
+    /// lose accuracy (finding 43). Anything comparing against the reference must
+    /// set `50` / `false` explicitly.
+    fn default() -> Self {
+        Self {
+            delta: 0.0,
+            delta_len: 0,
+            delta_iso_len_3: 0,
+            delta_iso_len_5: 0,
+            max_seqs_to_spoa: 0,
+            merge_rebuild_max: 0,
+            final_consensus_pass: true,
+            cigar_diversity_counts_runs: false,
+        }
+    }
 }
 
 /// `parse_cigar_diversity_isoform_level_new`.
@@ -681,7 +706,7 @@ pub fn merge_consensuses<E: IsoformEngine>(
             let Some(pos1) = groups.iter().position(|(k, _)| *k == id1) else {
                 break;
             };
-            let merged = if groups[pos2].1.len() > rebuild_threshold() {
+            let merged = if groups[pos2].1.len() > opts.merge_rebuild_max {
                 // Over fifty supporting reads: keep the existing consensus
                 // rather than re-running spoa on the union.
                 cand.1.clone()
@@ -721,7 +746,7 @@ pub fn merge_consensuses<E: IsoformEngine>(
         }
     }
 
-    if final_consensus_pass() {
+    if opts.final_consensus_pass {
         // One POA per surviving group, over the union its members now hold. The
         // membership in `groups` is final at this point, so this is exactly
         // `generate_all_consensuses` on the merged groups --- and it is what makes
@@ -867,6 +892,8 @@ mod tests {
             delta_iso_len_3: 1000,
             delta_iso_len_5: 1000,
             max_seqs_to_spoa: 200,
+            merge_rebuild_max: 50,
+            final_consensus_pass: false,
             cigar_diversity_counts_runs: false,
         };
         let ops: Vec<CigarOp> = vec![(99, b'=')];
@@ -886,6 +913,8 @@ mod tests {
             delta_iso_len_3: 1000,
             delta_iso_len_5: 1000,
             max_seqs_to_spoa: 200,
+            merge_rebuild_max: 50,
+            final_consensus_pass: false,
             cigar_diversity_counts_runs: false,
         };
         // A 6-base interior mismatch: longer than delta_len, so structural.
@@ -910,6 +939,8 @@ mod tests {
             delta_iso_len_3: 1000,
             delta_iso_len_5: 1000,
             max_seqs_to_spoa: 200,
+            merge_rebuild_max: 50,
+            final_consensus_pass: false,
             cigar_diversity_counts_runs: true,
         };
         // delta 0 means max_bp_diff is delta_len (5), so the budget is 5.
@@ -942,6 +973,8 @@ mod tests {
             delta_iso_len_3: 1000,
             delta_iso_len_5: 1000,
             max_seqs_to_spoa: 200,
+            merge_rebuild_max: 50,
+            final_consensus_pass: false,
             cigar_diversity_counts_runs: false,
         };
         // Budget is delta_len = 5 bases.
@@ -953,6 +986,8 @@ mod tests {
         );
         // Under bug-compat the same shape costs 2 x delta_len = 10 and fails.
         let runs = MergeOpts {
+            merge_rebuild_max: 50,
+            final_consensus_pass: false,
             cigar_diversity_counts_runs: true,
             ..opts
         };
@@ -971,6 +1006,8 @@ mod tests {
             delta_iso_len_3: 1000,
             delta_iso_len_5: 1000,
             max_seqs_to_spoa: 200,
+            merge_rebuild_max: 50,
+            final_consensus_pass: false,
             cigar_diversity_counts_runs: false,
         };
         // similar_seq 150, four interior mismatches -> miss_match_length 4.
