@@ -110,6 +110,24 @@ pub fn semiglobal_ops(s1: &[u8], s2: &[u8], sc: Scoring, out: &mut Vec<CigarOp>)
     Some(score)
 }
 
+/// `NucMatrix` with parasail's catch-all row: any non-ACGT byte scores 0.
+///
+/// `NucMatrix`'s alphabet is `A T C G N`, and `set` writes both `(a,b)` and
+/// `(b,a)`, so zeroing the `N` row and column is enough. Bytes outside the
+/// alphabet cannot appear --- `convert_char` asserts `A..=Z`, and the caller
+/// refuses anything else.
+fn nuc_matrix_with_parasail_catchall(
+    match_score: i8,
+    mismatch: i8,
+) -> block_aligner::scores::NucMatrix {
+    use block_aligner::scores::{Matrix, NucMatrix};
+    let mut m = NucMatrix::new_simple(match_score, mismatch);
+    for b in [b'A', b'T', b'C', b'G', b'N'] {
+        m.set(b'N', b, 0);
+    }
+    m
+}
+
 thread_local! {
     /// Reusable allocations. **Not a micro-optimisation:** the exact path
     /// allocates and zeroes an `n * m` byte table per call --- ~1.9 MB at the
@@ -181,7 +199,16 @@ impl Scratch {
         ) else {
             return None;
         };
-        let matrix = NucMatrix::new_simple(m, x);
+        // parasail's `matrix_create("ACGT", m, x)` builds a 5x5 matrix whose
+        // fifth row and column --- every byte outside ACGT --- is **zero**, not
+        // the mismatch penalty (`PORTING.md` finding 24). `NucMatrix::new_simple`
+        // scores `N` as a plain mismatch, and that single difference was the
+        // whole of the earlier oracle failure: 20 000 cases scoring worse and
+        // 8 812 higher, uniformly across every length bucket, because ambiguity
+        // codes are scattered through the consensuses rather than concentrated by
+        // length. Diagnosed by `diagnose_against_exact_parasail`, where the `N`
+        // case was the only one of seven that disagreed.
+        let matrix = nuc_matrix_with_parasail_catchall(m, x);
         let gaps = Gaps { open, extend };
 
         if query.len() >= MAX_BLOCK {
@@ -311,27 +338,35 @@ pub mod oracle {
         let text = std::fs::read_to_string(&path).expect("cases readable");
         let (mut n, mut worse, mut better, mut refused) = (0u64, 0u64, 0u64, 0u64);
         let mut worst = 0i32;
-        // Bucket by the longer sequence. If divergence concentrates in long
-        // pairs it is a block-size / accumulator effect; if it is uniform the
-        // objective differs. Guessing between those cost me a wrong conclusion
-        // once already.
-        let mut buckets = [[0u64; 3]; 5]; // [len bucket][worse, equal, better]
+        // Bucket by **identity**, not length. The merge only ever cares about
+        // pairs similar enough to plausibly merge --- `align_to_merge` needs a
+        // >=100bp shared region within the diversity budget --- so losing the
+        // optimum on a dissimilar pair costs nothing. Identity comes from the
+        // recorded CIGAR: matched columns over alignment columns.
+        let mut buckets = [[0u64; 3]; 5]; // [identity bucket][worse, equal, better]
+        let mut worse_by_delta = [0u64; 4]; // |delta| 1-2, 3-10, 11-50, 51+
         let mut ops = Vec::new();
-        for line in text.lines() {
+        // Skip `#` comments and blanks, and **panic** on a malformed row rather
+        // than defaulting. The first version of this used `unwrap_or` fallbacks,
+        // so the header line parsed as data and every scoring parameter silently
+        // became a plausible-looking default --- the mismatch is -8 in these
+        // recordings, not the -2 the default assumed. The comparison then
+        // measured nothing, and reported the same 20 000 failures before and
+        // after a real fix. Same failure mode `ISONFORM_BUG_COMPAT` guards
+        // against by exiting on an unknown name.
+        for line in text
+            .lines()
+            .filter(|l| !l.starts_with('#') && !l.is_empty())
+        {
             let f: Vec<&str> = line.split('\t').collect();
-            if f.len() < 8 {
-                continue;
-            }
+            assert!(f.len() >= 8, "short row in PARASAIL_CASES: {line:.80}");
             let (s1, s2) = (f[0].as_bytes(), f[1].as_bytes());
-            let want: i32 = match f[3].parse() {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
+            let want: i32 = f[3].parse().expect("score column");
             let sc = Scoring {
-                match_score: f[4].parse().unwrap_or(2),
-                mismatch: f[5].parse().unwrap_or(-2),
-                open: f[6].parse().unwrap_or(12),
-                ext: f[7].parse().unwrap_or(1),
+                match_score: f[4].parse().expect("match column"),
+                mismatch: f[5].parse().expect("mismatch column"),
+                open: f[6].parse().expect("open column"),
+                ext: f[7].parse().expect("ext column"),
             };
             if s1.is_empty() || s2.is_empty() {
                 continue;
@@ -340,18 +375,82 @@ pub mod oracle {
             match semiglobal_ops(s1, s2, sc, &mut ops) {
                 None => refused += 1,
                 Some(got) => {
-                    let ln = s1.len().max(s2.len());
-                    let bi = match ln {
-                        0..=199 => 0,
-                        200..=499 => 1,
-                        500..=999 => 2,
-                        1000..=1999 => 3,
-                        _ => 4,
+                    // identity from the recorded cigar
+                    let (mut eq, mut total) = (0u32, 0u32);
+                    let mut num = 0u32;
+                    for c in f[2].bytes() {
+                        if c.is_ascii_digit() {
+                            num = num * 10 + (c - b'0') as u32;
+                        } else {
+                            total += num;
+                            if c == b'=' {
+                                eq += num;
+                            }
+                            num = 0;
+                        }
+                    }
+                    let idy = if total > 0 {
+                        eq as f64 / total as f64
+                    } else {
+                        0.0
+                    };
+                    let bi = if idy >= 0.95 {
+                        4
+                    } else if idy >= 0.90 {
+                        3
+                    } else if idy >= 0.80 {
+                        2
+                    } else if idy >= 0.60 {
+                        1
+                    } else {
+                        0
                     };
                     if got < want {
                         worse += 1;
                         worst = worst.min(got - want);
                         buckets[bi][0] += 1;
+                        let d = (want - got).unsigned_abs() as u64;
+                        worse_by_delta[if d <= 2 {
+                            0
+                        } else if d <= 10 {
+                            1
+                        } else if d <= 50 {
+                            2
+                        } else {
+                            3
+                        }] += 1;
+                        // Dump the first few real failures with their properties,
+                        // since eleven crafted cases all agree and clearly are not
+                        // reaching whatever distinguishes these.
+                        // Every failure at >=95% identity: these are the only
+                        // ones that can plausibly flip a merge verdict, since
+                        // `align_to_merge` needs a >=100bp shared region within
+                        // the diversity budget. Report the delta against that
+                        // budget rather than in isolation.
+                        if bi == 4 {
+                            eprintln!(
+                                "  HI-ID FAIL: len1={} len2={} idy={:.3} want={want} got={got} \
+                                 delta={} cigar={:.50}",
+                                s1.len(),
+                                s2.len(),
+                                idy,
+                                got - want,
+                                f[2]
+                            );
+                        }
+                        if worse <= 0 {
+                            eprintln!(
+                                "  FAIL#{worse}: len1={} len2={} want={want} got={got} \
+                                 scoring=({}/{}/{}/{}) cigar={:.60}",
+                                s1.len(),
+                                s2.len(),
+                                sc.match_score,
+                                sc.mismatch,
+                                sc.open,
+                                sc.ext,
+                                f[2]
+                            );
+                        }
                     } else if got > want {
                         better += 1;
                         buckets[bi][2] += 1;
@@ -365,7 +464,7 @@ pub mod oracle {
             "simd oracle: {n} cases | {worse} scored worse (worst delta {worst}) | \
              {better} scored higher | {refused} refused (exact path handles those)"
         );
-        for (bi, label) in ["<200", "200-499", "500-999", "1000-1999", "2000+"]
+        for (bi, label) in ["<60%", "60-80%", "80-90%", "90-95%", ">=95%"]
             .iter()
             .enumerate()
         {
@@ -373,10 +472,15 @@ pub mod oracle {
             let tot = w + e + b;
             if tot > 0 {
                 eprintln!(
-                    "  len {label:>10}: {tot:6} cases | {w:6} worse | {e:6} equal | {b:6} better"
+                    "  identity {label:>7}: {tot:6} cases | {w:6} worse ({:.1}%) | {e:6} equal | {b:6} better",
+                    100.0 * w as f64 / tot as f64
                 );
             }
         }
+        eprintln!(
+            "  |delta| among the worse: 1-2={} 3-10={} 11-50={} 51+={}",
+            worse_by_delta[0], worse_by_delta[1], worse_by_delta[2], worse_by_delta[3]
+        );
         assert_eq!(
             worse, 0,
             "scored worse than exact parasail on {worse} of {n} cases (worst delta \
@@ -474,6 +578,89 @@ mod tests {
         eprintln!("  long side padded    score {padded_ref}  (free if == {base})");
         eprintln!("  short side padded   score {padded_query}  (free if == {base})");
         assert_eq!(padded_ref, base, "the long side's overhangs should be free");
+    }
+
+    /// Where exactly does block-aligner disagree with exact parasail?
+    ///
+    /// The 54 884-case oracle says 20 000 score worse and 8 812 higher, uniformly
+    /// across length buckets --- so not saturation and not block sizing. These are
+    /// hand-built cases with a known answer, one property per case, to localise it.
+    #[test]
+    fn diagnose_against_exact_parasail() {
+        use crate::parasail::{self, TieBreak};
+        // The recorded cases use mismatch **-8** (`Scoring::BUBBLE`), not -2.
+        // With mismatch that steep relative to gap open 12 / ext 1, the optimal
+        // alignment prefers long indels over mismatches --- and long indels are
+        // exactly where an adaptive *band* fails. The first version of this
+        // diagnostic used MERGE (-2) and so never probed that regime.
+        let sc = Scoring::BUBBLE;
+        let base = b"ACGTTGCAAGGCTTAACCGGATTCAGGTACGATCGATCGGCTAACGTACGT".to_vec();
+
+        let mut cases: Vec<(&str, Vec<u8>, Vec<u8>)> = Vec::new();
+        cases.push(("identical", base.clone(), base.clone()));
+        // one substitution in the middle
+        let mut sub = base.clone();
+        sub[25] = if sub[25] == b'A' { b'C' } else { b'A' };
+        cases.push(("1 substitution", base.clone(), sub));
+        // a 1-base deletion in the middle
+        let mut del1 = base.clone();
+        del1.remove(25);
+        cases.push(("1-base gap", base.clone(), del1));
+        // a 5-base deletion in the middle
+        let mut del5 = base.clone();
+        for _ in 0..5 {
+            del5.remove(25);
+        }
+        cases.push(("5-base gap", base.clone(), del5));
+        // a leading overhang (free in semi-global)
+        let mut lead = b"TTTTTTTTTT".to_vec();
+        lead.extend_from_slice(&base);
+        cases.push(("leading overhang", lead, base.clone()));
+        // a trailing overhang (free in semi-global)
+        let mut trail = base.clone();
+        trail.extend_from_slice(b"TTTTTTTTTT");
+        cases.push(("trailing overhang", trail, base.clone()));
+        // a non-ACGT byte: parasail's catch-all row scores it 0 against anything
+        let mut ambig = base.clone();
+        ambig[25] = b'N';
+        cases.push(("one N", base.clone(), ambig));
+        // Long internal indels: cheap under mismatch -8, and the case a band misses.
+        for glen in [20usize, 60, 150] {
+            // base is 51bp; repeat it to get room for a 150-base excision.
+            let long_del: Vec<u8> = base.iter().cycle().take(600).copied().collect();
+            let mut with_gap = long_del.clone();
+            with_gap.drain(200..200 + glen);
+            cases.push((
+                match glen {
+                    20 => "20-base internal gap",
+                    60 => "60-base internal gap",
+                    _ => "150-base internal gap",
+                },
+                long_del,
+                with_gap,
+            ));
+        }
+        // Many scattered mismatches: prefers gaps when mismatch is -8.
+        let mut peppered = base.clone();
+        for i in (5..base.len()).step_by(7) {
+            peppered[i] = if peppered[i] == b'A' { b'C' } else { b'A' };
+        }
+        cases.push(("mismatch every 7bp", base.clone(), peppered));
+
+        let mut ops = Vec::new();
+        eprintln!("  {:<20} {:>8} {:>8}   {}", "case", "parasail", "block", "verdict");
+        for (name, a, b) in cases {
+            let want = parasail::semiglobal_with(&a, &b, sc, TieBreak::PARASAIL).score;
+            let got = semiglobal_ops(&a, &b, sc, &mut ops);
+            let g = got.map(|v| v.to_string()).unwrap_or_else(|| "refused".into());
+            let verdict = match got {
+                Some(v) if v == want => "same",
+                Some(v) if v < want => "BLOCK LOWER",
+                Some(_) => "BLOCK HIGHER",
+                None => "refused",
+            };
+            eprintln!("  {name:<20} {want:>8} {g:>8}   {verdict}");
+        }
     }
 
     #[test]

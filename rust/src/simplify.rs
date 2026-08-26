@@ -920,9 +920,32 @@ impl Consensus for SpoaParasail {
     fn align(&mut self, s1: &[u8], s2: &[u8]) -> Vec<(u32, u8)> {
         // `Scoring::BUBBLE` is the poppability scoring: match 2, mismatch -8,
         // open 12, ext 1. Not MERGE (-2), which belongs to isoform merging.
-        let a = crate::parasail::semiglobal(s1, s2, crate::parasail::Scoring::BUBBLE);
+        // A bubble's two paths are delimited by its shared start and end nodes,
+        // so they have common endpoints --- a *global* alignment problem. The
+        // reference nevertheless calls `parasail.sg_trace_scan_16`, making both
+        // end gaps free, which lets the aligner shed exactly the end
+        // disagreement that `mergeable_start`/`mergeable_end` exist to catch.
+        // `ISONFORM_BUBBLE_GLOBAL=1` charges the end gaps instead. Off by
+        // default: it changes which bubbles pop. See `parasail::global`.
+        let a = if bubble_global() {
+            crate::parasail::global(s1, s2, crate::parasail::Scoring::BUBBLE)
+        } else {
+            crate::wfa::enabled()
+                .then(|| crate::wfa::semiglobal(s1, s2, crate::parasail::Scoring::BUBBLE))
+                .flatten()
+                .unwrap_or_else(|| {
+                    crate::parasail::semiglobal(s1, s2, crate::parasail::Scoring::BUBBLE)
+                })
+        };
         a.ops.iter().map(|&(len, op)| (len as u32, op)).collect()
     }
+}
+
+/// `ISONFORM_BUBBLE_GLOBAL=1`: charge the end gaps when aligning a bubble's two
+/// paths. Read once. See [`crate::parasail::global`].
+pub fn bubble_global() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("ISONFORM_BUBBLE_GLOBAL").is_some())
 }
 
 /// One read's span across a bubble: `(r_id, start, end)`.

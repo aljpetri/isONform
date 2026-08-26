@@ -2772,6 +2772,124 @@ is to build the instrument before the claim, and to state the prediction before
 running the measurement so it cannot be reinterpreted afterwards.
 
 
+### The aligners, measured: parasail vs block-aligner vs WFA2
+
+Both hot alignment sites call `parasail.sg_trace_scan_16` --- `align_to_merge`
+(`IsoformGeneration.py:379`, mismatch −2) and `align_bubble_nodes`
+(`SimplifyGraph.py:657`, mismatch −8). On a normal 1 000-read batch the merge is
+**92% of the wall clock** (`merge=54.77s` of `total=59.62s`), so this is where
+runtime lives.
+
+Timed over the 54 884 recorded real calls, all three producing traceback, bucketed
+by the identity of the recorded parasail CIGAR:
+
+| bucket | cases | parasail | block-aligner | WFA2 | blk | wfa |
+|---|---|---|---|---|---|---|
+| <60% | 5 093 | 3.01s | 0.79s | 2.30s | 3.8x | 1.3x |
+| 60--80% | 13 995 | 9.19s | 3.02s | 2.28s | 3.0x | 4.0x |
+| 80--90% | 32 318 | 18.99s | 6.59s | 2.60s | 2.9x | 7.3x |
+| 90--95% | 3 208 | 1.54s | 0.55s | 0.13s | 2.8x | 12.0x |
+| >=95% | 270 | 0.03s | 0.01s | 0.00s | 3.3x | 12.9x |
+| **total** | | **32.75s** | **10.95s** | **7.31s** | **3.0x** | **4.5x** |
+
+Block-aligner is a uniform 3.0x. WFA2 is 4.5x overall, with the divergence
+dependence its complexity predicts (O(n·s) in the alignment penalty): 1.3x on the
+most divergent pairs, 12.9x on the most similar, and never slower than parasail.
+
+Two corrections to things asserted earlier in this file's exploratory sections.
+The merge's cost is **not** dominated by low-identity pairs --- the 80--90% bucket
+holds 59% of the calls and 58% of the time, while `<60%` is 9%. And the `>=95%`
+bucket that the block-aligner fidelity work concentrated on is 270 calls and
+**0.1% of runtime**. Block-aligner's speed was never measured during that work,
+which was the wrong order: the 3.0x was sitting there unrecorded while the effort
+went into scores that could not move the total.
+
+### Finding 40 --- WFA2's ends-free mode is not parasail's semi-global
+
+parasail `sg` **maximises a score** with a positive match reward; WFA2 **minimises
+a penalty** with `match = 0`. With all four ends free the empty alignment costs
+nothing, so it is always optimal --- on two *identical* 20bp sequences WFA2
+returns `DDDD…IIII`, aligning nothing. Bounding the free ends removes that, but
+WFA2 still pays nothing for terminal *matches* and so declines them: on two
+identical 200bp sequences with a 50-base budget it shaved 48 bases off the ends.
+
+`src/wfa.rs` reconciles this in three steps --- bound the free ends, greedily
+extend the aligned core outward over matching base pairs, then score the resulting
+columns with **parasail's own rules** rather than transforming WFA2's penalty back.
+That last step is what makes the arithmetic unfalsifiable-by-drift: WFA2 only
+chooses the columns, `Scoring` prices them.
+
+Two errors this shape caught, both mine:
+
+* Scoring *every* gap run outside the aligned core as free made the layer score
+  **above the exact DP on 51 of the recorded calls**. parasail's `sg` zeroes row 0
+  and column 0 only, so a path starts at `(i,0)` *or* `(0,j)`: one sequence gets a
+  free prefix, not both. A left dangle of `10I 5D` pays for the `5D`. The
+  "must never beat exact" assertion is what surfaced it.
+* A crafted test used a period-12 fixture, where a 48-base offset alignment is
+  still all-matches and zero-penalty. That tested the fixture, not the aligner.
+  Non-periodic fixtures now, with the periodic case kept deliberately as
+  `a_periodic_sequence_admits_a_co_optimal_offset` --- greedy extension cannot
+  undo a whole-alignment offset, because such a dangle is all `I` with no `D` to
+  pair against.
+
+### Finding 41 --- gate an aligner swap on merge verdicts, not on scores
+
+`align_to_merge` returns a **bool**, and that bool is what collapses two isoforms.
+Two co-optimal alignments can score identically and still decide differently,
+while two differently-scored alignments can agree. So the gate is
+`wfa::oracle::verdicts_match_parasail`, which drives the real `align_to_merge`
+through both aligners and compares the decisions. Over the 54 884 recorded calls:
+
+```text
+agree 53 684   disagree 1 200   (2.19% of calls, 5.09% of parasail's 23 586 merges)
+  of the disagreements WFA2 scored:  worse 902   equal 298   better 0
+  worst delta -2457, mean -60.68
+```
+
+75% of the disagreements are WFA2 finding a genuinely **worse** alignment, not a
+tie-break difference, and the mechanism follows from the objectives: a terminal
+stretch of ten columns holding one mismatch earns parasail `9x2 - 2 = +16`, so it
+aligns it, while WFA2 sees penalty 4 against 0 for leaving it free and declines.
+Greedy extension then halts at that mismatch. The fix is an exact DP over the
+`<=50`-base dangles, which is cheap and not yet written.
+
+WFA2 is wired at both hot sites behind `ISONFORM_WFA2=1`, with a parasail
+fallback whenever the layer declines a pair.
+
+#### What the flipped verdicts cost end to end
+
+| corpus | parasail | WFA2 | speedup |
+|---|---|---|---|
+| droso | 24.9s | 16.8s | **1.48x** |
+| sirv_sim_gene | 107.8s | 101.2s | 1.07x |
+| sirv_real | 220.1s | 108.7s | **2.03x** |
+
+| metric | parasail | WFA2 | python |
+|---|---|---|---|
+| droso FSM | 470 | 465 | 443 |
+| droso genes / canonical | 450 / 0.983 | 447 / 0.980 | 426 / 0.983 |
+| sirv_sim recall / lenient F1 | 89.7% / 0.946 | 89.7% / 0.946 | 91.2% / 0.954 |
+| sirv_sim redundancy | 1.38 | 1.36 | 2.19 |
+| sirv_real recall (lenient) | 82.4% | 80.9% | 82.4% |
+| sirv_real strict F1 | 0.734 | 0.730 | 0.773 |
+
+So 5.09% of merge verdicts flipping costs **5 FSM on droso, about one transcript
+on sirv_real, and nothing measurable on sirv_sim_gene**, for between 1.07x and
+2.03x wall clock. Both corpora remain well ahead of the reference.
+
+The end-to-end gain is far below the 4.5x on the alignment calls, and unevenly
+so. Only `sirv_real` and `droso` are alignment-bound; `sirv_sim_gene` moves 6%.
+The "merge is 92% of wall clock" figure came from a single 1 000-read batch and
+plainly does not generalise --- where `sirv_sim_gene` spends its time is **not yet
+measured**, and may matter more than the aligner does.
+
+Left **off by default**: the precedent is `ISONFORM_BUBBLE_GLOBAL`, rejected for
+costing 2 sirv_real transcripts. This costs 1 but buys 2x, so the trade is not the
+same one --- and the 902 suboptimal alignments have a known, unwritten fix (an
+exact DP over the `<=50`-base dangles) that would likely recover most of the loss.
+Turning it on by default is a decision to take after that, not before.
+
 ## Method
 
 Carried over from the isONcorrect port. The full version, with the measurements behind each point, is

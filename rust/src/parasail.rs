@@ -313,7 +313,14 @@ fn band(i: usize, half: usize, m: usize) -> (usize, usize) {
 ///
 /// `half` restricts each row to `|i - j| <= half`; `None` computes every cell.
 /// Cells outside the band keep `NEG`, so they can never win the end-cell scan.
-fn forward(s1: &[u8], s2: &[u8], sc: Scoring, tb: TieBreak, half: Option<usize>) -> Table {
+fn forward(
+    s1: &[u8],
+    s2: &[u8],
+    sc: Scoring,
+    tb: TieBreak,
+    half: Option<usize>,
+    global: bool,
+) -> Table {
     let (n, m) = (s1.len(), s2.len());
 
     // Free end gaps: an unaligned prefix of either sequence costs nothing, so
@@ -323,6 +330,14 @@ fn forward(s1: &[u8], s2: &[u8], sc: Scoring, tb: TieBreak, half: Option<usize>)
     let mut e_prev = vec![0i32; m + 1];
     let mut f_prev = vec![NEG; m + 1];
     f_prev[0] = 0;
+    if global {
+        // Row 0 of a *global* alignment is a gap run, charged. Semi-global leaves
+        // it at zero, which is what makes a leading gap free.
+        for j in 1..=m {
+            h_prev[j] = -(sc.open + sc.ext * (j as i32 - 1));
+            e_prev[j] = h_prev[j];
+        }
+    }
 
     let mut h_cur = vec![NEG; m + 1];
     let mut e_cur = vec![NEG; m + 1];
@@ -365,9 +380,13 @@ fn forward(s1: &[u8], s2: &[u8], sc: Scoring, tb: TieBreak, half: Option<usize>)
             f_cur.fill(NEG);
         }
         if lo == 1 {
-            h_cur[0] = 0;
+            h_cur[0] = if global {
+                -(sc.open + sc.ext * (i as i32 - 1))
+            } else {
+                0
+            };
             e_cur[0] = NEG;
-            f_cur[0] = 0;
+            f_cur[0] = if global { h_cur[0] } else { 0 };
         }
         let c1 = s1[i - 1];
         // One row of decisions, sliced out once: the index arithmetic and bounds
@@ -634,6 +653,63 @@ fn choice_lut(tb: TieBreak) -> [u8; 8] {
 /// is byte-identical output, and whose failure mode here is silent, neither is a
 /// good trade. The remaining win is vectorising this loop, which is exact
 /// because it does not change the recurrence.
+/// Global (Needleman-Wunsch) alignment: end gaps are **charged**.
+///
+/// # Why this exists
+///
+/// `align_bubble_nodes` aligns the two paths of a bubble, and those paths are
+/// delimited by the bubble's *shared* start and end nodes --- `con =
+/// all_reads[q_id][1][pos1 : pos2 + k_size]`, with `pos1`/`pos2` the read's
+/// positions at those anchors. Sequences with common endpoints are a global
+/// alignment problem, but the reference calls `parasail.sg_trace_scan_16`
+/// (semi-global), which makes both end gaps free.
+///
+/// That matters for the decision it feeds. `mergeable_start`/`mergeable_end`
+/// measure how much dangles outside the first and last significant match, bounded
+/// by `delta_iso_len_5`/`_3`. If the aligner may shed the ends for nothing, it
+/// will prefer alignments that look well-anchored by trimming exactly the
+/// end disagreement those thresholds exist to catch --- biasing toward popping
+/// bubbles whose paths differ at their boundaries. The reference's separate
+/// `(longer_len - shorter_len) / longer_len < delta` gate at `delta = 0.20` is
+/// arguably compensation for that.
+///
+/// Selected by `ISONFORM_BUBBLE_GLOBAL=1`. Off by default: it changes which
+/// bubbles pop, so it is a method change to be measured, not assumed.
+pub fn global(s1: &[u8], s2: &[u8], sc: Scoring) -> Alignment {
+    global_with(s1, s2, sc, TieBreak::PARASAIL)
+}
+
+/// [`global`] with an explicit tie-break.
+///
+/// The only difference from [`semiglobal_with`] is the boundary condition: row 0
+/// and column 0 are gap-penalised rather than free, and the traceback starts at
+/// `(n, m)` rather than the best cell on the last row or column.
+pub fn global_with(s1: &[u8], s2: &[u8], sc: Scoring, tb: TieBreak) -> Alignment {
+    let (n, m) = (s1.len(), s2.len());
+    if n == 0 || m == 0 {
+        // One side empty: the whole of the other is a single gap run.
+        let (len, op) = if n == 0 { (m, b'D') } else { (n, b'I') };
+        let score = if len == 0 {
+            0
+        } else {
+            -(sc.open + sc.ext * (len as i32 - 1))
+        };
+        return Alignment {
+            score,
+            cigar: if len == 0 {
+                String::new()
+            } else {
+                format!("{len}{}", op as char)
+            },
+            ops: if len == 0 { vec![] } else { vec![(len, op)] },
+        };
+    }
+    let table = forward(s1, s2, sc, tb, None, true);
+    let mut aln = traceback_from(s1, s2, &table, n, m);
+    aln.score = table.last_row[m];
+    aln
+}
+
 pub fn semiglobal_with(s1: &[u8], s2: &[u8], sc: Scoring, tb: TieBreak) -> Alignment {
     // Every cell, always: banding was implemented, measured and rejected above.
     //
@@ -645,7 +721,7 @@ pub fn semiglobal_with(s1: &[u8], s2: &[u8], sc: Scoring, tb: TieBreak) -> Align
     if wavefront_enabled() {
         traceback(s1, s2, tb, &forward_wavefront(s1, s2, sc, tb))
     } else {
-        traceback(s1, s2, tb, &forward(s1, s2, sc, tb, None))
+        traceback(s1, s2, tb, &forward(s1, s2, sc, tb, None, false))
     }
 }
 
@@ -894,7 +970,7 @@ mod tests {
             let mut sink = 0i64;
             for (a, b) in &pairs {
                 let t = if f == 0 {
-                    forward(a, b, Scoring::MERGE, TieBreak::PARASAIL, None)
+                    forward(a, b, Scoring::MERGE, TieBreak::PARASAIL, None, false)
                 } else {
                     forward_wavefront(a, b, Scoring::MERGE, TieBreak::PARASAIL)
                 };
@@ -909,6 +985,53 @@ mod tests {
                 cells / el / 1e6
             );
         }
+    }
+
+    /// Global alignment must *charge* end gaps where semi-global does not.
+    /// This is the property the bubble-popping change depends on, so it is
+    /// pinned rather than assumed.
+    #[test]
+    fn global_charges_end_gaps_and_semiglobal_does_not() {
+        let core = b"ACGTTGCAAGGCTTAACCGGATTCAGGTACGATCGATCGGCTAACGT".to_vec();
+        let mut with_tail = core.clone();
+        with_tail.extend_from_slice(b"TTTTTTTTTTTTTTTTTTTT"); // 20-base overhang
+
+        let sg_same = semiglobal(&core, &core, Scoring::BUBBLE).score;
+        let sg_tail = semiglobal(&with_tail, &core, Scoring::BUBBLE).score;
+        assert_eq!(
+            sg_tail, sg_same,
+            "semi-global: a trailing overhang is free, so the score is unchanged"
+        );
+
+        let gl_same = global(&core, &core, Scoring::BUBBLE).score;
+        let gl_tail = global(&with_tail, &core, Scoring::BUBBLE).score;
+        assert_eq!(gl_same, sg_same, "with no overhang the two agree");
+        assert!(
+            gl_tail < gl_same,
+            "global: the overhang must cost something ({gl_tail} vs {gl_same})"
+        );
+        // open 12 + 19 extensions at 1 = 31.
+        assert_eq!(gl_same - gl_tail, 31, "one gap open plus 19 extensions");
+    }
+
+    #[test]
+    fn global_spans_both_sequences_completely() {
+        let a = b"ACGTACGTAAGGCCTTACGT".to_vec();
+        let b = b"ACGTACGTTAGGCCTTACGT".to_vec();
+        let aln = global(&a, &b, Scoring::BUBBLE);
+        let (mut qi, mut rj) = (0usize, 0usize);
+        for &(l, op) in &aln.ops {
+            match op {
+                b'=' | b'X' | b'M' => {
+                    qi += l;
+                    rj += l;
+                }
+                b'I' => qi += l,
+                b'D' => rj += l,
+                _ => {}
+            }
+        }
+        assert_eq!((qi, rj), (a.len(), b.len()), "every base is accounted for");
     }
 
     /// A tie-break deliberately different from parasail's, so the comparison
@@ -944,7 +1067,7 @@ mod tests {
             let s1 = mk(n, &mut next);
             let s2 = mk(m, &mut next);
             for tb in [TieBreak::PARASAIL, alt_tiebreak()] {
-                let a = forward(&s1, &s2, Scoring::MERGE, tb, None);
+                let a = forward(&s1, &s2, Scoring::MERGE, tb, None, false);
                 let b = forward_wavefront(&s1, &s2, Scoring::MERGE, tb);
                 assert_eq!(a.packed, b.packed, "traceback bytes differ, n={n} m={m}");
                 assert_eq!(a.last_col, b.last_col, "last column differs, n={n} m={m}");

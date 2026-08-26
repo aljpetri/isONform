@@ -49,7 +49,11 @@ impl IsoformEngine for SpoaParasailMerge {
     }
 
     fn align_merge(&mut self, s1: &[u8], s2: &[u8]) -> (Vec<CigarOp>, Vec<u8>, Vec<u8>) {
-        let aln = crate::parasail::semiglobal(s1, s2, crate::parasail::Scoring::MERGE);
+        let sc = crate::parasail::Scoring::MERGE;
+        let aln = crate::wfa::enabled()
+            .then(|| crate::wfa::semiglobal(s1, s2, sc))
+            .flatten()
+            .unwrap_or_else(|| crate::parasail::semiglobal(s1, s2, sc));
         let (a, b) = crate::align::ops_to_seq(&aln.ops, s1, s2).unwrap_or_default();
         (aln.ops, a, b)
     }

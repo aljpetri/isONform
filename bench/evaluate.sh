@@ -255,16 +255,22 @@ run_one() {
 
   note "$corpus / $tag  (impl=$impl kind=$kind seed=$seed)"
   local start end
+  # Peak RSS as well as wall clock. `/usr/bin/time -l` reports the maximum
+  # resident set size of the process it ran and of its waited-for children, so
+  # for `isONform_parallel` this is the largest single worker --- which is the
+  # number that decides whether a deep cluster fits in memory.
+  local timer="/usr/bin/time -l"
+  [[ -x /usr/bin/time ]] || timer=""
   start=$("$PY_BIN" -c 'import time;print(time.time())')
   if [[ "$kind" == python ]]; then
-    ( cd "$impl" && PYTHONHASHSEED="$seed" "$PY_BIN" "$entry" \
+    ( cd "$impl" && PYTHONHASHSEED="$seed" $timer "$PY_BIN" "$entry" \
         --fastq_folder "$out/in" --outfolder "$out/out" --t "$THREADS" \
         --split_wrt_batches --iso_abundance "$ISO_ABUNDANCE" ) >"$out/log" 2>&1
   else
     # No PYTHONHASHSEED: the port has no seeded hash to pin, which is the
     # point of finding 28's ascending order. `seed` is still recorded so the
     # two implementations' rows line up in runs.tsv.
-    ( cd "$impl" && "$entry" \
+    ( cd "$impl" && $timer "$entry" \
         --fastq_folder "$out/in" --outfolder "$out/out" --t "$THREADS" \
         --split_wrt_batches --iso_abundance "$ISO_ABUNDANCE" ) >"$out/log" 2>&1
   fi
@@ -274,7 +280,10 @@ run_one() {
   local secs n
   secs=$("$PY_BIN" -c "print(f'{$end-$start:.1f}')")
   n=$(grep -c '^>' "$out/out/transcriptome.fasta" 2>/dev/null || echo 0)
-  printf '    exit=%s  %ss  %s isoforms\n' "$ec" "$secs" "$n"
+  local rss
+  rss=$(grep -oE '[0-9]+ +maximum resident set size' "$out/log" | grep -oE '^[0-9]+' | sort -n | tail -1)
+  rss=$("$PY_BIN" -c "print(f'{${rss:-0}/1048576:.0f}')" 2>/dev/null || echo 0)
+  printf '    exit=%s  %ss  %s isoforms  peakRSS=%sMB\n' "$ec" "$secs" "$n" "$rss"
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$corpus" "$tag" "$seed" "$ec" "$secs" "$n" \
       >> "$WORK/eval/runs.tsv"
   # The private input copy is large and reproducible; the corpus is the source

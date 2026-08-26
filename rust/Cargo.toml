@@ -14,6 +14,14 @@ license = "GPL-3.0-only"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+# WFA2 (wavefront alignment), as a faster stand-in for the semi-global DP at the
+# two hot alignment sites. Measured on 54 884 recorded real calls: 4.5x our
+# parasail overall, and 7.3x in the 80-90%-identity bucket that holds 59% of
+# them. `biodiff-wfa2-sys` rather than `libwfa2` because the latter's manifest
+# uses `profile-rustflags` and so needs nightly cargo; this one vendors WFA2-lib
+# and ships pregenerated bindings, so it needs cmake but not bindgen. See
+# src/wfa.rs for why WFA2's ends-free mode is NOT parasail's semi-global.
+biodiff-wfa2-sys = "2.3.5"
 # Node and edge lookup during graph construction. The keys are small integer
 # tuples, so the cryptographic strength of SipHash buys nothing and costs
 # measurably; this is the same choice the isONcorrect port made.
