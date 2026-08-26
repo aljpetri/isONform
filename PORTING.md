@@ -2974,6 +2974,103 @@ aligner. The "merge is 92% of wall clock" figure was right; the inference that t
 merge's time was therefore *pairwise alignment* was never checked, and it was
 wrong by a factor of five.
 
+### Finding 43 --- skipping the merge rebuild is 1.8x, and costs consensus accuracy not structure
+
+Sweeping `ISONFORM_MERGE_REBUILD_MAX` on `sirv_sim_gene`'s critical-path batch:
+
+| threshold | total | poa | poa calls | align |
+|---|---|---|---|---|
+| 50 (reference) | 73.31s | 56.66s | 278 | 12.20s |
+| 25 | 71.73s | 54.92s | 272 | 12.28s |
+| 10 | 69.05s | 52.29s | 261 | 12.20s |
+| **0 (never rebuild)** | **20.93s** | **3.53s** | **80** | 12.88s |
+
+The knob is effectively **binary**. 50 -> 25 -> 10 barely moves anything, because
+the reference tests the *target group's* read count and most groups are small, so
+the skip almost never fires until the threshold reaches 0. The 80 residual calls
+are `generate_all_consensuses`: this batch has ~80 groups before merging and the
+19 that `stage-times` reports are what survive it.
+
+End to end, with parasail (WFA2 off):
+
+| corpus | parasail | rebuild=0 | speedup | accuracy |
+|---|---|---|---|---|
+| droso | 24.9s | 18.4s | 1.35x | FSM 470 -> **472**, canonical 0.983 -> **0.985** |
+| sirv_sim_gene | 107.8s | **58.5s** | **1.84x** | F1 **identical** (0.940 / 0.946), redundancy 1.38 -> **1.31** |
+| sirv_real | 220.1s | 128.3s | **1.72x** | strict F1 0.734 -> **0.660** (recall 70.6% -> 63.2%), lenient F1 0.873 -> 0.871 |
+
+Two corpora come out neutral or better --- droso's FSM 472 is the best figure any
+configuration has produced, against the reference's 443. But `sirv_real` loses 5
+of its 68 transcripts at **strict** while holding at **lenient** (0.873 -> 0.871),
+and that split is the diagnosis rather than noise: the loss is **consensus base
+accuracy, not isoform structure**. `sirv_sim_gene`'s identity column shows the
+same thing directly, 0.9968 -> 0.9927. Skipping the rebuild leaves a merged group
+carrying a consensus built from one group's reads instead of the union of both, so
+on noisy real ONT data a few transcripts fall below strict identity while staying
+recognisable at lenient.
+
+So `rebuild=0` is **not shippable on its own**, and the interesting consequence is
+what it implies about the next knob: what the rebuild buys is base accuracy, so
+the thing to try is a rebuild that is *cheaper* rather than *absent* ---
+`max_seqs_to_spoa`, which scales the POA's input count while still rebuilding.
+Note the reference's own paper parameters for isONcorrect use
+`--max_seqs_to_spoa 3` or `5` against isONform's default of **200**, though the
+two are POAing different things (61bp correction intervals against full-length
+reads) so that is a hint, not a target.
+
+Default unchanged at 50.
+
+### Finding 44 --- rebuild the consensus once per group at the end, not once per merge
+
+Finding 43 left a puzzle: switching the per-merge rebuild off was 1.8x and kept
+the isoform *structure*, but cost *base accuracy*. The resolution is that the
+rebuild was serving two unrelated purposes --- supplying the consensus that later
+merge decisions compare against, and supplying the accuracy of the emitted
+sequence. Only the second one needs the union of both read sets, and it only needs
+it **once**.
+
+So: merge using the consensuses already in hand, then POA each surviving group
+once over the union of its reads. That is `generate_all_consensuses` a second time
+on the final membership --- `ISONFORM_FINAL_CONSENSUS=1`, which is only worth
+anything alongside `ISONFORM_MERGE_REBUILD_MAX=0`.
+
+On `sirv_sim_gene`'s critical-path batch:
+
+| config | total | poa | poa calls | align |
+|---|---|---|---|---|
+| reference (rebuild=50) | 72.67s | 55.85s | 278 | 12.20s |
+| rebuild=0 | 20.81s | 3.50s | 80 | 12.76s |
+| **rebuild=0 + final pass** | **25.19s** | 7.89s | 93 | 12.78s |
+| rebuild=0 + final + WFA2 | **18.82s** | 8.22s | 92 | 4.64s |
+
+13 extra POA calls, 4.4s, and 2.9x against the reference. End to end:
+
+| corpus | parasail | final pass | speedup | accuracy |
+|---|---|---|---|---|
+| droso | 24.9s | 18.6s | 1.34x | FSM 470 -> **476**, ISM 12 -> **9** |
+| sirv_sim_gene | 107.8s | 62.3s | 1.73x | strict F1 0.940 -> **0.946**, redundancy 1.38 -> **1.26**, identity restored 0.9927 -> **0.9966** |
+| sirv_real | 220.1s | 141.7s | 1.55x | strict F1 0.734 -> **0.735**, lenient F1 0.873 -> **0.884**, recall unchanged at 70.6% / 82.4% |
+
+**Better on all three corpora and faster on all three.** droso's FSM 476 is the
+highest any configuration has produced (reference: 443), `sirv_sim_gene`'s
+redundancy 1.26 the lowest, and the 5 sirv_real transcripts that `rebuild=0` lost
+are all back. This is the one change in this file that costs nothing to buy.
+
+Stacked with WFA2 it reaches **2.35x / 3.62x / 3.60x**, but WFA2 still costs
+sirv_real accuracy (strict F1 0.735 -> 0.711, lenient 0.884 -> 0.865) --- its own
+verdict flips from finding 41, not the final pass. Note also that the aligner only
+becomes worth having *after* POA is fixed: alignment is 25% of the FC batch
+against 17% of the reference one.
+
+#### It is a deviation, and here is exactly what differs
+
+The reference's per-merge rebuild concatenates **id1's reads then id2's**; the
+final pass POAs the group's member list in its own order (id2's originals, then
+id1's appended). spoa is order-sensitive, so the emitted consensus differs even on
+an identical read set. Merge *decisions* also differ, because they now compare
+un-rebuilt consensuses. Both defaults are therefore left at the reference's
+behaviour pending a decision to flip them.
+
 ## Method
 
 Carried over from the isONcorrect port. The full version, with the measurements behind each point, is

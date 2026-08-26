@@ -56,6 +56,79 @@ pub fn rebuild_threshold() -> usize {
     })
 }
 
+/// Rebuild each surviving group's consensus **once**, after all merging is done,
+/// instead of once per merge.
+///
+/// The per-merge rebuild serves two purposes that do not need the same treatment:
+/// it supplies the consensus that later merge *decisions* compare against, and it
+/// supplies the base accuracy of the emitted *sequence*. Finding 43 separated
+/// them: with the rebuild switched off entirely the isoform structure survived
+/// (droso FSM even rose, sirv_real held at lenient) while sequence accuracy fell
+/// (`sirv_sim_gene` identity 0.9968 -> 0.9927, and 5 sirv_real transcripts dropped
+/// below strict identity).
+///
+/// So pay for the accuracy without paying for the ~259 intermediate rebuilds:
+/// merge using the consensuses already in hand, then POA each surviving group once
+/// over the union of its reads. That is `generate_all_consensuses` again on the
+/// final membership --- roughly 80 + 19 calls where the reference makes 278.
+///
+/// Requires `ISONFORM_MERGE_REBUILD_MAX=0` to be worth anything; on its own it
+/// would rebuild twice.
+pub fn final_consensus_pass() -> bool {
+    static F: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *F.get_or_init(|| {
+        matches!(
+            std::env::var("ISONFORM_FINAL_CONSENSUS").ok().as_deref(),
+            Some("1") | Some("on")
+        )
+    })
+}
+
+/// Order the reads handed to spoa by **decreasing length**.
+///
+/// POA is incremental: the first sequence becomes the graph's backbone and every
+/// later one is aligned onto it. Seeding with the longest read gives a
+/// full-length backbone, so truncated reads align as subsequences instead of
+/// repeatedly extending the graph --- and within a group the reads are meant to be
+/// the same isoform, so most of the length variation *is* truncation.
+///
+/// There is a second, separate effect: the cap keeps the **first**
+/// `max_seqs_to_spoa` reads, so sorting changes *which* reads a group larger than
+/// the cap actually uses --- the longest, rather than the first in whatever order
+/// grouping produced.
+///
+/// A deliberate divergence: spoa is order-sensitive, so this changes the emitted
+/// consensus even on an identical read set. The failure mode to watch for is a
+/// chimeric long read becoming the backbone.
+pub fn spoa_sort_by_length() -> bool {
+    static F: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *F.get_or_init(|| {
+        matches!(
+            std::env::var("ISONFORM_SPOA_SORT").ok().as_deref(),
+            Some("1") | Some("on")
+        )
+    })
+}
+
+/// The reads of `members`, longest first when [`spoa_sort_by_length`] is on, then
+/// capped. Sorting happens **before** the cap so the cap keeps the longest.
+fn ordered_for_spoa(
+    members: &[u32],
+    reads: &FxHashMap<u32, Vec<u8>>,
+    max_seqs_to_spoa: usize,
+) -> Vec<u32> {
+    let mut v = members.to_vec();
+    if spoa_sort_by_length() {
+        // Descending by read length; stable, so equal lengths keep their order.
+        v.sort_by(|x, y| {
+            let len = |q: &u32| reads.get(q).map_or(0, |r| r.len());
+            len(y).cmp(&len(x))
+        });
+    }
+    v.truncate(max_seqs_to_spoa);
+    v
+}
+
 /// Nanoseconds spent inside consensus building and inside pairwise alignment.
 ///
 /// The `merge` stage timer covers both `generate_all_consensuses` (partial-order
@@ -529,9 +602,9 @@ fn generate_all_consensuses<E: IsoformEngine>(
             let seq = reads.get(id).cloned().unwrap_or_default();
             out.push((*id, seq));
         } else {
-            let seqs: Vec<&[u8]> = members
+            let picked = ordered_for_spoa(members, reads, max_seqs_to_spoa);
+            let seqs: Vec<&[u8]> = picked
                 .iter()
-                .take(max_seqs_to_spoa)
                 .filter_map(|q| reads.get(q).map(|v| v.as_slice()))
                 .collect();
             out.push((*id, engine.spoa(&seqs)));
@@ -551,7 +624,8 @@ fn generate_new_full_consensus<E: IsoformEngine>(
     let mut all: Vec<u32> = a.to_vec();
     all.extend_from_slice(b);
     // `all_consensus_infos[0:max_seqs_to_spoa]` --- a slice, so also a plain cap.
-    all.truncate(max_seqs_to_spoa);
+    // `ordered_for_spoa` applies that same cap, after sorting when asked to.
+    let all = ordered_for_spoa(&all, reads, max_seqs_to_spoa);
     let seqs: Vec<&[u8]> = all
         .iter()
         .filter_map(|q| reads.get(q).map(|v| v.as_slice()))
@@ -643,6 +717,23 @@ pub fn merge_consensuses<E: IsoformEngine>(
         if !new_consensuses.iter().any(|(k, _)| k == id) {
             if let Some(seq) = get(&all_consensuses, *id) {
                 new_consensuses.push((*id, seq));
+            }
+        }
+    }
+
+    if final_consensus_pass() {
+        // One POA per surviving group, over the union its members now hold. The
+        // membership in `groups` is final at this point, so this is exactly
+        // `generate_all_consensuses` on the merged groups --- and it is what makes
+        // skipping the per-merge rebuild safe for the emitted sequence.
+        let rebuilt = generate_all_consensuses(engine, groups, reads, opts.max_seqs_to_spoa);
+        for (id, seq) in rebuilt {
+            if seq.is_empty() {
+                continue;
+            }
+            match new_consensuses.iter_mut().find(|(k, _)| *k == id) {
+                Some(slot) => slot.1 = seq,
+                None => new_consensuses.push((id, seq)),
             }
         }
     }
