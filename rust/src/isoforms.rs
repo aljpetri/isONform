@@ -37,6 +37,25 @@ pub trait IsoformEngine {
     fn align_merge(&mut self, s1: &[u8], s2: &[u8]) -> (Vec<CigarOp>, Vec<u8>, Vec<u8>);
 }
 
+/// Above how many supporting reads a merge skips rebuilding the consensus.
+///
+/// The reference hard-codes 50 (`IsoformGeneration.py`), testing the *target*
+/// group's read count rather than the size of the union it would POA. Every
+/// successful merge below the threshold calls `generate_new_full_consensus`,
+/// which rebuilds a full POA from both groups' raw reads --- about 259 of the 278
+/// POA calls on `sirv_sim_gene`'s critical-path batch, and POA is 77% of that
+/// batch. Exposed so the threshold can be swept against accuracy rather than
+/// assumed; `0` never rebuilds. See finding 42.
+pub fn rebuild_threshold() -> usize {
+    static T: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *T.get_or_init(|| {
+        std::env::var("ISONFORM_MERGE_REBUILD_MAX")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(50)
+    })
+}
+
 /// Nanoseconds spent inside consensus building and inside pairwise alignment.
 ///
 /// The `merge` stage timer covers both `generate_all_consensuses` (partial-order
@@ -588,7 +607,7 @@ pub fn merge_consensuses<E: IsoformEngine>(
             let Some(pos1) = groups.iter().position(|(k, _)| *k == id1) else {
                 break;
             };
-            let merged = if groups[pos2].1.len() > 50 {
+            let merged = if groups[pos2].1.len() > rebuild_threshold() {
                 // Over fifty supporting reads: keep the existing consensus
                 // rather than re-running spoa on the union.
                 cand.1.clone()
