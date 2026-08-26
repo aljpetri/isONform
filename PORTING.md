@@ -2683,6 +2683,95 @@ a filter that decides which pairs are never examined cannot rest on a rate
 measured on one corpus.
 
 
+### Finding 39 --- the graph fragments on low-complexity clusters, and no hypothesis survives
+
+Open, reproducible, and unexplained. Recorded because the *failed* explanations
+are worth as much as the observation.
+
+Two 1 000-read slices of one `droso_deep` cluster (cluster 0, 25 493 reads, after
+isONclust + isONcorrect) build wildly different graphs from near-identical input:
+
+| | reads 1-1000 | reads 1001-2000 |
+| --- | --- | --- |
+| nodes | **548** | **20 421** |
+| node-sharing hit rate | **98.7%** | **30.7%** |
+| pairwise identity (infix) | 0.973 | 0.989 |
+| length range | 1 322-3 788 | 1 246-1 367 |
+| simplify | 2.07s | 0.08s |
+| merge | 54.8s | 345.0s |
+
+Both slices are ~98% mutually identical AT-rich sequence (82-83% AT, 42% of bases
+in homopolymer runs >=3), pychopper-processed. The fragmented graph is 20 322 of
+20 421 nodes **linear** (in-1/out-1) with 81 branch points: one near-unbranched
+chain per read, expressing no shared structure. The isoform output is nonetheless
+sane in both cases --- one dominant isoform holding ~90% of reads plus a
+low-support tail, isoform length matching read length.
+
+The two fastq files are preserved at
+`~/work/isonform-lowcomplexity/{healthy,fragmented}_1000reads.fastq`.
+
+#### What was ruled out, with the measurement that killed it
+
+| hypothesis | measurement | verdict |
+| --- | --- | --- |
+| a port bug in node lookup | 0 misses in the "exact coords registered but not found" bucket | **dead** |
+| intervals differ by batch position | interval dumps byte-identical across contexts | **dead** |
+| `read_len` (finding 33) leaking | only read in the bug-compat branch, unused by default | **dead** |
+| occurrence lists polluted by the missing sequence check | **83% of admitted occurrences match exactly**, and equally in both halves (82.9% vs 81.3%) | **dead** |
+| WIS solutions disagree structurally | 94% of misses are within 20 bases, 48% within 5 | **dead** |
+| coordinate drift needs a tolerant lookup | tolerance collapses 20 421 -> 1 754 nodes, but exact hits *fall* 9 027 -> 8 106, so it perturbs which node each read attaches to | **rejected as a fix** |
+| repeated minimizer pairs within a read | 0 of 30 reads self-align at >70% | **dead** |
+| read heterogeneity | the *fragmented* half is the more homogeneous one | **inverted** |
+| near-tied WIS candidates | 87.4% ambiguous in the healthy half vs 84.4% in the fragmented one | **dead** |
+
+#### What is established
+
+**The port is faithful here.** Zero exact-coordinate misses, identical intervals
+across contexts, every oracle passing. The fragmentation is the reference's
+behaviour.
+
+**Node identity carries two conflicting jobs.** `delta_len` tolerance decides
+which reads *support* an interval (`main:342`), while an exact dict lookup decides
+which *node* it becomes (`GraphGeneration.py:322`). The first must tolerate drift
+across reads; the second must not, or a read attaches to the wrong copy of a
+repeated minimizer pair. One mechanism, two requirements. Co-linear chaining
+between a read's anchors and the graph would separate them --- order and spacing
+disambiguate repeats while tolerating drift --- and that is the shape any fix
+should take. Not attempted: it changes node assignment globally and can only be
+validated against known truth, not against node counts.
+
+**Bubble popping is edge-only.** `SimplifyGraph.py` calls `remove_edge`/`add_edge`
+and never `remove_node`/`add_node`, so node counts cannot show whether
+simplification did anything. Use [`crate::graph::Graph::degree_profile`]: on the
+healthy graph, branch nodes 97 -> 66, merge nodes 99 -> 79, linear 402 -> 430,
+orphans 0 -> 0, edges 897 -> 734. Roughly a third of branch points resolved, and
+nothing stranded.
+
+#### The instruments, which are the reusable part
+
+`ISONFORM_STAGE_TIMES` (per-stage wall time, node/edge counts, degree profile),
+`ISONFORM_SHARE_STATS` (node-sharing hit rate and miss-distance histogram),
+`ISONFORM_SEQ_CHECK_STATS` (how similar co-occurring sequences actually are),
+`ISONFORM_TIE_STATS` (near-tied candidates before WIS), `ISONFORM_LOOKUP_TOL`
+(tolerant lookup, diagnostic only), `ISONFORM_SEQ_CHECK` (isONcorrect's sequence
+filter, restored).
+
+#### A note on method, written down because it cost a lot of this session
+
+Eight hypotheses above were stated as conclusions before being measured, and all
+eight were wrong. The pattern was identical every time: one measurement, an
+inference generalised far past it, asserted as fact. Two specific traps worth
+naming --- **node counts cannot measure an edge-only operation**, and **global
+alignment identity is meaningless across unequal lengths** (it reported 60.5%
+where infix alignment reports 97.3%, purely from a 1 322-3 788 bp length spread).
+
+The porting phase did not have this problem, and the reason is instructive: every
+claim was gated by a differential oracle that failed within seconds. The
+exploratory phase has no such gate, and confidence did not adjust. The correction
+is to build the instrument before the claim, and to state the prediction before
+running the measurement so it cannot be reinterpreted afterwards.
+
+
 ## Method
 
 Carried over from the isONcorrect port. The full version, with the measurements behind each point, is

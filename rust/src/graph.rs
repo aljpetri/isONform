@@ -376,6 +376,47 @@ impl Graph {
     ///
     /// Returns `None` if the graph has a cycle, as networkx raises
     /// `NetworkXUnfeasible`.
+    /// A degree profile, for measuring what simplification actually did.
+    ///
+    /// Node and edge counts are the wrong instrument. `SimplifyGraph.py` calls
+    /// only `remove_edge`/`add_edge` and **never** touches nodes, so popping
+    /// cannot change the node count at all --- measuring nodes alone made a graph
+    /// that had been popped heavily look untouched. Edge count moves, but it
+    /// cannot distinguish "a bubble was linearised" from "an edge was dropped".
+    ///
+    /// Degrees can. A bubble is a node with out-degree > 1 reconverging at one
+    /// with in-degree > 1; linearising it turns interior nodes into in-1/out-1;
+    /// and because the abandoned path's nodes are left behind rather than
+    /// removed, they fall to degree 0. So:
+    ///
+    /// * `branch` and `merge` falling means bubbles were resolved;
+    /// * `linear` rising means paths were straightened;
+    /// * `orphan` rising counts what popping left behind --- nodes the reference
+    ///   never deletes.
+    ///
+    /// Returns `(branch, merge, linear, orphan)`. A node can be both a branch and
+    /// a merge, so those two overlap; `linear` and `orphan` are disjoint from
+    /// both.
+    pub fn degree_profile(&self) -> (usize, usize, usize, usize) {
+        let (mut branch, mut merge, mut linear, mut orphan) = (0, 0, 0, 0);
+        for n in 0..self.node_count() as u32 {
+            let (i, o) = (self.in_degree(n), self.out_degree(n));
+            if o > 1 {
+                branch += 1;
+            }
+            if i > 1 {
+                merge += 1;
+            }
+            if i == 1 && o == 1 {
+                linear += 1;
+            }
+            if i == 0 && o == 0 {
+                orphan += 1;
+            }
+        }
+        (branch, merge, linear, orphan)
+    }
+
     pub fn topological_sort(&self) -> Option<Vec<NodeId>> {
         let n = self.keys.len();
         let mut indegree: Vec<u32> = self.in_deg.clone();

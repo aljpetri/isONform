@@ -122,6 +122,9 @@ pub fn run_batch(
         ..Default::default()
     };
 
+    let timing = std::env::var_os("ISONFORM_STAGE_TIMES").is_some();
+    let t_start = std::time::Instant::now();
+
     let Some(w) = batch_window(params, reads.len()) else {
         // "Not enough reads to work on!" --- the single read is skipped whole.
         out.skipped = reads
@@ -133,6 +136,7 @@ pub fn run_batch(
 
     // -- intervals ---------------------------------------------------------
     let seqs: Vec<(u32, Vec<u8>)> = reads.iter().map(|(r, _, s)| (*r, s.clone())).collect();
+    let t0 = std::time::Instant::now();
     let iv = crate::intervals::build_batch(
         &seqs,
         w,
@@ -142,6 +146,78 @@ pub fn run_batch(
         params.delta_len,
         params.wis,
     );
+
+    let t_iv = t0.elapsed().as_secs_f64();
+    if std::env::var_os("ISONFORM_TIE_STATS").is_some() {
+        use std::sync::atomic::Ordering::Relaxed;
+        let c = crate::intervals::TIE_CANDIDATES.load(Relaxed);
+        let a = crate::intervals::TIE_AMBIGUOUS.load(Relaxed);
+        eprintln!(
+            "tie-stats candidates={c} ambiguous={a} ({:.1}%)",
+            if c > 0 {
+                100.0 * a as f64 / c as f64
+            } else {
+                0.0
+            }
+        );
+    }
+    if std::env::var_os("ISONFORM_SEQ_CHECK_STATS").is_some() {
+        use std::sync::atomic::Ordering::Relaxed;
+        let t = crate::intervals::SEQ_TOTAL.load(Relaxed);
+        let e = crate::intervals::SEQ_EXACT.load(Relaxed);
+        let d: Vec<u64> = crate::intervals::SEQ_DIV
+            .iter()
+            .map(|a| a.load(Relaxed))
+            .collect();
+        eprintln!(
+            "seq-check occurrences={t} exact={e} ({:.1}%) | <=5%div={} <=15%={} <=40%={} >40%={}",
+            if t > 0 {
+                100.0 * e as f64 / t as f64
+            } else {
+                0.0
+            },
+            d[1],
+            d[2],
+            d[3],
+            d[4]
+        );
+    }
+
+    // `ISONFORM_DUMP_INTERVALS=<path>` writes one line per graph id:
+    // `<read acc> <start>:<stop>:<support> ...`. Keyed by *accession*, not read
+    // id, so the same read is comparable across batch contexts --- which is the
+    // whole point: identical reads must yield identical intervals.
+    if let Some(path) = std::env::var_os("ISONFORM_DUMP_INTERVALS") {
+        use std::io::Write as _;
+        let acc: FxHashMap<u32, &String> = reads.iter().map(|(r, a, _)| (*r, a)).collect();
+        let mut lines: Vec<String> = Vec::new();
+        for (gid, chosen) in iv.by_graph_id.iter() {
+            let r = iv.read_of_graph_id.get(gid).copied().unwrap_or(0);
+            let name = acc.get(&r).map(|s| s.as_str()).unwrap_or("?");
+            let mut spans: Vec<String> = chosen
+                .iter()
+                .map(|c| format!("{}:{}:{}", c.start, c.stop, c.support))
+                .collect();
+            spans.sort();
+            lines.push(format!("{name}\t{}", spans.join(" ")));
+        }
+        lines.sort();
+        let mut f = std::fs::File::create(format!("{}.b{}", path.to_string_lossy(), batch_id))
+            .expect("interval dump writable");
+        for l in &lines {
+            let _ = writeln!(f, "{l}");
+        }
+        let mut sk: Vec<String> = iv
+            .skipped
+            .iter()
+            .map(|r| acc.get(r).map(|s| s.to_string()).unwrap_or_default())
+            .collect();
+        sk.sort();
+        let _ = writeln!(f, "# skipped {}", sk.len());
+        for s in &sk {
+            let _ = writeln!(f, "# skip {s}");
+        }
+    }
 
     let acc_of: FxHashMap<u32, &String> = reads.iter().map(|(r, a, _)| (*r, a)).collect();
     for r_id in &iv.skipped {
@@ -205,6 +281,7 @@ pub fn run_batch(
         reads: &graph_reads,
         read_len: all_read_len,
     };
+    let t1 = std::time::Instant::now();
     let Ok((mut g, reads_for_isoforms)) =
         graph_build::generate_graph_from_intervals(&input, params.build)
     else {
@@ -213,7 +290,21 @@ pub fn run_batch(
         return out;
     };
 
+    let t_graph = t1.elapsed().as_secs_f64();
+    // Before simplification, because `pop_bubbles` *adds* nodes when it
+    // linearises --- so a post-simplify count cannot tell "the graph was built
+    // fragmented" from "simplification exploded". Reporting only the post count
+    // led me to assert the former without evidence.
+    // Nodes *and* edges: `SimplifyGraph.py` calls only `remove_edge`/`add_edge`
+    // and never touches nodes, so popping is edge-only and a node count cannot
+    // show whether it did anything. Measuring nodes alone led me to claim
+    // simplification was inert on a graph it had popped heavily.
+    let nodes_pre = g.node_count();
+    let edges_pre = g.edge_count();
+    let prof_pre = g.degree_profile();
+
     // -- simplification ----------------------------------------------------
+    let t2 = std::time::Instant::now();
     crate::simplify::simplify_graph(
         &mut g,
         &graph_reads,
@@ -222,8 +313,14 @@ pub fn run_batch(
         params.slow,
     );
 
+    let t_simp = t2.elapsed().as_secs_f64();
+    let prof_post = g.degree_profile();
+
     // -- isoforms ----------------------------------------------------------
+    let t3 = std::time::Instant::now();
     let mut groups = isoforms::compute_equal_reads(&g, &reads_for_isoforms);
+    let t_group = t3.elapsed().as_secs_f64();
+    let t4 = std::time::Instant::now();
     let mut engine = SpoaParasailMerge;
     let opts = MergeOpts {
         delta: params.delta,
@@ -234,6 +331,52 @@ pub fn run_batch(
         cigar_diversity_counts_runs: params.cigar_diversity_counts_runs,
     };
     let consensuses = isoforms::merge_consensuses(&mut engine, &mut groups, &graph_reads, opts);
+    let t_merge = t4.elapsed().as_secs_f64();
+    if timing {
+        eprintln!(
+            "stage-times batch={} reads={} nodes_pre={} nodes_post={} edges_pre={} \
+             edges_post={} groups={} | intervals={:.2}s graph={:.2}s \
+             simplify={:.2}s grouping={:.2}s merge={:.2}s total={:.2}s | pre(b={} m={} lin={} orph={}) post(b={} m={} lin={} orph={}) share(reg={} look={} hit={})",
+            batch_id,
+            reads.len(),
+            nodes_pre,
+            g.node_count(),
+            edges_pre,
+            g.edge_count(),
+            groups.len(),
+            t_iv,
+            t_graph,
+            t_simp,
+            t_group,
+            t_merge,
+            t_start.elapsed().as_secs_f64(),
+            prof_pre.0,
+            prof_pre.1,
+            prof_pre.2,
+            prof_pre.3,
+            prof_post.0,
+            prof_post.1,
+            prof_post.2,
+            prof_post.3,
+            crate::graph_build::REGISTRATIONS.load(std::sync::atomic::Ordering::Relaxed),
+            crate::graph_build::LOOKUPS.load(std::sync::atomic::Ordering::Relaxed),
+            crate::graph_build::HITS.load(std::sync::atomic::Ordering::Relaxed)
+        );
+        eprintln!(
+            "tolerant-lookup rescued={}",
+            crate::graph_build::TOL_HITS.load(std::sync::atomic::Ordering::Relaxed)
+        );
+        if std::env::var_os("ISONFORM_SHARE_STATS").is_some() {
+            let d: Vec<u64> = crate::graph_build::MISS_DIST
+                .iter()
+                .map(|a| a.load(std::sync::atomic::Ordering::Relaxed))
+                .collect();
+            eprintln!(
+                "miss-distance  same-coords-absent={} 1-5={} 6-20={} 21-100={} 101+={} none={}",
+                d[0], d[1], d[2], d[3], d[4], d[5]
+            );
+        }
+    }
 
     // `prepare_consensuses` keeps only the ids still in `equal_reads`, so a group
     // merged away contributes nothing.

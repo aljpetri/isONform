@@ -53,6 +53,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "block-aligner"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8986feb1596f749fdcf1046e1b8068dfe802fc45708e6e293b736e4c0bb3b3a5"
+
+[[package]]
 name = "clap"
 version = "4.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -114,6 +120,7 @@ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 name = "isonform"
 version = "0.3.9"
 dependencies = [
+ "block-aligner",
  "clap",
  "rustc-hash",
  "spoars",

@@ -57,6 +57,30 @@ pub struct ChosenInterval {
 ///
 /// Appends to `out`, as the reference appends to `all_intervals`.
 #[allow(clippy::too_many_arguments)]
+/// Optional sequence check on occurrences, the piece isONcorrect has and
+/// isONform's Python stripped.
+///
+/// isONform admits an occurrence on span *length* alone
+/// (`abs((p2-p1)-(pos2-pos1)) < delta_len`) and never compares the sequence.
+/// isONcorrect required `read_seq == ref_seq`, or an edit distance under a
+/// quality-derived threshold. `ISONFORM_SEQ_CHECK` restores a simplified form:
+/// the occurrence's sequence must be within the given divergence of the current
+/// read's, measured as Hamming over the overlap plus the length difference.
+///
+/// `ISONFORM_SEQ_CHECK=0.0` means exact match only; unset means no check, which
+/// is isONform's behaviour. Measured on real data: 83% of admitted occurrences
+/// already match exactly, so this is expected to prune the tail rather than most
+/// of the list --- which is why it is worth measuring rather than assuming.
+pub fn seq_check_threshold() -> Option<f64> {
+    static T: std::sync::OnceLock<Option<f64>> = std::sync::OnceLock::new();
+    *T.get_or_init(|| {
+        std::env::var("ISONFORM_SEQ_CHECK")
+            .ok()
+            .and_then(|v| v.trim().parse::<f64>().ok())
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn find_most_supported_span(
     r_id: u32,
     m1: &[u8],
@@ -65,6 +89,7 @@ pub fn find_most_supported_span(
     db: &AnchorDb,
     k: usize,
     delta_len: i64,
+    seqs: Option<&[(u32, Vec<u8>)]>,
     out: &mut Vec<ChosenInterval>,
 ) {
     for (m2, p2) in partners {
@@ -82,6 +107,28 @@ pub fn find_most_supported_span(
             }
             let other_span = pos2 as i64 - pos1 as i64;
             if (this_span - other_span).abs() < delta_len {
+                // isONcorrect's check, restored behind `ISONFORM_SEQ_CHECK`.
+                if let (Some(tol), Some(all)) = (seq_check_threshold(), seqs) {
+                    let mine = all.iter().find(|(r, _)| *r == r_id).map(|(_, s)| s);
+                    let theirs = all.iter().find(|(r, _)| *r == other).map(|(_, s)| s);
+                    if let (Some(a), Some(b)) = (mine, theirs) {
+                        let (x0, x1) = (p1.min(a.len()), (*p2 + k).min(a.len()));
+                        let (y0, y1) = (
+                            (pos1 as usize).min(b.len()),
+                            (pos2 as usize + k).min(b.len()),
+                        );
+                        if x0 < x1 && y0 < y1 {
+                            let (x, y) = (&a[x0..x1], &b[y0..y1]);
+                            let n = x.len().min(y.len());
+                            let ham = (0..n).filter(|&i| x[i] != y[i]).count();
+                            let div = (ham + x.len().abs_diff(y.len())) as f64 / n.max(1) as f64;
+                            if div > tol {
+                                SEQ_REJECTED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                continue;
+                            }
+                        }
+                    }
+                }
                 instance.push((other, pos1, pos2));
             }
         }
@@ -98,6 +145,23 @@ pub fn find_most_supported_span(
 }
 
 /// What one batch's front half produces.
+/// Instrumentation for the missing sequence check --- see `ISONFORM_SEQ_CHECK_STATS`.
+/// Occurrences rejected by `ISONFORM_SEQ_CHECK`.
+/// Candidate intervals seen before WIS, and how many have a near-duplicate of
+/// equal support --- see `ISONFORM_TIE_STATS`.
+pub static TIE_CANDIDATES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static TIE_AMBIGUOUS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static SEQ_REJECTED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static SEQ_TOTAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static SEQ_EXACT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static SEQ_DIV: [std::sync::atomic::AtomicU64; 5] = [
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+];
+
 #[derive(Debug, Default)]
 pub struct BatchIntervals {
     /// `all_intervals_for_graph`, keyed by the 1-based `graph_id` the reference
@@ -143,12 +207,50 @@ pub fn build_batch(
                 .iter()
                 .map(|&j| (minimizers[j].0.clone(), minimizers[j].1))
                 .collect();
-            find_most_supported_span(*r_id, m1, p1, &spans, &db, k, delta_len, &mut all_intervals);
+            find_most_supported_span(
+                *r_id,
+                m1,
+                p1,
+                &spans,
+                &db,
+                k,
+                delta_len,
+                seq_check_threshold().map(|_| reads),
+                &mut all_intervals,
+            );
         }
 
         if all_intervals.is_empty() {
             out.skipped.push(*r_id);
             continue;
+        }
+
+        // Tie structure among the *candidates*, before WIS selects. A candidate
+        // is "ambiguous" when another candidate sits within 20 bases on both
+        // ends with the same support: WIS then has no principled reason to
+        // prefer either, and two reads can legitimately select different members
+        // --- which would break node sharing without either read being wrong.
+        if std::env::var_os("ISONFORM_TIE_STATS").is_some() {
+            use std::sync::atomic::Ordering::Relaxed;
+            TIE_CANDIDATES.fetch_add(all_intervals.len() as u64, Relaxed);
+            for (i, a) in all_intervals.iter().enumerate() {
+                let mut amb = false;
+                for (j, b) in all_intervals.iter().enumerate() {
+                    if i == j {
+                        continue;
+                    }
+                    if a.start.abs_diff(b.start) <= 20
+                        && a.stop.abs_diff(b.stop) <= 20
+                        && a.support == b.support
+                    {
+                        amb = true;
+                        break;
+                    }
+                }
+                if amb {
+                    TIE_AMBIGUOUS.fetch_add(1, Relaxed);
+                }
+            }
         }
 
         // `all_intervals.sort(key=lambda x: x[1])` --- by stop. Python's sort is
@@ -174,6 +276,63 @@ pub fn build_batch(
         }
         let picked: Vec<ChosenInterval> =
             chosen.iter().map(|&j| all_intervals[j].clone()).collect();
+        // Would isONcorrect's sequence check have admitted these occurrences?
+        // isONform keeps only `abs((p2-p1)-(pos2-pos1)) < delta_len` --- a
+        // *length* test with no sequence comparison. isONcorrect additionally
+        // required `read_seq == ref_seq` or an edit distance under a
+        // quality-derived threshold. This measures, on the intervals actually
+        // chosen, how similar the co-occurring sequences really are.
+        if std::env::var_os("ISONFORM_SEQ_CHECK_STATS").is_some() {
+            use std::sync::atomic::Ordering::Relaxed;
+            let me = reads.iter().find(|(r, _)| r == r_id).map(|(_, s)| s);
+            for iv in picked.iter() {
+                for &(r, pos1, pos2) in iv.instance.iter() {
+                    if r == *r_id {
+                        continue;
+                    }
+                    let (Some(mine), Some(other)) =
+                        (me, reads.iter().find(|(rr, _)| *rr == r).map(|(_, s)| s))
+                    else {
+                        continue;
+                    };
+                    // `iv.start` is already `p1 + k` (see `find_most_supported_span`),
+                    // while the occurrence's `pos1` is a raw minimizer position.
+                    // isONcorrect slices `seq[p1 : p2 + k]`, so undo the +k here or
+                    // the two slices are offset by k and every comparison fails.
+                    let a = iv.start.saturating_sub(k);
+                    let b = (iv.stop + k).min(mine.len());
+                    let c = pos1 as usize;
+                    let d = (pos2 as usize + k).min(other.len());
+                    if a >= b || c >= d {
+                        continue;
+                    }
+                    SEQ_TOTAL.fetch_add(1, Relaxed);
+                    let (x, y) = (&mine[a..b], &other[c..d]);
+                    if x == y {
+                        SEQ_EXACT.fetch_add(1, Relaxed);
+                    }
+                    // A cheap divergence proxy: length delta plus Hamming over
+                    // the overlap. Not edit distance, but enough to say whether
+                    // these are "the same sequence" or not.
+                    let n = x.len().min(y.len());
+                    let ham = (0..n).filter(|&i| x[i] != y[i]).count();
+                    let dv = ham + x.len().abs_diff(y.len());
+                    let frac = dv as f64 / n.max(1) as f64;
+                    let bucket = if x == y {
+                        0
+                    } else if frac <= 0.05 {
+                        1
+                    } else if frac <= 0.15 {
+                        2
+                    } else if frac <= 0.40 {
+                        3
+                    } else {
+                        4
+                    };
+                    SEQ_DIV[bucket].fetch_add(1, Relaxed);
+                }
+            }
+        }
         out.by_graph_id.insert(graph_id, picked);
         out.read_of_graph_id.insert(graph_id, *r_id);
         graph_id += 1;
@@ -203,7 +362,17 @@ mod tests {
             .collect();
         let db = db_from(&by_read, 2, 3);
         let mut out = Vec::new();
-        find_most_supported_span(2, b"AC", 0, &[(b"GT".to_vec(), 10)], &db, 2, 5, &mut out);
+        find_most_supported_span(
+            2,
+            b"AC",
+            0,
+            &[(b"GT".to_vec(), 10)],
+            &db,
+            2,
+            5,
+            None,
+            &mut out,
+        );
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].instance[0].0, 2, "the read being built comes first");
         assert!(!out[0].instance[1..].iter().any(|(r, _, _)| *r == 2));
@@ -225,6 +394,7 @@ mod tests {
             &db,
             4,
             5,
+            None,
             &mut out,
         );
         assert_eq!((out[0].start, out[0].stop), (9, 40));
@@ -242,7 +412,17 @@ mod tests {
         ];
         let db = db_from(&by_read, 2, 3);
         let mut out = Vec::new();
-        find_most_supported_span(1, b"AC", 0, &[(b"GT".to_vec(), 10)], &db, 2, 5, &mut out);
+        find_most_supported_span(
+            1,
+            b"AC",
+            0,
+            &[(b"GT".to_vec(), 10)],
+            &db,
+            2,
+            5,
+            None,
+            &mut out,
+        );
         let ids: Vec<u32> = out[0].instance.iter().map(|(r, _, _)| *r).collect();
         assert_eq!(ids, vec![1, 2], "read 3's span is 40, too far from 10");
         assert_eq!(out[0].support, 2);
@@ -258,7 +438,17 @@ mod tests {
         let db = db_from(&by_read, 2, 2);
         assert_eq!(db.get(b"AC", b"GT").len(), 2, "the entry survives");
         let mut out = Vec::new();
-        find_most_supported_span(1, b"AC", 0, &[(b"GT".to_vec(), 10)], &db, 2, 5, &mut out);
+        find_most_supported_span(
+            1,
+            b"AC",
+            0,
+            &[(b"GT".to_vec(), 10)],
+            &db,
+            2,
+            5,
+            None,
+            &mut out,
+        );
         assert!(out.is_empty(), "but two occurrences yield no interval");
     }
 

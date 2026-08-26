@@ -136,6 +136,32 @@ fn end_mini(seq: &[u8], end: u32, k: usize) -> &[u8] {
     &seq[lo..hi]
 }
 
+/// How often a read finds a node another read predicted for it.
+///
+/// Registration is *speculative*: `add_prior_read_infos` records where an
+/// interval will sit in every later read that shares it. The prediction only pays
+/// off if that read's own WIS solution selects an interval with exactly those
+/// coordinates. So the hit rate measures **WIS agreement across reads**, which is
+/// what decides whether the graph collapses or fragments.
+pub static LOOKUPS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// `(read, start bucket) -> [(start, end, node)]`, the tolerant lookup's index.
+type TolIndex = FxHashMap<(u32, u32), Vec<(u32, u32, NodeId)>>;
+
+/// Lookups rescued by `ISONFORM_LOOKUP_TOL` that the exact lookup missed.
+pub static TOL_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static REGISTRATIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Missed lookups bucketed by distance to the nearest prediction for the same
+/// read: exact-but-absent, 1-5, 6-20, 21-100, 101+, and "no prediction at all".
+pub static MISS_DIST: [std::sync::atomic::AtomicU64; 6] = [
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+];
+
 /// `add_prior_read_infos`: record this interval's occurrences in *later* reads,
 /// so that when those reads are processed they find this node.
 ///
@@ -152,6 +178,7 @@ fn add_prior_read_infos(
     for triple in inter.occurrences.chunks_exact(3) {
         let (r, p1, p2) = (triple[0], triple[1], triple[2]);
         if r > r_id {
+            REGISTRATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             prior.entry((r, p1 + k as u32, p2)).or_insert(node);
         }
     }
@@ -218,6 +245,16 @@ pub fn generate_graph_from_intervals(
     let reads_for_isoforms: Vec<u32> = (1..=n_graph_reads).collect();
 
     let mut prior_read_infos: FxHashMap<(u32, u32, u32), NodeId> = FxHashMap::default();
+    // Optional tolerant index for `ISONFORM_LOOKUP_TOL`. The reference's lookup
+    // is an exact dict hit; this additionally allows a prediction whose start and
+    // end are within `tol` bases. Bucketed by start so a lookup scans a handful
+    // of candidates rather than the whole map.
+    let lookup_tol: u32 = std::env::var("ISONFORM_LOOKUP_TOL")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    let bucket_of = |st: u32| st / (2 * lookup_tol.max(1) + 1);
+    let mut tol_index: TolIndex = FxHashMap::default();
     // old_node -> [(alternative node, its predecessor, the predecessor edge's length)]
     let mut alternative_nodes: FxHashMap<NodeId, Vec<(NodeId, NodeId, i64)>> = FxHashMap::default();
     // The reference only ever reports `len(alt_cyc_nodes.keys())`.
@@ -252,7 +289,53 @@ pub fn generate_graph_from_intervals(
             let is_repetitive = read_hashes.contains(&curr_hash);
             let this_len = inter.start as i64 - previous_end;
 
-            let node = match prior_read_infos.get(&info_tuple).copied() {
+            if std::env::var_os("ISONFORM_SHARE_STATS").is_some() {
+                use std::sync::atomic::Ordering::Relaxed;
+                LOOKUPS.fetch_add(1, Relaxed);
+                if prior_read_infos.contains_key(&info_tuple) {
+                    HITS.fetch_add(1, Relaxed);
+                } else {
+                    // How *near* was the nearest prediction for this read? A miss
+                    // by a few bases means WIS chose almost the same interval and
+                    // a tolerance would recover it; a miss by hundreds means WIS
+                    // chose a structurally different set and no tolerance helps.
+                    let mut best = u32::MAX;
+                    for &(r, st, en) in prior_read_infos.keys() {
+                        if r != r_id {
+                            continue;
+                        }
+                        let d = st.abs_diff(info_tuple.1) + en.abs_diff(info_tuple.2);
+                        best = best.min(d);
+                    }
+                    let bucket = match best {
+                        u32::MAX => 5,
+                        0 => 0,
+                        1..=5 => 1,
+                        6..=20 => 2,
+                        21..=100 => 3,
+                        _ => 4,
+                    };
+                    MISS_DIST[bucket].fetch_add(1, Relaxed);
+                }
+            }
+            let mut found = prior_read_infos.get(&info_tuple).copied();
+            if found.is_none() && lookup_tol > 0 {
+                let b = bucket_of(info_tuple.1);
+                'search: for bb in b.saturating_sub(1)..=b + 1 {
+                    if let Some(v) = tol_index.get(&(r_id, bb)) {
+                        for &(st, en, nd) in v {
+                            if st.abs_diff(info_tuple.1) <= lookup_tol
+                                && en.abs_diff(info_tuple.2) <= lookup_tol
+                            {
+                                found = Some(nd);
+                                TOL_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                break 'search;
+                            }
+                        }
+                    }
+                }
+            }
+            let node = match found {
                 Some(prior) if !is_repetitive => {
                     // The interval is known from an earlier read and does not
                     // repeat within this one.
@@ -459,6 +542,18 @@ pub fn generate_graph_from_intervals(
                         },
                     );
                     add_prior_read_infos(&mut prior_read_infos, inter, r_id, n, k);
+                    if lookup_tol > 0 {
+                        for triple in inter.occurrences.chunks_exact(3) {
+                            let (r, p1, p2) = (triple[0], triple[1], triple[2]);
+                            if r > r_id {
+                                let st = p1 + k as u32;
+                                tol_index
+                                    .entry((r, bucket_of(st)))
+                                    .or_default()
+                                    .push((st, p2, n));
+                            }
+                        }
+                    }
                     g.add_edge(previous_node, n, this_len);
                     g.set_edge_support(previous_node, n, r_id);
                     n
