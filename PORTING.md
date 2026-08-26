@@ -2930,9 +2930,44 @@ count, not on the size of the union. So roughly 259 of the 278 calls are
 merge-triggered rebuilds.
 
 `poa::consensus` already delegates to `spoars`' `SimdEngine`, so the lever is the
-**number of calls**, not the cost of one. The `> 50` threshold is an existing
-reference knob and the natural next measurement --- the same shape as the
-`delta_len` sweep, trading accuracy for runtime and scored rather than guessed.
+**number of calls**, not the cost of one.
+
+#### Per-call POA speed is a closed door --- isONcorrect already proved it
+
+Do not reopen the library question. isONcorrect hit the same bottleneck and
+settled it on measurement (`isONcorrect/PORTING.md`, "candidate" table): `spoars`
+2.83s and byte-identical on 2 682 real intervals; `abpoa-rs` **calls `exit(1)`
+from inside the C library** in both local and global mode; `poa-consensus` 32.7s
+(**11.6x slower**) and agreeing on only 62%; `poasta` has no consensus API at all.
+That file's conclusion is verbatim that `run_spoa`'s 20% is "not addressable by
+swapping libraries", and that a native POA would mean beating both spoa and abPOA
+at their own game. Hoisting the engine into a thread-local was also measured and
+worth nothing: the time is in the DP, and `spoars`' DP is already vectorised with
+real NEON kernels.
+
+#### But the two ports have differently shaped POA problems
+
+| | isONcorrect | isONform |
+|---|---|---|
+| call sites | 1 (`corrections.rs:112`) | 2 --- per group, **plus one per merge** |
+| calls | 11 775 | 278, for 19 groups |
+| time per call | **1.80ms** | **206ms** |
+| POA input | ~107 seqs x **61bp** intervals | `<=200` seqs x **full-length reads** |
+
+isONcorrect POAs short correction intervals, so its per-call cost was already at
+the floor and the library was the only conceivable lever --- which is why that
+investigation ended where it did. isONform POAs whole reads, 114x dearer per call,
+and calls POA 14x more often than it has groups.
+
+So isONform has two levers isONcorrect never had, and **both are existing
+reference parameters rather than method changes**:
+
+1. the `> 50` threshold, which decides how many of the ~259 merge-triggered
+   rebuilds happen at all;
+2. `max_seqs_to_spoa = 200`, since POA cost grows with the sequence count.
+
+Both sweep like `delta_len` did --- runtime against accuracy, scored rather than
+guessed --- and both attack the 77% instead of the 16.6%.
 
 This also corrects the reasoning that sent the last stretch of work at the
 aligner. The "merge is 92% of wall clock" figure was right; the inference that the
