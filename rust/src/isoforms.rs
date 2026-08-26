@@ -37,24 +37,47 @@ pub trait IsoformEngine {
     fn align_merge(&mut self, s1: &[u8], s2: &[u8]) -> (Vec<CigarOp>, Vec<u8>, Vec<u8>);
 }
 
+/// Nanoseconds spent inside consensus building and inside pairwise alignment.
+///
+/// The `merge` stage timer covers both `generate_all_consensuses` (partial-order
+/// alignment) and `merge_consensuses` (the pairwise scan), and on
+/// `sirv_sim_gene`'s critical-path batch that stage is 94% of the wall clock. A
+/// faster pairwise aligner only helps to the extent the second of the two
+/// dominates, so the two are timed apart rather than argued about.
+pub static POA_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static ALIGN_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static POA_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static ALIGN_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn add(c: &std::sync::atomic::AtomicU64, n: u64) {
+    c.fetch_add(n, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// The real thing: [`crate::poa`] and [`crate::parasail`].
 #[derive(Debug, Default)]
 pub struct SpoaParasailMerge;
 
 impl IsoformEngine for SpoaParasailMerge {
     fn spoa(&mut self, seqs: &[&[u8]]) -> Vec<u8> {
-        crate::poa::consensus(seqs)
+        let t = std::time::Instant::now();
+        let out = crate::poa::consensus(seqs)
             .map(|s| s.into_bytes())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        add(&POA_NS, t.elapsed().as_nanos() as u64);
+        add(&POA_CALLS, 1);
+        out
     }
 
     fn align_merge(&mut self, s1: &[u8], s2: &[u8]) -> (Vec<CigarOp>, Vec<u8>, Vec<u8>) {
+        let t = std::time::Instant::now();
         let sc = crate::parasail::Scoring::MERGE;
         let aln = crate::wfa::enabled()
             .then(|| crate::wfa::semiglobal(s1, s2, sc))
             .flatten()
             .unwrap_or_else(|| crate::parasail::semiglobal(s1, s2, sc));
         let (a, b) = crate::align::ops_to_seq(&aln.ops, s1, s2).unwrap_or_default();
+        add(&ALIGN_NS, t.elapsed().as_nanos() as u64);
+        add(&ALIGN_CALLS, 1);
         (aln.ops, a, b)
     }
 }

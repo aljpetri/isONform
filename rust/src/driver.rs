@@ -336,7 +336,7 @@ pub fn run_batch(
         eprintln!(
             "stage-times batch={} reads={} nodes_pre={} nodes_post={} edges_pre={} \
              edges_post={} groups={} | intervals={:.2}s graph={:.2}s \
-             simplify={:.2}s grouping={:.2}s merge={:.2}s total={:.2}s | pre(b={} m={} lin={} orph={}) post(b={} m={} lin={} orph={}) share(reg={} look={} hit={})",
+             simplify={:.2}s grouping={:.2}s merge={:.2}s total={:.2}s | pre(b={} m={} lin={} orph={}) post(b={} m={} lin={} orph={}) share(reg={} look={} hit={}) | merge-split(poa={:.2}s/{} calls align={:.2}s/{} calls other={:.2}s)",
             batch_id,
             reads.len(),
             nodes_pre,
@@ -360,7 +360,23 @@ pub fn run_batch(
             prof_post.3,
             crate::graph_build::REGISTRATIONS.load(std::sync::atomic::Ordering::Relaxed),
             crate::graph_build::LOOKUPS.load(std::sync::atomic::Ordering::Relaxed),
-            crate::graph_build::HITS.load(std::sync::atomic::Ordering::Relaxed)
+            crate::graph_build::HITS.load(std::sync::atomic::Ordering::Relaxed),
+            {
+                use std::sync::atomic::Ordering::Relaxed;
+                isoforms::POA_NS.load(Relaxed) as f64 / 1e9
+            },
+            isoforms::POA_CALLS.load(std::sync::atomic::Ordering::Relaxed),
+            {
+                use std::sync::atomic::Ordering::Relaxed;
+                isoforms::ALIGN_NS.load(Relaxed) as f64 / 1e9
+            },
+            isoforms::ALIGN_CALLS.load(std::sync::atomic::Ordering::Relaxed),
+            {
+                use std::sync::atomic::Ordering::Relaxed;
+                let acc = (isoforms::POA_NS.load(Relaxed) + isoforms::ALIGN_NS.load(Relaxed))
+                    as f64 / 1e9;
+                (t_merge - acc).max(0.0)
+            },
         );
         eprintln!(
             "tolerant-lookup rescued={}",

@@ -2890,6 +2890,55 @@ same one --- and the 902 suboptimal alignments have a known, unwritten fix (an
 exact DP over the `<=50`-base dangles) that would likely recover most of the loss.
 Turning it on by default is a decision to take after that, not before.
 
+### Finding 42 --- the bottleneck is POA, not pairwise alignment
+
+Profiling `sirv_sim_gene` (point 3 of the plan) because a 4.5x aligner bought
+only 6% there. The corpus has 7 clusters and the driver gives each its own thread
+(`n_threads = min(--t, instances)`), so **wall clock is the slowest cluster, not
+the sum**. Cluster 0 is the largest (2 242 reads, 3 sequential 1 000-read
+batches), and its first batch is the critical path.
+
+The per-cluster `stderr.txt` that would have carried `ISONFORM_STAGE_TIMES` is
+deleted by `remove_folders` at the end of a parallel run, so this was measured by
+splitting cluster 0 exactly as the driver does (`max_seqs = 1000`, file order) and
+running `main` on each batch directly.
+
+```text
+WFA2 off  intervals=2.30 graph=0.25 simplify=1.88 grouping=0.05 merge=69.59 total=74.10
+          merge-split(poa=57.30s/278 calls  align=12.28s/2119 calls  other=0.01s)
+WFA2 on   intervals=2.31 graph=0.27 simplify=3.20 grouping=0.05 merge=55.16 total=61.02
+          merge-split(poa=49.99s/252 calls  align= 5.17s/1854 calls  other=0.01s)
+```
+
+The merge stage is 94% of the batch --- so "the merge dominates" was right. But
+inside it, **POA is 82% of the stage and 77% of the whole batch**, at ~206ms per
+call, while the pairwise alignment WFA2 replaces is 16.6% at ~5.8ms per call.
+
+That is a hard Amdahl ceiling: an *infinitely fast* pairwise aligner removes
+12.28s of 74.10s, **16.6%**. WFA2 takes 2.4x on that slice (12.28s -> 5.17s),
+worth 9.6% of the batch. The remaining apparent gain is not a speedup --- POA fell
+57.30s -> 49.99s only because 26 fewer POA calls happened (278 -> 252) as a side
+effect of the flipped merge verdicts.
+
+#### Where 278 POA calls come from, for 19 groups
+
+`generate_all_consensuses` runs spoa once per multi-read group. Then **every
+successful merge** calls `generate_new_full_consensus`, which rebuilds a full POA
+from the union of both groups' raw reads (up to `max_seqs_to_spoa = 200`), guarded
+only by `if groups[pos2].1.len() > 50` --- a check on the target group's read
+count, not on the size of the union. So roughly 259 of the 278 calls are
+merge-triggered rebuilds.
+
+`poa::consensus` already delegates to `spoars`' `SimdEngine`, so the lever is the
+**number of calls**, not the cost of one. The `> 50` threshold is an existing
+reference knob and the natural next measurement --- the same shape as the
+`delta_len` sweep, trading accuracy for runtime and scored rather than guessed.
+
+This also corrects the reasoning that sent the last stretch of work at the
+aligner. The "merge is 92% of wall clock" figure was right; the inference that the
+merge's time was therefore *pairwise alignment* was never checked, and it was
+wrong by a factor of five.
+
 ## Method
 
 Carried over from the isONcorrect port. The full version, with the measurements behind each point, is
