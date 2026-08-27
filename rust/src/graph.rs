@@ -57,6 +57,14 @@ pub enum NodeKey {
     Source,
     Sink,
     Interval { start: u32, end: u32, r_id: u32 },
+    /// Identity by **content**: a hash of the interval's flanking minimizer pair
+    /// `(m1, m2)`, used when `ISONFORM_PAIR_NODES=1`.
+    ///
+    /// The `Interval` key is per-read coordinates, which makes node identity
+    /// depend on coordinate drift, on read order, and on file position --- moving
+    /// two reads from the front of a file to the end changes the graph from 26 507
+    /// nodes to 500 (finding 48). A pair hash depends on none of those.
+    Pair { h: u64 },
 }
 
 impl fmt::Display for NodeKey {
@@ -66,6 +74,7 @@ impl fmt::Display for NodeKey {
             NodeKey::Sink => f.write_str("t"),
             // `str(a) + ", " + str(b) + ", " + str(c)` in the reference.
             NodeKey::Interval { start, end, r_id } => write!(f, "{start}, {end}, {r_id}"),
+            NodeKey::Pair { h } => write!(f, "p{h:016x}"),
         }
     }
 }

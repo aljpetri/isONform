@@ -178,6 +178,99 @@ pub struct BatchIntervals {
 ///
 /// `reads` must be in ascending `r_id` order: the reference iterates
 /// `sorted(reads)` and `graph_id` is assigned in that order.
+/// Reads whose base composition is a sharp outlier against their own batch, when
+/// too few of them exist to be a sub-population.
+///
+/// # What this is for
+///
+/// Finding 47: **two reads of 1 000** took the degenerate instance from 500 nodes
+/// to 20 421. Both sat at 55--56% AT where the other 998 were 83--84%. They are
+/// not merely unusual reads --- WIS weights are `(support - 1) * span` computed over
+/// the whole batch, so a read whose k-mers belong to different sequence perturbs
+/// the support values every *other* read's tiling depends on, and each read then
+/// selects intervals a few bases off from what was registered for it.
+///
+/// # Why it is relative, and why the group-size rule exists
+///
+/// An absolute cut does not generalise: the *healthy* comparison set has **29**
+/// reads below 75% AT and builds a clean graph --- removing them makes it worse
+/// (548 -> 1 005 nodes), because 29 reads are enough to form their own structure.
+/// So the test is a robust z-score against the batch's own median and MAD, and it
+/// only fires when the outlier set is a small fraction of the batch.
+///
+/// # How much to trust this
+///
+/// **One instance.** It resolves that instance completely and is constrained by
+/// one counter-example, which is thin evidence for a general rule. Known risks:
+/// AT is a single axis and a drifting read could deviate some other way; the
+/// group-size fraction has no principled value; and a flagged read could be a
+/// genuine rare isoform, which is what isONform exists to find. Off by default
+/// for those reasons.
+///
+/// Flagged reads are reported as **skipped**, not silently discarded, so they stay
+/// visible in the output the reference already writes for reads that yield no
+/// intervals.
+///
+/// `ISONFORM_OUTLIER_Z` (default 0 = off) is the robust z threshold;
+/// `ISONFORM_OUTLIER_MAX_FRAC` (default 0.02) the largest flagged fraction that
+/// still counts as "not a sub-population".
+fn composition_outliers(reads: &[(u32, Vec<u8>)]) -> Vec<u32> {
+    let z_thresh: f64 = std::env::var("ISONFORM_OUTLIER_Z")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.0);
+    if z_thresh <= 0.0 || reads.len() < 20 {
+        return Vec::new();
+    }
+    let max_frac: f64 = std::env::var("ISONFORM_OUTLIER_MAX_FRAC")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.02);
+
+    let at: Vec<f64> = reads
+        .iter()
+        .map(|(_, s)| {
+            let n = s.iter().filter(|&&b| b == b'A' || b == b'T').count();
+            n as f64 / s.len().max(1) as f64
+        })
+        .collect();
+    let median = |v: &mut Vec<f64>| {
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        v[v.len() / 2]
+    };
+    let med = median(&mut at.clone());
+    // MAD, scaled to be comparable to a standard deviation.
+    let mut dev: Vec<f64> = at.iter().map(|x| (x - med).abs()).collect();
+    let mad = median(&mut dev) * 1.4826;
+    if mad <= 0.0 {
+        // A batch with no spread at all: fall back to a fixed window so a single
+        // wildly different read is still catchable.
+        let flagged: Vec<u32> = reads
+            .iter()
+            .zip(&at)
+            .filter(|(_, x)| (*x - med).abs() > 0.10)
+            .map(|((r, _), _)| *r)
+            .collect();
+        return if (flagged.len() as f64) <= max_frac * reads.len() as f64 {
+            flagged
+        } else {
+            Vec::new()
+        };
+    }
+    let flagged: Vec<u32> = reads
+        .iter()
+        .zip(&at)
+        .filter(|(_, x)| ((*x - med).abs() / mad) > z_thresh)
+        .map(|((r, _), _)| *r)
+        .collect();
+    // Too many to be outliers: they are a sub-population, and dropping them
+    // removes real structure.
+    if (flagged.len() as f64) > max_frac * reads.len() as f64 {
+        return Vec::new();
+    }
+    flagged
+}
+
 pub fn build_batch(
     reads: &[(u32, Vec<u8>)],
     w: usize,
@@ -187,10 +280,35 @@ pub fn build_batch(
     delta_len: i64,
     opts: WisOpts,
 ) -> BatchIntervals {
-    let mins = crate::anchors::minimizers_by_read(reads, w, k);
-    let db = crate::anchors::build(&mins, k, x_low, x_high, reads.len());
+    // Keep composition outliers out of the anchor database entirely: the damage
+    // they do is to the batch-wide support values, so excluding them from the
+    // support computation is the point, not excluding them from the output.
+    let outliers = composition_outliers(reads);
+    let kept: Vec<(u32, Vec<u8>)> = if outliers.is_empty() {
+        Vec::new()
+    } else {
+        reads
+            .iter()
+            .filter(|(r, _)| !outliers.contains(r))
+            .cloned()
+            .collect()
+    };
+    let effective: &[(u32, Vec<u8>)] = if outliers.is_empty() { reads } else { &kept };
+    if !outliers.is_empty() {
+        eprintln!(
+            "outlier-filter skipped={} of {} reads",
+            outliers.len(),
+            reads.len()
+        );
+    }
+
+    let mins = crate::anchors::minimizers_by_read(effective, w, k);
+    let db = crate::anchors::build(&mins, k, x_low, x_high, effective.len());
 
     let mut out = BatchIntervals::default();
+    // Flagged reads never reach the graph; the reference already has a channel for
+    // reads that yield nothing, so they are reported there rather than vanishing.
+    out.skipped.extend(outliers.iter().copied());
     let mut graph_id = 1u32;
 
     for (r_id, minimizers) in &mins {

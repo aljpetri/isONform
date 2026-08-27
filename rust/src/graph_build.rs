@@ -318,10 +318,31 @@ fn add_prior_read_infos(
         let (r, p1, p2) = (triple[0], triple[1], triple[2]);
         if r > r_id {
             REGISTRATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            prior.entry((r, p1 + k as u32, p2)).or_insert(node);
+            let key = (r, p1 + k as u32, p2);
+            // `or_insert` keeps the FIRST node to claim a key. When a different
+            // node wants the same `(read, start, stop)` the claim is silently
+            // dropped, and read `r` will later resolve that coordinate to
+            // whichever node got there first --- not necessarily its own interval's.
+            match prior.get(&key) {
+                Some(&first) if first != node => {
+                    CLAIM_COLLISIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+                Some(_) => {
+                    CLAIM_REPEATS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+                None => {
+                    prior.insert(key, node);
+                }
+            }
         }
     }
 }
+
+/// A key claimed by one node and then wanted by a *different* one. `or_insert`
+/// discards the second silently.
+pub static CLAIM_COLLISIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// The same node re-claiming a key it already holds. Harmless.
+pub static CLAIM_REPEATS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// Reproduces `generateGraphfromIntervals`.
 ///
@@ -414,6 +435,19 @@ pub fn generate_graph_from_intervals(
     // The reference only ever reports `len(alt_cyc_nodes.keys())`.
     let mut alt_cyc_keys: FxHashSet<NodeId> = FxHashSet::default();
     let (mut n_cycle, mut n_repeat, mut n_first) = (0usize, 0usize, 0usize);
+    // `ISONFORM_PAIR_NODES=1`: identify nodes by the interval's flanking minimizer
+    // pair rather than by `(read, start, stop)`.
+    //
+    // The coordinate key needs a *registration* step --- each new node writes an
+    // entry for every supporting read at that read's own coordinates --- and
+    // `or_insert` means the first writer wins. So node identity depends on read
+    // order and file position: the same two reads at the front of a file give
+    // 26 507 nodes, in place 20 421, at the end 500 (finding 48). A pair hash is
+    // order-independent, position-independent and needs no registration, and the
+    // reads already agree on pairs --- 332 distinct pairs across 29 403 intervals
+    // in the degenerate file.
+    let pair_nodes = std::env::var("ISONFORM_PAIR_NODES").ok().as_deref() == Some("1");
+    let mut by_pair: FxHashMap<u64, NodeId> = FxHashMap::default();
     // `is_repetitive` on its own, independent of which branch the interval then
     // takes. The `repeat_within_read` branch fires only when the interval is ALSO
     // already known, so a repetitive-but-unknown interval lands in `first_sight`
@@ -511,7 +545,28 @@ pub fn generate_graph_from_intervals(
                     MISS_DIST[bucket].fetch_add(1, Relaxed);
                 }
             }
-            let mut found = prior_read_infos.get(&info_tuple).copied();
+            // The pair hash: the interval starts at `p1 + k` and stops at `p2`,
+            // so the flanking minimizers are recoverable from the read itself.
+            let pair_hash = if pair_nodes {
+                let lo = (inter.start as usize).checked_sub(k);
+                let hi = inter.end as usize + k;
+                match (lo, hi <= read_seq.len()) {
+                    (Some(lo), true) => {
+                        use std::hash::{Hash, Hasher};
+                        let mut h = rustc_hash::FxHasher::default();
+                        read_seq[lo..inter.start as usize].hash(&mut h);
+                        read_seq[inter.end as usize..hi].hash(&mut h);
+                        Some(h.finish())
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            let mut found = match pair_hash {
+                Some(ph) => by_pair.get(&ph).copied(),
+                None => prior_read_infos.get(&info_tuple).copied(),
+            };
             if found.is_none() && lookup_tol > 0 {
                 let b = bucket_of(info_tuple.1);
                 'search: for bb in b.saturating_sub(1)..=b + 1 {
@@ -773,7 +828,11 @@ pub fn generate_graph_from_intervals(
                             original_support: true,
                         },
                     );
-                    add_prior_read_infos(&mut prior_read_infos, inter, r_id, n, k);
+                    if let Some(ph) = pair_hash {
+                        by_pair.insert(ph, n);
+                    } else {
+                        add_prior_read_infos(&mut prior_read_infos, inter, r_id, n, k);
+                    }
                     if want_index {
                         for triple in inter.occurrences.chunks_exact(3) {
                             let (r, p1, p2) = (triple[0], triple[1], triple[2]);
@@ -822,6 +881,12 @@ pub fn generate_graph_from_intervals(
         );
     }
     if std::env::var_os("ISONFORM_NODE_ORIGIN").is_some() {
+        use std::sync::atomic::Ordering::Relaxed;
+        eprintln!(
+            "claim-collisions distinct_node={} same_node={}",
+            CLAIM_COLLISIONS.load(Relaxed),
+            CLAIM_REPEATS.load(Relaxed)
+        );
         eprintln!(
             "repeat-scan intervals={n_intervals} repetitive={n_rep_seen} \
              ({:.2}%) reads_with_a_repeat={n_rep_reads}",

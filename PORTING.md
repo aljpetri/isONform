@@ -1434,7 +1434,37 @@ a full interval width, so an interval may attach to the *adjacent tile* --- exac
 the mis-assignment the skew bound exists to prevent, and the reason accuracy
 rather than node count has to pick the operating point.
 
-### Finding 47 --- SOLVED: two composition-outlier reads cause the whole degeneracy
+### Finding 47 --- two reads cause it, but their COMPOSITION is not why
+
+The heading first read "two composition-outlier reads cause the whole degeneracy".
+Half right. Two reads do cause it, and they are composition outliers --- but the
+composition is a **correlate, not the cause**, and a filter built on it would have
+been the tailored heuristic it looked like.
+
+The refutations, both measured after the filter was written:
+
+* **The anchor database barely changes.** With the two reads: 12 714 surviving
+  anchors, 1 699 264 occurrences. Without: 11 276 and 1 696 388. The 1 438 extra
+  anchors carry exactly 2.0 occurrences each, so every one is dropped by
+  `find_most_supported_span`'s `relevant.len() < 3` cut --- inert. The other 998
+  reads' support values are untouched, which kills the "corrupted support weights"
+  mechanism.
+* **Position is what matters.** The same 1 000 reads, only the two moved:
+
+| reads 240 + 426 placed | nodes | hit rate |
+|---|---|---|
+| at the **front** | **26 507** | 9.9% |
+| in place (240, 426) | 20 421 | 30.7% |
+| at the **end** | **500** | 98.7% |
+
+Identical reads, identical composition, a 53x spread in node count. Earlier is
+worse, which is the signature of `prior.entry(key).or_insert(node)` --- **first
+writer wins**. A read early in the file registers coordinate keys for every later
+read and claims them for its own nodes; the same read last claims nothing.
+
+So the fragility is in **node identity**, not in the reads. See finding 48.
+
+### Finding 47a --- what the two reads are, kept for the record
 
 Removing **two reads of 1 000** takes the degenerate instance from 20 421 nodes at
 a 30.7% node-sharing rate to **500 nodes at 98.7%** --- the healthy set is 548 at
@@ -1503,6 +1533,102 @@ to form a group. Here that flags exactly 2 of 1 000. It is cheap (base counting)
 needs no graph, and would have prevented a 40x node inflation and the 472s
 `simplify` stage that started this investigation. Not implemented; the threshold
 and the minimum-group-size rule both need scoring across corpora first.
+
+### Finding 48a --- WHY: the coordinate key is not unique, and `or_insert` drops the losers
+
+Findings 45--47 established *what* (two reads) and left *why* open. This is why.
+
+`add_prior_read_infos` claims keys with `prior.entry(key).or_insert(node)`, so the
+**first** node to claim a `(read, start, stop)` triple keeps it and every later
+claim by a *different* node is discarded in silence. Counting the discards:
+
+| | claims discarded (different node) | first-sight nodes |
+|---|---|---|
+| **fragmented** | **7 134 107** | 20 376 |
+| minus reads 240 + 426 | **3 292** | 370 |
+| healthy | 1 904 | 394 |
+
+**A 2 166x difference.** The coordinate key is not unique: one triple is wanted by
+many distinct nodes, and only the first gets it. A read that resolves such a key
+later lands on whichever node claimed it first --- not on the node for its own
+interval --- so it cannot attach to the good structure earlier reads built, and
+creates a fresh node instead.
+
+That answers the objection that this ought to be impossible: later reads *should*
+attach to earlier good nodes, and the reason they cannot is that the key they would
+use has already been taken by something else. It is a genuine graph-construction
+defect, not a property of the data.
+
+It also explains the position law exactly. Claims are made in read order, so two
+reads early in the file mis-claim keys for all 998 downstream reads (front: 26 507
+nodes), the same two in the middle mis-claim for the reads after them (20 421), and
+placed last they claim nothing anyone still needs (500).
+
+And it explains why content keys fix it: a pair hash cannot be mis-claimed, because
+the key means "this pair" rather than "this read's coordinates".
+
+### Finding 48 --- identify nodes by CONTENT, and the instance stops being degenerate
+
+`NodeKey::Interval { start, end, r_id }` is per-read coordinates, so it needs a
+registration step: each new node writes an entry for every supporting read at that
+read's own coordinates, via `or_insert`. That is three fragilities at once ---
+coordinate drift, read order, and file position (finding 47's 53x spread).
+
+`ISONFORM_PAIR_NODES=1` keys nodes on a hash of the interval's flanking minimizer
+pair instead. The interval starts at `p1 + k` and stops at `p2`, so the pair is
+recoverable from the read itself with no plumbing. No registration, no tolerance,
+no first-writer race, and order- and position-independent by construction. The
+floor is real: the degenerate file has only **332 distinct pairs** across 29 403
+selected intervals.
+
+| | coordinate-keyed | **pair-keyed** | chaining `tol=10` | drop the 2 reads |
+|---|---|---|---|---|
+| degenerate instance | 20 421 | **463** | 3 427 | 500 |
+| healthy instance | 548 | 524 | --- | --- |
+| droso FSM | 476 | **478** | 480 | --- |
+| droso runtime | 19.4s | **17.7s** | 18.4s | --- |
+| sirv_sim F1 / redund | 0.946 / 1.26 | 0.946 / **1.23** | 0.946 / 1.25 | --- |
+| sirv_real strict F1 | **0.735** | 0.729 | 0.718 | --- |
+| sirv_real lenient F1 | **0.884** | 0.880 | 0.880 | --- |
+| sirv_real identity | 0.9719 | **0.9746** | --- | --- |
+| sirv_real runtime | 128.8s | **112.8s** | 132.5s | --- |
+
+**44x fewer nodes on the degenerate instance, better than dropping the two reads
+that cause it**, droso marginally better, `sirv_sim_gene` identical with lower
+redundancy, and faster on all three corpora --- for 0.006 of `sirv_real` strict F1.
+Chaining costs 0.017 and is slower; the composition filter is a heuristic built on
+a correlate. This is the one that should be adopted.
+
+#### The key is incomplete: it needs the span
+
+Pair-only keying collapses intervals that share a minimizer pair but differ in
+span. Measured on the selected intervals: **332 distinct pairs but 566 distinct
+`(pair, span)`**, with 32% of pairs appearing at more than one span. The variation
+is drift-scale --- median 0, p90 4--5 bases --- which `delta_len = 5` already treats
+as mutually supporting, so collapsing *those* matches the reference. But the widest
+range for a single pair is **21 bases**, well above the tolerance, and merging
+those two is a real loss. The key should be `(m1, m2, span / delta_len)`.
+
+Exon structure is not at risk: an interval is a 40--80bp window, so a skipped exon
+changes *which pairs a read selects* --- its path through the graph --- rather than
+the span of one pair. Node identity does not carry exon differences and is not
+being asked to.
+
+Off by default pending a decision, for two reasons worth checking first:
+
+* **the graph oracles diff node *names* against reference dumps**, and these names
+  are `p{hash}` rather than `{start}, {end}, {r_id}`. They construct their own
+  options so they are unaffected while this is opt-in, but making it default needs
+  them switched to the coordinate key explicitly, exactly as finding 44's schedule
+  was handled;
+* a repeat within a read now maps to the same node, so `cycle_added` fires where
+  `is_repetitive` used to catch it. On these corpora that is 0--53 events and
+  harmless, but it is a behaviour change, not a no-op.
+
+The composition filter (`ISONFORM_OUTLIER_Z`, default 0 = off) stays in the tree
+unused. It works on the one instance it was built from and rests on a correlate;
+finding 47 is why it should not be trusted, and this finding is why it is not
+needed.
 
 ## Method
 
