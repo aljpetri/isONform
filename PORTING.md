@@ -3159,6 +3159,95 @@ are much more distinct from one another (profile Jaccard 0.132 against the
 fragmented set's 0.607) and still build a clean graph --- inverted, like every other
 discriminator tried here.
 
+#### Leave-one-out at fixed N: the poison IS localised
+
+Baseline block 251--500 is 2 155 nodes at 67.6%. Removing one 25-read chunk at a
+time, every run at N=225 so they are comparable to each other:
+
+| removed | nodes | hit rate |
+|---|---|---|
+| 251--275 ... 401--425 (7 chunks) | 2 130--2 145 | 67.6% |
+| **426--450** | **182** | **97.4%** |
+| 451--475 | 1 509 | 77.2% |
+| 476--500 | 1 487 | 77.6% |
+
+Removing 25 reads takes the block from 2 155 nodes to **182** --- cleaner than any
+250-read block measured anywhere. Seven of the ten chunks do nothing at all.
+
+Narrowing inside that chunk lands on one read:
+
+| removed from block 251--500 | nodes | hit rate |
+|---|---|---|
+| nothing (baseline) | **2 155** | 67.6% |
+| reads 426--437 (12) | 184 | 97.5% |
+| reads 426--430 (5) | 187 | 97.6% |
+| **read 426 only (1)** | **191** | **97.6%** |
+| reads 438--450 (13) | 1 800 | 74.2% |
+
+**A single read inflates a 250-read graph 11x**, 2 155 nodes to 191, and the hit
+rate goes 67.6% -> 97.6%. Independently confirmed from the other direction: read
+426 added *to* a clean 249-read population gives 3 410 nodes against a control of
+201.
+
+#### And at full scale the cause is concentrated too --- but in different reads
+
+Removing one 50-read chunk at a time from the whole file, N=950 throughout:
+
+| removed | nodes | hit rate |
+|---|---|---|
+| 1--50 ... 151--200 (4 chunks) | 20 367--20 401 | 27.1% |
+| **201--250** | **15 586** | **44.4%** |
+| 251--300 ... 451--500 (5 chunks) | 19 066--19 141 | ~31.8% |
+
+One chunk removes 4 835 nodes and lifts the hit rate from 30.7% to 44.4%; five
+give a small uniform ~1 300-node improvement each; four do nothing at all.
+
+Narrowing that chunk, still at full scale:
+
+| full 1 000 minus | nodes | hit rate |
+|---|---|---|
+| 201--225 | 20 407 | 28.9% |
+| **226--250** | **15 594** | **45.9%** |
+| 201--212 | 20 414 | 29.9% |
+| 213--225 | 20 416 | 29.8% |
+
+So the effect is concentrated at both scales --- but **in different reads**. Read
+426 dominates at N=250 and is irrelevant at N=1 000, where reads 201--250 dominate
+instead. Which reads poison depends on which other reads are present, which is
+what makes this a property of the population rather than of a read, and why the
+super-additivity above is not a paradox: poisoning is real, findable and localised,
+but not additive.
+
+#### The practical consequence: a diagnostic, not a fix
+
+Leave-one-out at fixed N reliably finds poisoners. That is genuinely useful for
+*analysis*. It cannot become a prefilter, for two independent reasons:
+
+1. identifying a poisoner requires building the graph --- the expensive thing a
+   filter would exist to protect; and
+2. the culprits change with batch composition, so a list learned on one batch does
+   not transfer.
+
+Together with the composition-screen result below, that leaves a scale-invariant
+node assignment (finding 46's chaining, or something like it) as the only
+intervention the evidence supports.
+
+#### A composition prefilter would not work
+
+Read 426's profile suggests screening reads on base composition, homopolymer
+length and duplicated k-mer count. Scanning all 1 000 reads for that profile
+(`AT<75%`, or `maxhp>=30`, or `>=20` duplicated 20-mers) flags **127 reads, split
+61/66 between the two halves** --- and one of those halves builds a 327-node graph.
+
+The single worst read by duplicated 20-mers is **read 981: 182 duplicates, five
+times read 426's 37 --- and it sits in the clean half**. Reads 134 and 459 have
+profiles nearly identical to 426 (max homopolymer 57 and 56, 37 and 36 duplicated
+20-mers, top 20-mer at 38 and 37 copies) and cause no trouble at all.
+
+So read 426's pathological composition is not what makes it a poisoner, and a
+composition screen would discard 127 reads to no benefit. Poisoners can only be
+identified by measurement --- leave-one-out at fixed N.
+
 **The root cause is not identified, and this is the honest end state.** What is
 established is a long list of what it is not --- scale, any single read, repeats,
 cycles, pair disagreement, tiling phase, transcript mixture, the anchor filters,
