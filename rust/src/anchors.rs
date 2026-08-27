@@ -185,6 +185,38 @@ pub fn build(
     db.map.retain(|_, partners| !partners.is_empty());
     db.singletons = singletons;
     db.too_abundant = too_abundant;
+    // `ISONFORM_ANCHOR_STATS=1`: what the two filters actually removed, and how
+    // abundant the survivors are. The graph fragments at some scale between 200
+    // and 400 reads on the `droso_deep` instance (finding 45) and both filters
+    // are read-count-dependent, so this is the place to look.
+    if std::env::var_os("ISONFORM_ANCHOR_STATS").is_some() {
+        let mut surviving = 0usize;
+        let mut occ_total = 0usize;
+        let mut occ_hist = [0usize; 6];
+        for partners in db.map.values() {
+            for occ in partners.values() {
+                surviving += 1;
+                occ_total += occ.len();
+                // Occurrences per surviving anchor, relative to the read count.
+                let r = occ.len() as f64 / n_reads.max(1) as f64;
+                let b = match r {
+                    x if x < 0.5 => 0,
+                    x if x < 0.9 => 1,
+                    x if x < 1.1 => 2,
+                    x if x < 1.5 => 3,
+                    x if x < 2.0 => 4,
+                    _ => 5,
+                };
+                occ_hist[b] += 1;
+            }
+        }
+        eprintln!(
+            "anchor-stats n_reads={n_reads} surviving={surviving} occ_total={occ_total} \
+             dropped(singleton={singletons} too_abundant={too_abundant}) \
+             occ/read(<0.5={} 0.5-0.9={} ~1={} 1.1-1.5={} 1.5-2={} >2={})",
+            occ_hist[0], occ_hist[1], occ_hist[2], occ_hist[3], occ_hist[4], occ_hist[5]
+        );
+    }
     db
 }
 

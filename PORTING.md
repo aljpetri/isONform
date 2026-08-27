@@ -3089,6 +3089,448 @@ is precisely finding 43's accuracy-losing configuration --- and the isoform orac
 builds its options from `Default`, so it would have silently run that one. The
 impl is written out by hand for this reason.
 
+### Finding 45 --- the degenerate instance is poisoned by SPECIFIC READS, not by scale
+
+**This heading was wrong until it was tested properly, and the correction matters.**
+The scale sweep below walks a *prefix* --- reads 1..N --- which conflates "more
+reads" with "reads 241+ happen to contain whichever reads cause this". Running
+disjoint 250-read blocks instead separates the two:
+
+| block of 250 | nodes | hit rate |
+|---|---|---|
+| 1--250 | 443 | 94.0% |
+| **251--500** | **2 155** | **70.7%** |
+| 501--750 | **209** | **97.2%** |
+| 751--1000 | **241** | 97.1% |
+
+Blocks 3 and 4 are the cleanest graphs measured anywhere in this file --- 209 and
+241 nodes at 97% --- from the same reads that collectively produce 20 421. So the
+degeneracy is **not** a function of batch size alone: at a fixed N=250 the
+composition of the block decides the outcome, from 209 nodes to 2 155.
+
+#### Read 426: poisons a 250-read batch, irrelevant at 1 000 --- and I got this wrong twice
+
+A **fixed-N** bisect (125 clean base + suspect subset + clean filler, always 250
+reads) converges monotonically on a single read:
+
+```text
+376-406  204   | 407-437  2959
+407-422  198   | 423-437  3327
+423-430  3326  | 431-437   201
+423-426  3327  | 427-430   199
+423-424  197   | 425-426  3383
+425-425  202   | 426-426  3410     <- read 426 alone
+```
+
+Read 426 added to 249 clean reads: **3 410 nodes against a control of 201**. It is
+a pathological read --- 1 592bp against a 1 335 median, **56% AT where the cluster
+is 83%**, a **57-base homopolymer**, and one 20-mer present **38 times** where
+typical reads have 0--6 duplicated 20-mers at all.
+
+**And removing it from the full 1 000 reads changes nothing: 20 440 nodes at 30.6%,
+against 20 421 at 30.7% with it.**
+
+So read 426 is a genuine poisoner of a 250-read population and *causally irrelevant*
+at 1 000. Both of the confident claims made about it in this session were wrong in
+opposite directions: first "the bisect found it, but the single-read control at
+N=101 shows nothing, so it is an artifact" (the control was simply too small ---
+the effect needs N >~ 250), then "one read causes the degeneracy" (asserted before
+running the full-scale removal, which refutes it). The lesson is the one this file
+keeps recording: state the mechanism only after the measurement that would falsify
+it.
+
+#### The effect is SUPER-ADDITIVE, and that is where the investigation stops
+
+| population | reads | nodes | hit rate |
+|---|---|---|---|
+| 501--1000 | 500 | **327** | 98.1% |
+| **1--500** | 500 | **7 054** | 52.2% |
+| 501--1000 + 251--500 | 750 | 2 382 | 89.5% |
+| full file | 1 000 | **20 421** | 30.7% |
+
+500 reads build a 327-node graph; the same file's other 500 build 7 054; together
+all 1 000 build 20 421. The whole is far worse than any part, and no part explains
+it. Mixing a degenerate population into a clean one degrades it *partially* (2 382
+at 750 reads) rather than either dominating or averaging.
+
+And the halves are not two different transcripts: **999 of 1 000 reads are
+ambiguous** between k-mer profiles built from each half. The *healthy* set's halves
+are much more distinct from one another (profile Jaccard 0.132 against the
+fragmented set's 0.607) and still build a clean graph --- inverted, like every other
+discriminator tried here.
+
+**The root cause is not identified, and this is the honest end state.** What is
+established is a long list of what it is not --- scale, any single read, repeats,
+cycles, pair disagreement, tiling phase, transcript mixture, the anchor filters,
+and every input-side statistic measured --- plus one sharp positive fact: the failure
+is **all-or-nothing per read**, with misses uniformly offset by a few bases along
+the whole read. A read joins the graph completely or duplicates it completely.
+
+The practical consequence is unchanged and does not depend on knowing why:
+node assignment by exact-coordinate dict lookup is fragile in a way that
+population-independent assignment would not be, chaining recovers 6x of it
+(finding 46), and the `sirv_real` strict metric is the gate any such change must
+pass.
+
+#### A bisect that looked conclusive and was not --- worth recording as a method trap
+
+Bisecting *inside* the bad block appeared to localise the cause to reads 424--427,
+and read 426 is a striking outlier: length 1 592 against a ~1 335 median, **56% AT
+where the cluster is 83%**, a **57-base homopolymer run**, and one 20-mer present
+**38 times**. A tidy story --- and false.
+
+Adding read 426, or any of 424--427, to a clean 100-read baseline changes nothing:
+130 nodes -> 130, hit rate 95.5% either way.
+
+The bisect ranked halves by nodes-per-read, and that statistic is dominated by N at
+small sizes --- *healthy* reads at N=5 give 17.6 nodes/read. As the bisect shrank
+the blocks every subset looked bad, so it followed noise. **Comparisons here are
+only valid at fixed N.** The equal-size block table above is sound; the bisect
+inside it was not, and read 426's odd composition is real but causally irrelevant.
+
+That also explains the earlier all-or-nothing observation without needing a
+population-convergence story: reads 241--250 **on their own** build 41 nodes at an
+86.5% hit rate, so they are perfectly capable of sharing with each other. They stop
+only in the presence of the wider batch.
+
+The original framing is kept below because the measurements are sound and the
+prefix sweep is still the cleanest demonstration that the *reads* are not
+individually defective --- it is what that sweep was taken to prove about scale
+that was wrong.
+
+### Finding 45 (as first written) --- the prefix sweep
+
+Point 4 of the plan: analyse, not fix. Finding 39 framed this as "the graph
+fragments on low-complexity clusters" and left nine dead hypotheses. The framing
+is wrong in two ways and the phenomenon is something else entirely.
+
+#### The headline: the same reads build a clean graph at N=200
+
+| N reads | fragmented nodes | hit rate | healthy nodes | hit rate |
+|---|---|---|---|---|
+| 100 | 123 | 96.0% | 214 | 94.2% |
+| 200 | **176** | **97.2%** | 277 | 96.2% |
+| 400 | 4 445 | 62.5% | 365 | 97.8% |
+| 600 | 9 719 | 45.1% | 416 | 98.3% |
+| 800 | 15 014 | 36.3% | 479 | 98.5% |
+| 1000 | **20 421** | **30.7%** | 548 | 98.7% |
+
+The "fragmented" reads are not defective. At 200 reads they build a 176-node
+graph with a 97.2% node-sharing rate --- healthier than the healthy set at the same
+scale. The collapse begins between 200 and 400 and is monotonic thereafter. The
+healthy set is **scale-invariant**: 96-98.7% at every N.
+
+The hits *saturate*: 5 445, 7 359, 7 955, 8 550, 9 027. Past N ~ 400 each further
+read contributes ~30 lookups and about **3** hits. A shared core forms early and
+later reads simply fail to join it.
+
+#### Two corrections to finding 39
+
+* **The length table misled.** It reported min-max --- healthy "1 322-3 788" against
+  fragmented "1 246-1 367" --- and concluded the healthy half was far more variable.
+  The distributions are the same to p95 (healthy median 1 340 / p95 1 370;
+  fragmented 1 335 / 1 360). Healthy merely carries 26 reads over 2 000bp, and
+  those are **not** concatemers: half-vs-half k-mer containment is median 0.000.
+* **"Low-complexity" does not hold at the scale the graph uses.** Distinct 15-mers
+  per base is **0.986 (healthy) / 0.988 (fragmented)** --- k-mers are essentially
+  unique *within* a read despite 82% AT and homopolymers. Repeated minimizers
+  within a read cannot be the mechanism.
+
+#### Eleven more hypotheses, dead
+
+| hypothesis | measurement | verdict |
+|---|---|---|
+| the long healthy reads are concatemers | half-vs-half containment median 0.000 | dead |
+| repeated k-mers within reads | 0.986 vs 0.988 distinct 15-mers per base | dead |
+| indels drive coordinate drift | 5.4 vs 5.8 indel events/pair; peak drift 5.3 vs 6.6 bases | dead |
+| reads differ in 5' start | offset median 0, p90 1-2, max 6-7 in **both** | dead |
+| `xmin` resolves differently | `xmin set to 40` in both | dead |
+| the dynamic `w` (`batch_window`) | only under `--set_w_dynamically`, not set | dead |
+| interval or support structure differs | 30/read, width ~40, support median 962 vs 967 | dead |
+| candidate count or WIS ambiguity | 1.72M vs 1.69M candidates; 87.4% vs 84.4% ambiguous | dead |
+| the abundance filter (`> 3 * n_reads`) | `too_abundant=0` at **every** N | dead |
+| the anchor DB changes shape at the transition | surviving anchors 4 923 -> 6 678 across N=200-400, smooth, while nodes go 176 -> 4 445 | dead |
+| coordinates stop agreeing across reads | distinct coords/read 3.46 vs 3.69; top-100 coords carry 47.2% vs 51.7% | dead |
+
+Every input-side statistic measured is the same in the two halves. The difference
+is not in the reads.
+
+#### Not repeats, not cycles --- measured at the three node-creating branches
+
+The natural hypothesis is that a repeated interval within a read gets attached to
+the wrong copy of a repeated node, closing a cycle, and the `cycle_added`
+heuristic then spends a read-private node routing around it --- cascading. It does
+not happen. `ISONFORM_NODE_ORIGIN` counts the three branches that create nodes:
+
+| | `cycle_added` | `repeat_within_read` | `first_sight` |
+|---|---|---|---|
+| **fragmented (degenerate)** | **0** | **0** | **20 376** |
+| healthy | 48 | 3 | 394 |
+
+And repeats within a read are absent, not merely unused. `is_repetitive` is the
+reference's own test --- two intervals in one read sharing an occurrence-set hash ---
+and it must be counted **independently of which branch the interval then takes**,
+because a repetitive-but-unknown interval falls through to `first_sight` and the
+`repeat_within_read` counter never sees it:
+
+| | intervals | repetitive | reads with a repeat |
+|---|---|---|---|
+| **fragmented** | 29 403 | **2 (0.01%)** | **1** |
+| healthy | 29 939 | 3 (0.01%) | 1 |
+
+Two repetitive intervals, in one read, out of 29 403 --- and the healthy graph has
+marginally more. Confirmed independently from the interval dumps: **0** duplicate
+`(start, stop)` pairs within any read and **0** overlapping selected intervals in
+either half.
+
+Every one of the 20 376 nodes comes from the `None` arm --- an interval no earlier
+read had registered. The degenerate instance never takes the cycle path or the
+repeat path at all, and the *healthy* graph is the only one that does. Three
+independent measurements agree: k-mers are ~98.7% unique within reads, finding
+39's self-alignment test found 0 of 30 reads self-aligning above 70%, and the miss
+distances are 1-20 bases (9 694 of them within 5) rather than the large offsets a
+distant repeat copy would produce.
+
+#### Bisected: the onset is N=241, and the failure is ALL-OR-NOTHING per read
+
+| N | nodes | hit rate | nodes added per read |
+|---|---|---|---|
+| 200 | 176 | 97.2% | --- |
+| 240 | **191** | 97.6% | 0.4 |
+| 241 | **220** | 97.2% | **29** |
+| 243 | 273 | 96.4% | ~27 |
+| 250 | 443 | 94.0% | ~25 |
+| 300 | 1 791 | 79.9% | ~27 |
+
+Node count looks like a ramp; the *marginal* cost is a cliff. Up to N=240 each
+extra read adds 0.4 nodes; from N=241 each adds ~27 --- and a read has ~28
+intervals. New reads stop sharing **anything**.
+
+`ISONFORM_TRACE_LOOKUP=<r_id>` prints every interval's lookup key, whether it hit,
+and the closest coordinate anyone registered for that read. It is unambiguous:
+
+```text
+read 100   hits=28  misses=0
+read 200   hits=28  misses=0
+read 241   hits=2   misses=26
+read 243   hits=1   misses=27
+read 247   hits=0   misses=28
+```
+
+A read either matches and hits every interval, or matches nothing. Read 245's
+misses are uniform --- every interval exactly 3 bases off at both ends:
+
+```text
+want=(47,74)   nearest_registered=(44,71)   dist=6
+want=(79,137)  nearest_registered=(76,134)  dist=6
+want=(137,169) nearest_registered=(134,166) dist=6
+```
+
+The arithmetic closes at full scale: 9 027 hits is 28 x ~322 reads, and 20 376
+nodes is ~28 x the other ~678. **About a third of the reads carry the graph and
+two thirds duplicate it wholesale.** In the healthy half essentially every read
+matches.
+
+This is the most useful fact found here, because it says what a fix must do: make
+a read's own coordinates agree with what was registered *for* that read. That is
+exactly what chaining does, which is why it recovers 6x (finding 46).
+
+#### What it is still NOT, after the bisect
+
+* **Not a threshold.** The candidate set is identical across the transition ---
+  read 100 offers WIS 1 739 candidates at both N=240 and N=250, selects the same
+  coordinates, and only the supports scale (223 -> 232). `find_most_supported_span`
+  drops pairs with `relevant.len() < 3`, an absolute cut, and the anchor DB grows
+  smoothly through the onset (surviving 5 389 -> 5 432, singletons 7 930 -> 7 919).
+* **Not pair disagreement.** Reads 241+ select 252 pairs of which **3** are not
+  already in the 1-240 set (1.2%).
+* **Not tiling phase.** The first-interval start distribution is the same in both
+  halves --- dominant start 34, ~40% of reads, 33 vs 44 distinct starts. Multi-phase
+  tiling is normal.
+* **Not sequence repeats.** Repeated 20-mers within reads: **healthy 46.8% of
+  reads (mean 6.6 positions, max 45 copies), fragmented 33.8% (3.5, 38)**. The
+  healthy half is the more repetitive one, as with every other axis tried.
+
+The remaining question is narrow and well posed: for a late read, the anchor
+database's recorded position for a pair and that read's own selected interval for
+the same pair disagree by a few bases. `add_prior_read_infos` registers `(r, p1+k,
+p2)` from the occurrence list, i.e. the read's *own* position, so the two should
+coincide. Why they do not is the open item, and the instrument that would settle it
+compares, for one missing interval, the anchor DB's position for the pair in that
+read against the read's own selected position for the same pair keyed by minimizer
+*sequence*.
+
+#### The causal chain has a missing link, and it is worth stating plainly
+
+A node is keyed `(read_id, start, stop)`. Read *r* hits only when some earlier
+read registered *r* at exactly those coordinates. Registration comes from the
+creating read's occurrence list, which records where each supporting read exhibits
+the same anchor pair --- so the natural reading is that a hit needs both reads to
+have **selected the same anchor pair**.
+
+That reading predicts the fragmented half should hit *often*, and it does not.
+An interval's `start` is `p1 + k` and its `stop` is `p2`, so the pair is
+recoverable from the read sequence as `seq[start-k..start]` and `seq[stop..stop+k]`
+with no plumbing. Doing that:
+
+| | distinct anchor pairs | median reads/pair | max | pairs used by >=100 reads |
+|---|---|---|---|---|
+| healthy | 370 | 3 | 974 | **36** |
+| fragmented | 332 | 2 | 983 | **36** |
+
+**Reads agree on pairs in both halves** --- the same small shared set, with an
+identical 36 pairs used by 100+ reads. Support is ~962/1000 in both, so the
+`delta_len` span filter admits nearly every read into nearly every occurrence
+list. Under those two facts the lookup should succeed for the fragmented half too,
+and it succeeds 30.7% of the time.
+
+So the mechanism above is **incomplete**, and the missing link is not identified.
+What is solid is narrower: the misses are 1-20 bases from a registered coordinate,
+selected intervals tile the read, interval selection is population-dependent (1
+read in 200 keeps an identical set between N=200 and N=300, median Jaccard 0.611),
+and the whole effect is scale-dependent with a sharp onset between 200 and 400
+reads while the healthy half is scale-invariant.
+
+A note on `is_repetitive`, since it bears on the repeat hypothesis: it is built on
+`occurrence_hash`, and the occurrence list is filtered per querying read by the
+`delta_len` span test in `find_most_supported_span`. So the hash is unique per
+`(read, interval)` almost by construction --- measured, 29 401 distinct hashes for
+29 403 intervals. The reference's within-read repeat detection is therefore close
+to **inert**, which is a better account of the ~0 repeat counts than "there are no
+repeats", even though the independent checks (0 duplicate coordinates, 0
+overlapping intervals, 98.7% k-mer uniqueness) do also say repeats are absent.
+
+That N-dependence is present in *both* halves, so it is not itself the fault. The
+healthy population re-converges on a mutually consistent selection at every scale;
+the fragmented one stops converging above ~200 reads. **Why one population
+converges and the other does not, given identical input statistics, is not
+established.** Note the coordinate dumps cannot settle it --- they carry
+coordinates, not minimizer identities, and agreement on *pairs* is the quantity
+that matters.
+
+Two further asymmetries, consistent with a consensus that is stable in one case
+and marginal in the other:
+
+* **order sensitivity** --- shuffling the fragmented reads moves 20 421 -> 16 348
+  nodes (hit rate 30.7% -> 44.6%); shuffling healthy moves 548 -> 584;
+* **context sensitivity** --- the same 1 000 fragmented reads give 20 421 nodes
+  standalone and **29 405** as batch 1 of a 2 000-read file.
+
+#### Why this matters for the fix finding 39 proposed
+
+It strengthens the case for co-linear chaining considerably. Chaining scores a
+read against the graph using its own anchors' order and spacing, so selection
+would no longer depend on population-wide support weights --- it would be
+**scale-invariant**, which is precisely the property the healthy set has and the
+fragmented set lacks. Finding 39 argued for chaining from the "one mechanism, two
+requirements" reading; this adds a measured reason.
+
+There is also a cheap operational lever, stated as an observation and not a
+recommendation: this instance is clean at batch sizes <= 200 and the pipeline uses
+`max_seqs = 1000`. Shrinking batches would avoid the degeneracy at the cost of
+more cross-batch merging, which is itself expensive.
+
+#### Instruments added
+
+`ISONFORM_ANCHOR_STATS` --- surviving anchors, what each filter dropped, and the
+occurrences-per-read histogram of the survivors.
+
+### Finding 46 --- co-linear chaining, and what it does to the degenerate instance
+
+Finding 45 established that the degenerate graph is built entirely from the
+first-sight branch: no cycles, no within-read repeats, reads simply never agreeing
+on interval coordinates while 94% of the misses have a registered coordinate
+within 20 bases. The exact lookup asks *"did somebody register this precise
+coordinate"*; what it should ask is *"does this read's sequence of anchors follow a
+path already in the graph"*.
+
+#### The formulation is one-dimensional, which is what makes it cheap
+
+No graph topology is needed. Registered coordinates for read `r` are positions
+**in read `r`**, and so are `r`'s own interval starts, so this is chaining on a
+line. Candidates for interval `i` are nodes whose registered coordinate for `r`
+lies within `tol`; a chain takes at most one per interval with registered
+coordinates strictly increasing in interval order. The DP maximises the number of
+chained intervals and, among those, minimises total offset --- roughly 30 intervals
+with a handful of candidates each, so the quadratic scan costs nothing.
+
+It consults the chain **only where the exact lookup missed**. Exact hits are
+zero-offset candidates and so cannot be lost, which is precisely how finding 39's
+tolerant lookup went wrong: it collapsed 20 421 -> 1 754 nodes but exact hits
+*fell*, 9 027 -> 8 106, because a greedy nearest match attaches a read to whichever
+copy is closest with no regard for order.
+
+`ISONFORM_CHAIN=<tol>`, default 0 (off).
+
+| config | nodes | exact hits | chained hits | first-sight |
+|---|---|---|---|---|
+| baseline | **20 421** | 9 027 | --- | 20 376 |
+| chain=5 | 6 425 | 8 991 | 14 176 | 6 236 |
+| chain=10 | **3 427** | 8 823 | 17 818 | 2 762 |
+
+**6x fewer nodes, and the exact hits hold** --- 8 823 against tolerant lookup's
+8 106 for a comparable collapse, so the monotonicity constraint is doing real work
+rather than merely loosening the match. Still well above the healthy graph's 548,
+so this is a large improvement and not a cure. Merge time is unchanged (~145s),
+because that stage is POA-bound rather than node-bound (finding 42).
+
+#### Scored on the corpora, which is the only validation that counts
+
+Finding 39 said this can be judged only against known truth, not node counts.
+
+| | default | chain=5 | chain=10 |
+|---|---|---|---|
+| degenerate instance nodes | 20 421 | 6 425 | **3 427** |
+| droso FSM | 476 | 475 | **480** |
+| droso genes / canonical | 443 / 0.983 | 446 / 0.982 | 446 / **0.985** |
+| sirv_sim_gene F1 | 0.946 | 0.946 | 0.946 |
+| sirv_sim redundancy | 1.26 | 1.28 | **1.25** |
+| sirv_real **strict** F1 | **0.735** | 0.701 | 0.718 |
+| sirv_real **lenient** F1 | 0.884 | **0.889** | 0.880 |
+| runtime droso/sim/real | 19.4/63.2/128.8s | 18.8/**58.4**/**119.5**s | 18.4/70.4/132.5s |
+
+A tradeoff, not a win: the degeneracy improves 6x and droso gains (+4 FSM, best
+canonical at tol=10), `sirv_sim_gene` is unmoved, and **`sirv_real` strict F1
+declines** by 0.017 (tol=10) to 0.034 (tol=5) while its lenient F1 is flat to
+better. **Off by default.**
+
+`sirv_real` strict is now the metric that three independent changes have all paid
+into --- WFA2 (finding 41), `rebuild=0` (finding 43) and chaining. It is the only
+corpus with real ONT reads scored against known transcripts by near-exact
+identity, so it is the strictest gate available and worth treating as the binding
+constraint on anything that moves node assignment or consensus content.
+
+#### Spacing: inert as a cost, effective as a bound
+
+Adding gap-difference to the DP's cost --- the obvious next increment --- turned out
+to be **exactly inert**. Identical chains at weights 0, 1, 4 and 8, at every
+tolerance from 10 to 80: same `chained_hits`, same `first_sight`, to the unit.
+
+Two arithmetic reasons, both of which should have been foreseen before writing it:
+
+* within a tolerance the skew `|d_i - d_j|` is bounded by `|d_i| + |d_j|`, the
+  per-candidate offset cost the DP already minimises, so it is near-redundant;
+* the objective maximises **count** first, so cost only ever breaks ties between
+  chains of the same length.
+
+As a **hard bound** it works, because rejecting a transition changes which chains
+exist rather than which of the equal-length ones wins. `ISONFORM_CHAIN_SPACING` is
+now the largest tolerated skew in bases, 0 meaning unbounded.
+
+| tol | max_skew | first-sight nodes | chained | cycles |
+|---|---|---|---|---|
+| 40 | unbounded | **467** | 21 104 | 114 |
+| 40 | 10 | 971 | 20 001 | 54 |
+| 40 | 5 | 1 935 | 18 926 | 139 |
+| 40 | 2 | 4 029 | 16 796 | 62 |
+| 10 | 2 | 5 673 | 14 796 | 7 |
+
+And widening the tolerance alone almost removes the degeneracy: **467 nodes at
+tol=40 against the healthy graph's 394**, from a baseline of 20 376. But tol=40 is
+a full interval width, so an interval may attach to the *adjacent tile* --- exactly
+the mis-assignment the skew bound exists to prevent, and the reason accuracy
+rather than node count has to pick the operating point.
+
 ## Method
 
 Carried over from the isONcorrect port. The full version, with the measurements behind each point, is

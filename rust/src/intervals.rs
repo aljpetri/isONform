@@ -267,6 +267,30 @@ pub fn build_batch(
             })
             .collect();
         let mut chosen = wis::solve(&flat, opts);
+        // `ISONFORM_TRACE_GRAPH_ID=<id>`: every candidate this read offered WIS,
+        // with the weight `(support - 1) * (span + eps)` that decided it, and
+        // whether WIS took it. Diffing one read's trace across two batch sizes
+        // shows exactly which candidate displaced which when the graph spirals
+        // (finding 45: the onset is between 240 and 250 reads).
+        if let Ok(want) = std::env::var("ISONFORM_TRACE_GRAPH_ID") {
+            if want.parse::<u32>() == Ok(graph_id) {
+                let taken: std::collections::HashSet<usize> = chosen.iter().copied().collect();
+                for (j, iv) in flat.iter().enumerate() {
+                    let span = iv.stop as f64 - iv.start as f64 + 0.0001;
+                    eprintln!(
+                        "trace gid={} cand={j} start={} stop={} span={} support={} \
+                         weight={:.1} taken={}",
+                        graph_id,
+                        iv.start,
+                        iv.stop,
+                        iv.stop - iv.start,
+                        iv.support,
+                        (iv.support as f64 - 1.0) * span,
+                        taken.contains(&j)
+                    );
+                }
+            }
+        }
         // `opt_indicies[::-1]` --- the caller reverses before looking them up.
         chosen.reverse();
 

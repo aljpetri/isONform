@@ -148,6 +148,145 @@ pub static HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 /// `(read, start bucket) -> [(start, end, node)]`, the tolerant lookup's index.
 type TolIndex = FxHashMap<(u32, u32), Vec<(u32, u32, NodeId)>>;
 
+/// Assign this read's intervals to existing nodes by **co-linear chaining**
+/// instead of an exact-coordinate dict hit.
+///
+/// # Why
+///
+/// Finding 45 measured that on the degenerate instance **every** one of 20 376
+/// nodes comes from the first-sight branch --- no cycles, no within-read repeats
+/// (2 repetitive intervals in 29 403). Reads simply never agree on interval
+/// coordinates, and 94% of the misses have a registered coordinate within 20
+/// bases. The exact lookup asks "did somebody register this precise coordinate";
+/// what it should ask is "does this read's sequence of anchors follow a path
+/// already in the graph".
+///
+/// Finding 39 tried the obvious weakening --- accept the nearest registered
+/// coordinate within a tolerance --- and rejected it: nodes collapsed 20 421 ->
+/// 1 754 but exact hits *fell*, 9 027 -> 8 106, because a greedy nearest match
+/// attaches a read to whichever copy happens to be closest with no regard for
+/// order. Chaining is that idea done properly: the assignment must be monotone in
+/// the read's own coordinates, so order and spacing disambiguate.
+///
+/// # The formulation
+///
+/// Registered coordinates for read `r` are positions **in read `r`**, and so are
+/// the read's own interval starts, which makes this a one-dimensional chaining
+/// problem rather than anything to do with graph topology. Candidates for
+/// interval `i` are nodes whose registered coordinate for `r` is within `tol`;
+/// a chain picks at most one per interval such that registered coordinates
+/// strictly increase with interval order. Maximise the number of chained
+/// intervals, and among those minimise total cost.
+///
+/// # Cost has two halves: offset and spacing
+///
+/// Monotonicity alone is weak. It admits a chain whose nodes are in the right
+/// order but at the wrong *distances* --- exactly how a read gets pulled onto a
+/// subtly wrong node, and the likeliest source of the `sirv_real` strict loss in
+/// finding 46. So each transition also pays for **spacing disagreement**: the gap
+/// between two consecutive chained nodes' registered coordinates should match the
+/// gap between the read's own two interval starts. Since selected intervals tile
+/// the read (coverage 0.974, ~60% abutting), that gap is a strong signal ---
+/// consecutive tiles are ~40 bases apart, so a mismatched spacing is a real
+/// structural disagreement rather than drift.
+///
+/// It is a **hard bound**, not a tie-breaker. As a soft cost it was measured to
+/// be exactly inert: identical chains at weights 0, 1 and 8 for every tolerance
+/// tried. Two reasons, both arithmetic. Within a tolerance the skew
+/// `|d_i - d_j|` is bounded by the offset cost `|d_i| + |d_j|` the DP already
+/// minimises, so it is near-redundant; and the objective maximises *count* first,
+/// so cost only breaks ties among chains of equal length. A bound instead removes
+/// candidate transitions, which changes which chains exist at all.
+///
+/// `ISONFORM_CHAIN_SPACING` is the largest tolerated skew in bases, default 0
+/// meaning unbounded --- the monotonicity-only chain finding 46 measured.
+///
+/// Exact hits are zero-offset candidates, so they are never lost by chaining;
+/// the caller consults the chain only where the exact lookup missed.
+fn chain_assign(
+    starts: &[(u32, u32)],
+    r_id: u32,
+    tol_index: &TolIndex,
+    tol: u32,
+    bucket_span: u32,
+    max_skew: u32,
+) -> Vec<Option<NodeId>> {
+    let n = starts.len();
+    let mut cands: Vec<Vec<(u32, NodeId, u32)>> = vec![Vec::new(); n];
+    for (i, &(st_i, en_i)) in starts.iter().enumerate() {
+        let b = st_i / bucket_span;
+        for bb in b.saturating_sub(1)..=b + 1 {
+            if let Some(v) = tol_index.get(&(r_id, bb)) {
+                for &(st, en, nd) in v {
+                    if st.abs_diff(st_i) <= tol && en.abs_diff(en_i) <= tol {
+                        cands[i].push((st, nd, st.abs_diff(st_i) + en.abs_diff(en_i)));
+                    }
+                }
+            }
+        }
+        // Cheapest first, so ties in chain length resolve toward the closest.
+        cands[i].sort_by_key(|&(st, _, cost)| (cost, st));
+        cands[i].dedup_by_key(|&mut (st, nd, _)| (st, nd));
+    }
+
+    // dp[i][a] = best (count, -cost) for a chain ending at interval i with
+    // candidate a. `n` is ~30 and candidates per interval are few, so the
+    // quadratic scan is free.
+    let mut dp: Vec<Vec<(u32, u32, Option<(usize, usize)>)>> =
+        cands.iter().map(|c| vec![(1, 0, None); c.len()]).collect();
+    for i in 0..n {
+        for a in 0..cands[i].len() {
+            let (st_a, _, cost_a) = cands[i][a];
+            let mut best = (1u32, cost_a, None);
+            for j in 0..i {
+                for b in 0..cands[j].len() {
+                    let st_b = cands[j][b].0;
+                    if st_b >= st_a {
+                        continue; // must strictly increase
+                    }
+                    // Spacing: the registered coordinates must advance by about
+                    // the same amount the read's own interval starts do. Rejecting
+                    // the transition is what makes this bite --- as an added cost it
+                    // measured completely inert.
+                    let reg_gap = st_a - st_b;
+                    let own_gap = starts[i].0.saturating_sub(starts[j].0);
+                    let skew = reg_gap.abs_diff(own_gap);
+                    if max_skew > 0 && skew > max_skew {
+                        continue;
+                    }
+                    let (cnt, cost, _) = dp[j][b];
+                    let cand = (cnt + 1, cost + cost_a + skew, Some((j, b)));
+                    // More chained intervals wins; then less total offset.
+                    if cand.0 > best.0 || (cand.0 == best.0 && cand.1 < best.1) {
+                        best = cand;
+                    }
+                }
+            }
+            dp[i][a] = best;
+        }
+    }
+
+    let mut end: Option<(usize, usize)> = None;
+    let mut best = (0u32, u32::MAX);
+    for i in 0..n {
+        for a in 0..cands[i].len() {
+            let (cnt, cost, _) = dp[i][a];
+            if cnt > best.0 || (cnt == best.0 && cost < best.1) {
+                best = (cnt, cost);
+                end = Some((i, a));
+            }
+        }
+    }
+
+    let mut out = vec![None; n];
+    let mut cur = end;
+    while let Some((i, a)) = cur {
+        out[i] = Some(cands[i][a].1);
+        cur = dp[i][a].2;
+    }
+    out
+}
+
 /// Lookups rescued by `ISONFORM_LOOKUP_TOL` that the exact lookup missed.
 pub static TOL_HITS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub static REGISTRATIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -254,11 +393,37 @@ pub fn generate_graph_from_intervals(
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
     let bucket_of = |st: u32| st / (2 * lookup_tol.max(1) + 1);
+    // `ISONFORM_CHAIN=<tol>`: co-linear chaining for intervals the exact lookup
+    // misses. See `chain_assign`.
+    let chain_tol: u32 = std::env::var("ISONFORM_CHAIN")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    // Largest tolerated spacing disagreement, in bases. 0 = unbounded, i.e. the
+    // monotonicity-only chain finding 46 measured.
+    let chain_spacing: u32 = std::env::var("ISONFORM_CHAIN_SPACING")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1);
+    let index_span = 2 * lookup_tol.max(chain_tol).max(1) + 1;
+    let want_index = lookup_tol > 0 || chain_tol > 0;
     let mut tol_index: TolIndex = FxHashMap::default();
+    let mut chained_hits = 0usize;
     // old_node -> [(alternative node, its predecessor, the predecessor edge's length)]
     let mut alternative_nodes: FxHashMap<NodeId, Vec<(NodeId, NodeId, i64)>> = FxHashMap::default();
     // The reference only ever reports `len(alt_cyc_nodes.keys())`.
     let mut alt_cyc_keys: FxHashSet<NodeId> = FxHashSet::default();
+    let (mut n_cycle, mut n_repeat, mut n_first) = (0usize, 0usize, 0usize);
+    // `is_repetitive` on its own, independent of which branch the interval then
+    // takes. The `repeat_within_read` branch fires only when the interval is ALSO
+    // already known, so a repetitive-but-unknown interval lands in `first_sight`
+    // and would not otherwise be counted as a repeat at all.
+    let (mut n_rep_seen, mut n_rep_reads, mut n_intervals) = (0usize, 0usize, 0usize);
+    // Which ANCHOR PAIR each selected interval came from. `occurrence_hash` is
+    // the pair's occurrence list across all reads, so two reads that selected the
+    // same pair hash identically --- and a node hit requires exactly that. This
+    // is the quantity the coordinate dumps cannot show.
+    let mut pair_selectors: FxHashMap<u64, usize> = FxHashMap::default();
 
     // `seq` in the reference is function-scoped, so it survives both loops. That
     // is finding 9; `None` models the state before any branch has bound it, where
@@ -282,11 +447,39 @@ pub fn generate_graph_from_intervals(
         // in the reference too, so an empty interval list is skipped rather than
         // guessed at.
         let mut name: Option<NodeId> = None;
+        let mut read_had_repeat = false;
+        // One chain per read, computed against everything earlier reads
+        // registered for it. Indexed by the read's interval position.
+        let chain: Vec<Option<NodeId>> = if chain_tol > 0 {
+            let starts: Vec<(u32, u32)> = intervals_for_read
+                .iter()
+                .map(|iv| (iv.start, iv.end))
+                .collect();
+            chain_assign(
+                &starts,
+                r_id,
+                &tol_index,
+                chain_tol,
+                index_span,
+                chain_spacing,
+            )
+        } else {
+            Vec::new()
+        };
 
-        for inter in intervals_for_read {
+        // `enumerate` rather than a hand-rolled counter: the chain is indexed by
+        // the read's interval position, and a manual increment desyncs silently
+        // if a `continue` is ever added to this loop.
+        for (iv_idx, inter) in intervals_for_read.iter().enumerate() {
             let info_tuple = (r_id, inter.start, inter.end);
             let curr_hash = occurrence_hash(&inter.occurrences);
             let is_repetitive = read_hashes.contains(&curr_hash);
+            n_intervals += 1;
+            *pair_selectors.entry(curr_hash).or_insert(0) += 1;
+            if is_repetitive {
+                n_rep_seen += 1;
+                read_had_repeat = true;
+            }
             let this_len = inter.start as i64 - previous_end;
 
             if std::env::var_os("ISONFORM_SHARE_STATS").is_some() {
@@ -335,6 +528,42 @@ pub fn generate_graph_from_intervals(
                     }
                 }
             }
+            // `ISONFORM_TRACE_LOOKUP=<r_id>`: for one read, every interval's
+            // lookup key, whether it hit, and the closest coordinate anyone
+            // actually registered for this read. This is the direct observation of
+            // the rejection --- finding 45's missing link.
+            if std::env::var("ISONFORM_TRACE_LOOKUP")
+                .ok()
+                .and_then(|v| v.parse::<u32>().ok())
+                == Some(r_id)
+            {
+                let mut best = (u32::MAX, 0u32, 0u32);
+                for &(r, st, en) in prior_read_infos.keys() {
+                    if r != r_id {
+                        continue;
+                    }
+                    let d = st.abs_diff(inter.start) + en.abs_diff(inter.end);
+                    if d < best.0 {
+                        best = (d, st, en);
+                    }
+                }
+                eprintln!(
+                    "lookup r={r_id} iv={iv_idx} want=({},{}) hit={} \
+                     nearest_registered=({},{}) dist={}",
+                    inter.start,
+                    inter.end,
+                    found.is_some(),
+                    best.1,
+                    best.2,
+                    if best.0 == u32::MAX { -1 } else { best.0 as i64 }
+                );
+            }
+            if found.is_none() && chain_tol > 0 {
+                if let Some(nd) = chain.get(iv_idx).copied().flatten() {
+                    found = Some(nd);
+                    chained_hits += 1;
+                }
+            }
             let node = match found {
                 Some(prior) if !is_repetitive => {
                     // The interval is known from an earlier read and does not
@@ -357,6 +586,7 @@ pub fn generate_graph_from_intervals(
                             // and route the incoming edge through a read-private
                             // node instead.
                             alt_cyc_keys.insert(prior);
+                            n_cycle += 1;
                             g.remove_edge(previous_node, prior);
                             let alt = g.add_node(NodeKey::Interval {
                                 start: inter.start,
@@ -503,6 +733,7 @@ pub fn generate_graph_from_intervals(
                 Some(_) => {
                     // Known interval that *does* repeat within this read: give it
                     // a read-private node rather than closing a loop.
+                    n_repeat += 1;
                     leaked_seq = Some(read_seq);
                     let n = g.add_node(NodeKey::Interval {
                         start: inter.start,
@@ -525,6 +756,7 @@ pub fn generate_graph_from_intervals(
                 }
                 None => {
                     // `new_interval_action`: first time this interval is seen.
+                    n_first += 1;
                     leaked_seq = Some(read_seq);
                     let n = g.add_node(NodeKey::Interval {
                         start: inter.start,
@@ -542,13 +774,13 @@ pub fn generate_graph_from_intervals(
                         },
                     );
                     add_prior_read_infos(&mut prior_read_infos, inter, r_id, n, k);
-                    if lookup_tol > 0 {
+                    if want_index {
                         for triple in inter.occurrences.chunks_exact(3) {
                             let (r, p1, p2) = (triple[0], triple[1], triple[2]);
                             if r > r_id {
                                 let st = p1 + k as u32;
                                 tol_index
-                                    .entry((r, bucket_of(st)))
+                                    .entry((r, st / index_span))
                                     .or_default()
                                     .push((st, p2, n));
                             }
@@ -568,6 +800,10 @@ pub fn generate_graph_from_intervals(
             }
         }
 
+        if read_had_repeat {
+            n_rep_reads += 1;
+        }
+
         // Close the read's path at the sink.
         if let Some(last) = name {
             if !g.has_edge(last, t) {
@@ -579,6 +815,39 @@ pub fn generate_graph_from_intervals(
         }
     }
 
+    if chain_tol > 0 {
+        eprintln!(
+            "chain-stats tol={chain_tol} max_skew={chain_spacing} \
+             chained_hits={chained_hits}"
+        );
+    }
+    if std::env::var_os("ISONFORM_NODE_ORIGIN").is_some() {
+        eprintln!(
+            "repeat-scan intervals={n_intervals} repetitive={n_rep_seen} \
+             ({:.2}%) reads_with_a_repeat={n_rep_reads}",
+            100.0 * n_rep_seen as f64 / n_intervals.max(1) as f64
+        );
+        let mut mult: Vec<usize> = pair_selectors.values().copied().collect();
+        mult.sort_unstable();
+        let m = mult.len().max(1);
+        let sum: usize = mult.iter().sum();
+        let once = mult.iter().filter(|&&c| c == 1).count();
+        let many = mult.iter().filter(|&&c| c >= 100).count();
+        eprintln!(
+            "pair-agreement distinct_pairs={} selections={sum} \
+             median_reads_per_pair={} p90={} max={} \
+             pairs_chosen_by_one_read={once} ({:.1}%) pairs_chosen_by_100plus={many}",
+            mult.len(),
+            mult[m / 2],
+            mult[m * 9 / 10],
+            mult[m - 1],
+            100.0 * once as f64 / m as f64
+        );
+        eprintln!(
+            "node-origin cycle_added={n_cycle} repeat_within_read={n_repeat} \
+             first_sight={n_first}"
+        );
+    }
     let _ = alt_cyc_keys; // the reference only prints its length
     Ok((g, reads_for_isoforms))
 }
