@@ -314,9 +314,14 @@ score_corpus() {
         --transcriptome "$SIRV_TRANSCRIPTOME" \
         --expressed-from "$SIRV_SIM_FASTQ" "${specs[@]}"
       ;;
-    sirv_real)
+    sirv_real|sirv_real_deep)
       # Real SIRV: no per-read truth, so every reference transcript counts and
       # recall is a lower bound. Said out loud by the script itself.
+      #
+      # `sirv_real_deep` is the same data undownsampled --- 26 clusters, 99 631
+      # reads, deepest 46 437, nearly twice droso_deep's deepest --- and it is the
+      # only DEEP corpus with truth, so recall and redundancy are measurable at
+      # depth instead of only SQANTI categories.
       "$PY_BIN" "$REPO_ROOT/bench/accuracy_isoforms.py" \
         --transcriptome "$SIRV_TRANSCRIPTOME" "${specs[@]}"
       ;;

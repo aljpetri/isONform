@@ -89,6 +89,24 @@ pub struct BuildOpts {
     /// for graph ids that do not exist, and, for the ids that do, some other
     /// read's length.
     pub fix_sink_read_len: bool,
+    /// Identify nodes by the interval's flanking minimizer pair instead of by
+    /// `(read, start, stop)`. **On by default**; finding 48.
+    ///
+    /// The coordinate key is not unique, and `add_prior_read_infos` claims keys
+    /// with `or_insert`, so the first node to claim a triple keeps it and later
+    /// claims by different nodes are discarded --- 7 134 107 discards on the
+    /// degenerate instance against 1 904 on the healthy one. A read resolving such
+    /// a key lands on another node entirely and has to create a fresh one, which
+    /// is the whole degeneracy: 20 421 nodes against 463 with a content key.
+    ///
+    /// Set false for the reference's identity. [`BuildOpts::reference`] does, so
+    /// the graph oracle --- which diffs node *names* against reference dumps, and
+    /// these are `p{hash}` --- is pinned without needing to know about this.
+    ///
+    /// Overridable with `ISONFORM_PAIR_NODES=0|1`, read by the binaries only. The
+    /// env var deliberately does **not** reach `generate_graph_from_intervals`, so
+    /// it cannot unpin an oracle.
+    pub pair_nodes: bool,
 }
 
 impl Default for BuildOpts {
@@ -98,6 +116,7 @@ impl Default for BuildOpts {
             fix_stale_seq: true,
             fix_cycle_continuation: true,
             fix_sink_read_len: true,
+            pair_nodes: true,
         }
     }
 }
@@ -109,6 +128,7 @@ impl BuildOpts {
             fix_stale_seq: false,
             fix_cycle_continuation: false,
             fix_sink_read_len: false,
+            pair_nodes: false,
         }
     }
 }
@@ -446,7 +466,11 @@ pub fn generate_graph_from_intervals(
     // order-independent, position-independent and needs no registration, and the
     // reads already agree on pairs --- 332 distinct pairs across 29 403 intervals
     // in the degenerate file.
-    let pair_nodes = std::env::var("ISONFORM_PAIR_NODES").ok().as_deref() == Some("1");
+    // `opts` is the only authority here. The environment is read once, by the
+    // binaries, into `BuildOpts` --- the same rule as finding 44's POA schedule ---
+    // so a stray `ISONFORM_PAIR_NODES` in the environment cannot reach into the
+    // graph oracle and unpin it.
+    let pair_nodes = opts.pair_nodes;
     let mut by_pair: FxHashMap<u64, NodeId> = FxHashMap::default();
     // `is_repetitive` on its own, independent of which branch the interval then
     // takes. The `repeat_within_read` branch fires only when the interval is ALSO

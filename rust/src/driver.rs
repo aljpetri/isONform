@@ -82,6 +82,21 @@ pub struct RunParams {
     pub cigar_diversity_counts_runs: bool,
 }
 
+/// `ISONFORM_PAIR_NODES=0|1` applied to a base [`BuildOpts`].
+///
+/// Read here rather than inside `generate_graph_from_intervals` so the graph
+/// oracle, which asks for [`BuildOpts::reference`] explicitly, cannot be unpinned
+/// by a leftover environment variable.
+pub fn build_opts_from_env(base: BuildOpts) -> BuildOpts {
+    let mut o = base;
+    match std::env::var("ISONFORM_PAIR_NODES").ok().as_deref() {
+        Some("1") => o.pair_nodes = true,
+        Some("0") => o.pair_nodes = false,
+        _ => {}
+    }
+    o
+}
+
 /// `w` for one batch, reproducing `main:394-404`.
 ///
 /// A batch of exactly one read is not given a window at all --- the reference
@@ -468,7 +483,7 @@ impl Default for BugCompat {
     fn default() -> Self {
         Self {
             wis: WisOpts::default(),
-            build: BuildOpts::default(),
+            build: build_opts_from_env(BuildOpts::default()),
             batch_merge_no_op: false,
             batch_name_collision: false,
         cigar_diversity_counts_runs: false,
@@ -481,7 +496,7 @@ impl BugCompat {
     pub fn reference() -> Self {
         Self {
             wis: WisOpts::reference(),
-            build: BuildOpts::reference(),
+            build: build_opts_from_env(BuildOpts::reference()),
             batch_merge_no_op: true,
             batch_name_collision: true,
         cigar_diversity_counts_runs: true,
@@ -609,7 +624,7 @@ mod tests {
             delta_iso_len_3: 30,
             delta_iso_len_5: 50,
             wis: WisOpts::default(),
-            build: BuildOpts::default(),
+            build: build_opts_from_env(BuildOpts::default()),
             merge_delta_len: 5,
         cigar_diversity_counts_runs: false,
         }

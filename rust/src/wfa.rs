@@ -64,13 +64,22 @@ use crate::parasail::{Alignment, Scoring};
 /// not change a verdict. Not unbounded, because unbounded is degenerate (above).
 pub const FREE_ENDS: i32 = 50;
 
-/// Is WFA2 enabled at the hot sites? Off by default: it is 4.5x faster on the
-/// recorded calls but flips 2.19% of merge verdicts (5.09% of the merges), so it
-/// stays opt-in until an end-to-end score says that is harmless.
+/// Is WFA2 enabled at the hot sites? **On by default.**
+///
+/// 4.5x faster than parasail on the 54 884 recorded calls, and it flips 2.19% of
+/// merge verdicts (finding 41). End to end, with the finding-44 POA schedule and
+/// finding-48 node identity, that combination is **2.35x--3.74x faster than the
+/// coordinate-keyed parasail port** on the three corpora --- droso 24.9s -> 10.6s,
+/// sirv_sim_gene 107.8s -> 29.4s, sirv_real 220.1s -> 58.9s --- for one real
+/// accuracy cost: `sirv_real` strict F1 0.735 -> 0.711, of which 0.017 is WFA2's
+/// and 0.006 finding 48's.
+///
+/// `ISONFORM_WFA2=0` restores parasail. The known fix for the larger half of that
+/// cost is an exact DP over the `<=50`-base dangles (finding 41), not yet written.
 pub fn enabled() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| {
-        matches!(std::env::var("ISONFORM_WFA2").ok().as_deref(), Some("1") | Some("on"))
+        !matches!(std::env::var("ISONFORM_WFA2").ok().as_deref(), Some("0") | Some("off"))
     })
 }
 
@@ -103,8 +112,16 @@ impl Aligner {
         unsafe {
             // Each bound must not exceed its own sequence, or WFA2 aborts the
             // process with a diagnostic rather than returning an error.
-            let f1 = FREE_ENDS.min(s1.len() as i32);
-            let f2 = FREE_ENDS.min(s2.len() as i32);
+            //
+            // It must also leave a core that cannot be skipped. Clamping only to
+            // the length lets a short sequence be *entirely* free, and then the
+            // empty alignment costs nothing and wins --- finding 40's degeneracy,
+            // which a 20bp identical pair reproduced exactly (2 cigar ops instead
+            // of 1). Capping each bound at a third of its own sequence forces at
+            // least a third of both to align, so the empty path is unreachable at
+            // every length.
+            let f1 = FREE_ENDS.min(s1.len() as i32 / 3);
+            let f2 = FREE_ENDS.min(s2.len() as i32 / 3);
             sys::wavefront_aligner_set_alignment_free_ends(self.raw, f1, f1, f2, f2);
             sys::wavefront_align(
                 self.raw,
@@ -188,6 +205,28 @@ pub fn semiglobal(s1: &[u8], s2: &[u8], sc: Scoring) -> Option<Alignment> {
 
     extend_ends_over_matches(&mut cols, s1, s2);
     let ops = run_length_encode(&cols);
+
+    // Guard against the co-optimal offset. On periodic sequence a shift costs
+    // nothing, so WFA2 may align fewer columns for the same penalty and greedy
+    // extension cannot recover the full diagonal --- the shifted dangle is all `I`
+    // with no `D` to pair against (finding 40). Real reads are not periodic, but
+    // AT-rich ONT data comes close enough that a 20bp `ACGTACGT...` fixture
+    // reproduces it exactly: `4I16=4D` instead of `20=`.
+    //
+    // Rather than return a worse alignment, decline and let the caller use
+    // parasail. The test is coverage of the shorter sequence: a genuine
+    // semi-global alignment of two similar reads covers nearly all of it, while a
+    // shift covers `len - offset`.
+    let covered: usize = ops
+        .iter()
+        .filter(|&&(_, t)| t == b'=' || t == b'X')
+        .map(|&(n, _)| n)
+        .sum();
+    let min_len = s1.len().min(s2.len());
+    if covered * 10 < min_len * 9 {
+        return None;
+    }
+
     let score = score_ops(&ops, sc);
     Some(Alignment { score, cigar: crate::align::encode_cigar(&ops), ops })
 }
@@ -377,21 +416,72 @@ mod tests {
     }
 
     #[test]
-    fn a_periodic_sequence_admits_a_co_optimal_offset() {
+    fn a_periodic_sequence_is_declined_or_correct_never_worse() {
         // The limitation, recorded rather than hidden: when a shift costs nothing
         // because the sequence repeats, WFA2 may align fewer columns for the same
         // penalty, and extending the ends cannot recover the full diagonal --- the
-        // left dangle is all `I` with no `D` to pair against. parasail scores the
-        // full 400 here; this is the one shape where the two legitimately differ.
+        // left dangle is all `I` with no `D` to pair against. The coverage guard
+        // catches the bad ones and declines; whatever comes back must never be
+        // worse than the exact score.
         let s: Vec<u8> = (0..200u32).map(|i| b"ACGTTGCAAGCT"[(i as usize * 7) % 12]).collect();
-        let a = semiglobal(&s, &s, Scoring::BUBBLE).expect("aligns");
         let exact = crate::parasail::semiglobal(&s, &s, Scoring::BUBBLE);
         assert_eq!(exact.score, 400);
+        match semiglobal(&s, &s, Scoring::BUBBLE) {
+            None => {}
+            Some(a) => assert!(
+                a.score <= exact.score,
+                "never beat the exact score: {} vs {}",
+                a.score,
+                exact.score
+            ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod short_seq_tests {
+    use super::*;
+
+    /// Non-periodic, so a shift is not co-optimal.
+    fn seq(seed: u64, len: usize) -> Vec<u8> {
+        let mut x = seed | 1;
+        (0..len)
+            .map(|_| {
+                x ^= x >> 33;
+                x = x.wrapping_mul(0xff51afd7ed558ccd);
+                x ^= x >> 29;
+                b"ACGT"[(x >> 40) as usize % 4]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn short_pairs_align_completely_when_not_periodic() {
+        // Below 2 * FREE_ENDS the bounded ends-free mode can skip everything, so
+        // these are the lengths where the degeneracy would show.
+        for n in [12usize, 20, 30, 45, 60, 90] {
+            let s = seq(n as u64 + 7, n);
+            let a = semiglobal(&s, &s, Scoring::BUBBLE)
+                .unwrap_or_else(|| panic!("declined at length {n}"));
+            assert_eq!(a.cigar, format!("{n}="), "length {n}");
+            assert_eq!(a.score, 2 * n as i32);
+        }
+    }
+
+    #[test]
+    fn a_periodic_pair_is_declined_rather_than_answered_badly() {
+        // Period 4, so a 4-base shift is all-matches and costs nothing; WFA2
+        // returns `4I16=4D` and greedy extension cannot undo a whole-alignment
+        // shift. The coverage guard turns that into a decline, and the caller
+        // falls back to parasail --- which is why `simplify`'s smoke test, whose
+        // fixture is exactly this, still gets `20=`.
+        let s = b"ACGTACGTACGTACGTACGT";
         assert!(
-            a.score <= exact.score,
-            "WFA2 must never beat the exact score: {} vs {}",
-            a.score,
-            exact.score
+            semiglobal(s, s, Scoring::BUBBLE).is_none(),
+            "a co-optimal shift must be declined, not returned"
         );
+        // And the production path still answers correctly, via the fallback.
+        let exact = crate::parasail::semiglobal(s, s, Scoring::BUBBLE);
+        assert_eq!(exact.cigar, "20=");
     }
 }

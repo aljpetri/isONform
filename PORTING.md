@@ -1669,6 +1669,57 @@ unused. It works on the one instance it was built from and rests on a correlate;
 finding 47 is why it should not be trusted, and this finding is why it is not
 needed.
 
+### Finding 49 --- the current defaults, measured together
+
+Findings 41, 44 and 48 are all on by default: WFA2 at the two hot alignment sites,
+the consensus rebuilt once per group at the end rather than once per merge, and
+node identity by minimizer pair. A plain run with no environment set is this
+configuration.
+
+| | Python | port as first written | **defaults now** |
+|---|---|---|---|
+| droso | 49.0s | 24.9s | **11.4s** |
+| sirv_sim_gene | 354.8s | 107.8s | **30.0s** |
+| sirv_real | 241.0s | 220.1s | **59.6s** |
+| **deep-12 within-batch** | --- | **1 403s** | **179s** |
+| sirv_sim F1 / redundancy | 0.947 / 2.19 | 0.940 / 1.38 | **0.946 / 1.25** |
+| sirv_real strict F1 | 0.773 | 0.734 | 0.722 |
+| sirv_real lenient F1 | 0.892 | 0.873 | 0.862 |
+| sirv_real identity | 0.9697 | 0.9716 | **0.9742** |
+| droso FSM | 443 | 470 | 466 (**90%**) |
+| droso ISM / NIC | 14 / 29 | 12 / 30 | **9 / 26** |
+
+**2.2--3.7x faster than the port, up to 11.8x faster than Python, and 7.8x on the
+deep clusters** --- the 12 deepest `droso_deep` clusters (94 603 reads, 102 batches,
+deepest 25 493) go from 1 403s to 179s of within-batch work.
+
+The cost is `sirv_real`: strict F1 0.734 -> 0.722, lenient 0.873 -> 0.862. Down from
+0.711 before the short-sequence fix below, so roughly half of the earlier
+regression was a bug rather than a trade. What remains is WFA2's verdict flips,
+whose fix --- an exact DP over the `<=50`-base dangles (finding 41) --- is identified
+and unwritten. Everything else improves or holds: `sirv_sim_gene` beats the port on
+both F1 and redundancy, droso holds 90% FSM with fewer fragments and fewer NIC, and
+base identity on real SIRV is the best of the three.
+
+Each piece backs out on its own: `ISONFORM_WFA2=0`, `ISONFORM_PAIR_NODES=0`,
+`ISONFORM_MERGE_REBUILD_MAX=50 ISONFORM_FINAL_CONSENSUS=0`.
+
+#### A bug that only appeared when WFA2 became the default
+
+Below `2 * FREE_ENDS`, and on near-periodic sequence at any length, the bounded
+ends-free mode returns a **shifted** alignment: two identical 20bp sequences gave
+`4I16=4D` instead of `20=`. A shift costs nothing when the sequence repeats, and
+greedy end-extension cannot undo a whole-alignment offset --- the shifted dangle is
+all `I` with no `D` to pair against. Short bubbles were therefore aligning
+degenerately in every WFA2 run before this, including the first measurement of
+these defaults (`sirv_real` strict 0.711).
+
+Guarded by coverage: if the aligned core covers under 90% of the shorter sequence
+the layer **declines**, and the call site falls back to parasail. Declining is the
+right move --- a wrong alignment is worse than a slower one --- and it is what keeps
+`simplify`'s smoke test, whose fixture is `ACGTACGT...` and so exactly periodic,
+answering `20=`.
+
 ## Method
 
 Carried over from the isONcorrect port. The full version, with the measurements behind each point, is
@@ -1822,6 +1873,40 @@ trail; a reply is the place for the result.
    isONcorrect defects existed at all.
 
 ## Deferred improvements
+
+### Cross-batch merging needs a different method, not a faster aligner
+
+Measured on the 12 deepest `droso_deep` clusters --- 94 603 reads, 102 batches,
+deepest cluster 25 493 reads across 26 batches:
+
+| phase | elapsed |
+|---|---|
+| all within-batch work | **1 403s** (23 min) |
+| cross-batch merging | **~2.6 hours, unfinished** |
+
+Seven times the entire rest of the pipeline, on twelve clusters, and this was with
+parasail --- WFA2 is off by default and was not in the run. It would not rescue it
+either: the cost is the **structure**, `O(batch pairs x isoforms per batch^2)`
+all-vs-all, and finding 42 showed the merge stage is POA-dominated rather than
+alignment-dominated in the first place. A faster aligner moves a minority of a
+minority.
+
+Two directions worth trying before optimising anything inside the current loop,
+both from Kristoffer:
+
+* **stop doing all-vs-all.** The pairs that can merge are a tiny fraction of the
+  pairs examined (82% are rejected as structural), and the loop currently proves
+  that one alignment at a time. A method that proposes candidate pairs instead of
+  enumerating them changes the exponent, not the constant. `src/sketch.rs` was an
+  attempt and was parked for lacking a window guarantee, which is the right bar.
+* **merge more in the graph.** Anything merged before isoforms are emitted never
+  reaches the cross-batch stage at all. Cheaper than merging it afterwards, and it
+  attacks the redundancy the corpora already show.
+
+Not attempted. Recorded here because the measurement says the aligner and the POA
+schedule are both largely spent as levers on this stage, and the remaining gain has
+to come from doing fewer comparisons rather than faster ones.
+
 
 Spotted while porting, deliberately not acted on. Each needs its own commit, and the ones that
 change output need a measurement first.
