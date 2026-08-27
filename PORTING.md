@@ -1599,20 +1599,59 @@ redundancy, and faster on all three corpora --- for 0.006 of `sirv_real` strict 
 Chaining costs 0.017 and is slower; the composition filter is a heuristic built on
 a correlate. This is the one that should be adopted.
 
-#### The key is incomplete: it needs the span
+#### The span was tried in the key and measured worse
 
-Pair-only keying collapses intervals that share a minimizer pair but differ in
-span. Measured on the selected intervals: **332 distinct pairs but 566 distinct
-`(pair, span)`**, with 32% of pairs appearing at more than one span. The variation
-is drift-scale --- median 0, p90 4--5 bases --- which `delta_len = 5` already treats
-as mutually supporting, so collapsing *those* matches the reference. But the widest
-range for a single pair is **21 bases**, well above the tolerance, and merging
-those two is a real loss. The key should be `(m1, m2, span / delta_len)`.
+Pair-only keying merges intervals sharing a pair but differing in span, and the
+reference does draw that distinction: **332 distinct pairs against 566 distinct
+`(pair, span)`**, 32% of pairs appearing at more than one span, the widest range
+21 bases --- above `delta_len = 5`. So `(m1, m2, span / delta_len)` looked like the
+more faithful key. It is worse:
 
-Exon structure is not at risk: an interval is a 40--80bp window, so a skipped exon
-changes *which pairs a read selects* --- its path through the graph --- rather than
-the span of one pair. Node identity does not carry exon differences and is not
-being asked to.
+| | coordinate | **pair only** | pair + span |
+|---|---|---|---|
+| degenerate instance nodes | 20 421 | **463** | 544 |
+| healthy instance nodes | 548 | 524 | --- |
+| droso FSM | 476 | **478** | 477 |
+| sirv_sim F1 / redundancy | 0.946 / 1.26 | 0.946 / **1.23** | 0.946 / 1.30 |
+| sirv_real strict F1 | **0.735** | 0.729 | 0.732 |
+| sirv_real lenient F1 | 0.884 | 0.880 | **0.889** |
+| sirv_real identity | 0.9719 | **0.9746** | 0.9721 |
+| runtime droso/sim/real | 19.4/63.2/128.8s | **17.7/61.3/112.8s** | 20.2/68.9/152.9s |
+
+More nodes, higher redundancy, and **20--36% slower than the coordinate key**. The
+span spread is nearly all drift the reference already tolerates (median 0, p90
+4--5), so bucketing splits nodes that ought to merge; it bought only `sirv_real`
+lenient F1. Dropped.
+
+Exon structure is not at risk either way: an interval is a 40--80bp window, so a
+skipped exon changes *which pairs a read selects* --- its path through the graph ---
+not one pair's span. Node identity does not carry exon differences.
+
+#### The reference has this bug too
+
+Node counts before simplification, same inputs and parameters:
+
+| | Python reference | Rust port |
+|---|---|---|
+| fragmented | **18 771** nodes, 19 851 edges | 20 421 |
+| healthy | **503** nodes, 850 edges | 548 |
+| ratio | **37x** | 37x |
+
+Under `ISONFORM_BUG_COMPAT=all` (plus the finding-44 schedule pinned to the
+reference's) the port is **exact**, node for node and edge for edge:
+
+| | Python | port, bug-compat |
+|---|---|---|
+| fragmented | 18 771 / 19 851 | **18 771 / 19 851** |
+| healthy | 503 / 850 | **503 / 850** |
+
+So the degeneracy is the **reference's**, and the 8% gap in the default
+configuration is the port's own bug fixes, not a divergence.
+Fixing it by changing node identity is therefore a deliberate method change, not a
+port correction, and belongs under the same rule as findings 44 and 46. (The
+reference run then dies in `run_spoa`, which shells out to a `spoa` binary absent
+from the scratch copy --- an environment artifact at the simplify stage, after the
+count is taken.)
 
 Off by default pending a decision, for two reasons worth checking first:
 

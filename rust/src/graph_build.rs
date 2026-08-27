@@ -556,6 +556,18 @@ pub fn generate_graph_from_intervals(
                         let mut h = rustc_hash::FxHasher::default();
                         read_seq[lo..inter.start as usize].hash(&mut h);
                         read_seq[inter.end as usize..hi].hash(&mut h);
+                        // The span is deliberately NOT part of the key. It was
+                        // tried --- `span / delta_len`, to preserve the distinction
+                        // the reference draws between intervals whose spans differ
+                        // by more than the tolerance --- and measured worse on
+                        // nearly everything: 544 nodes against 463 on the
+                        // degenerate instance, redundancy 1.30 against 1.23, and
+                        // 20-36% slower than the coordinate key. 32% of pairs do
+                        // occur at multiple spans, but the spread is drift the
+                        // reference already tolerates (median 0, p90 4-5 bases),
+                        // so bucketing mostly splits nodes that should merge. It
+                        // bought only `sirv_real` lenient F1 (0.889, the best of
+                        // the three), which did not pay for the rest.
                         Some(h.finish())
                     }
                     _ => None,
