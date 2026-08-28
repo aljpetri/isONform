@@ -1874,7 +1874,60 @@ trail; a reply is the place for the result.
 
 ## Deferred improvements
 
-### Cross-batch merging needs a different method, not a faster aligner
+### Cross-batch merging: measured, filtered, and still the bottleneck
+
+`ISONFORM_MERGE_MINSHARE=<bases>` skips a pair when the co-linear chain of shared
+minimizer anchors implies an **indel larger than that**. Kristoffer's criterion,
+and the right one: what decides a merge is whether a structural difference exists,
+not how much sequence is shared. Two dead ends preceded it, both worth keeping ---
+
+* **a minhash sketch** (`src/sketch.rs`): no false-negative bound, only a rate
+  measured once. Parked on that basis.
+* **counting shared minimizers**: sound at every threshold and worth nothing.
+  Raising the count 15x moved the skip rate 10.5% -> 12.4%. Every isoform in a
+  cluster is from the same gene, so mergeable and non-mergeable pairs share nearly
+  all their minimizers. The count cannot see structure.
+
+Verified on cluster 74 of `droso_deep` (2 466 reads, 3 batches, ~202 isoforms), with
+every skipped pair aligned anyway and counted:
+
+| max chain indel | skipped | merges | false negatives |
+|---|---|---|---|
+| 5bp (`delta_len`) | 94.9% | 24 | **5** |
+| **30bp (`delta_iso_len_3`)** | **38.0%** | 27 | **0** |
+| 50bp (`delta_iso_len_5`) | 34.0% | 27 | 0 |
+| unbounded | 10.5% | 27 | 0 |
+
+X cannot be `delta_len`: minimizer sampling at `w = 10` is sparser than the indels
+the merge tolerates, so the measured offset jump overstates the true one and 5
+merges are lost. `delta_iso_len_3 = 30` is sound here and is a value the method
+already uses.
+
+On cluster 0 (25 493 reads, 26 batches, 3 466 isoforms):
+
+| | pairs seen | skipped | merges | isoforms out | wall |
+|---|---|---|---|---|---|
+| indel X=30 | 4 468 468 | 43.2% | **605** | 175 | **2 606s** |
+| chain-span x=50% | 4 519 493 | 71.4% | 583 | 176 | --- |
+
+The span variant skips more and **loses ~22 merges**; the indel criterion keeps
+more for less skipping. At ~1ms per alignment --- WFA2, far cheaper than the 17ms
+parasail figure this analysis started from --- unfiltered would be ~75 minutes, so the
+filter is worth about **1.8x**.
+
+#### But the real problem is upstream
+
+605 merges for 4.5M examined pairs, and the `iso_abundance >= 5` filter then
+removes 2 707 of the 2 883 survivors. The stage costs 43 minutes on one cluster to
+remove 17% of its isoforms, while a cheap abundance rule removes 78%.
+
+3 466 isoforms from 25 493 reads is **133 per 1 000-read batch**, and the
+cross-batch cost is quadratic in that number. Halving the isoforms per batch
+quarters this stage. So the lever is upstream: merge more in the graph, before
+isoforms are emitted, which is both cheaper and attacks the redundancy the corpora
+already measure. A faster aligner or a better prefilter only trims the constant.
+
+### Superseded note: cross-batch merging needs a different method
 
 Measured on the 12 deepest `droso_deep` clusters --- 94 603 reads, 102 batches,
 deepest cluster 25 493 reads across 26 batches:

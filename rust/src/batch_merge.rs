@@ -49,6 +49,222 @@ pub static PAIRS_ALIGNED: AtomicU64 = AtomicU64::new(0);
 pub static SKIPPED_WOULD_MERGE: AtomicU64 = AtomicU64::new(0);
 pub static MERGES: AtomicU64 = AtomicU64::new(0);
 
+/// Minimizer prefilter for the cross-batch merge: `(w, k)` and the shared-count
+/// threshold, all from the environment. `ISONFORM_MERGE_MINSHARE=0` (the default)
+/// disables it.
+///
+/// # Why a minimizer index rather than a sketch
+///
+/// The merge is `O(batch pairs x isoforms per batch^2)`: cluster 0 of `droso_deep`
+/// is 26 batches x 133 isoforms = 325 pairs x ~17 700 = **5.7M alignments**, tens
+/// of minutes on one core, and 82% of those pairs are rejected as structural. The
+/// loop proves that one full alignment at a time.
+///
+/// A minhash sketch was tried first and rejected for having no false-negative
+/// *bound* --- only a rate measured on one corpus. Minimizers do have one: any two
+/// sequences sharing an exact substring of length `>= w + k - 1` must share at
+/// least one minimizer. And the merge states its own floor, `similar_seq < 100`
+/// rejects outright, so the threshold is **derived** rather than tuned: a pair
+/// whose shared minimizer count is below what a 100bp shared region forces cannot
+/// clear the floor.
+///
+/// The guarantee is over *exact* substrings, while `similar_seq` tolerates
+/// mismatches, so a divergent-but-mergeable pair could in principle fall below the
+/// count. That is why `ISONFORM_MERGE_MINSHARE_VERIFY=1` exists: it aligns the
+/// skipped pairs anyway and counts how many would have merged, making the
+/// false-negative rate a measurement.
+fn minshare_config() -> Option<(usize, usize, usize)> {
+    static C: std::sync::OnceLock<Option<(usize, usize, usize)>> = std::sync::OnceLock::new();
+    *C.get_or_init(|| {
+        // Percent of the shorter consensus the co-linear chain must span.
+        let x: usize = std::env::var("ISONFORM_MERGE_MINSHARE")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        if x == 0 {
+            return None;
+        }
+        let w: usize = std::env::var("ISONFORM_MERGE_MINSHARE_W")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10);
+        let k: usize = std::env::var("ISONFORM_MERGE_MINSHARE_K")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(15);
+        Some((w, k, x))
+    })
+}
+
+/// The `(w, k)` minimizers of one sequence as `(hash, position)`, sorted by hash.
+///
+/// Positions are what make the filter useful. A *count* of shared minimizers
+/// cannot separate mergeable pairs from structural rejects: every isoform in a
+/// cluster is from the same gene, so both kinds share nearly all their minimizers.
+/// Measured on cluster 74, raising the count threshold from 8 to 120 moved the skip
+/// rate from 10.5% to 12.4% --- sound at every setting and worth almost nothing.
+///
+/// What decides the merge is *structure*: `parse_cigar_diversity_isoform_level`
+/// rejects a pair when an interior indel run exceeds `delta_len`. That shows up in
+/// the anchors as a **gap in the co-linear chain** --- shared minimizers whose
+/// offsets jump. Checking the chain approximates the merge's own test at anchor
+/// resolution, for the cost of a chain rather than a 909x909 DP.
+fn positional_minimizers(seq: &[u8], w: usize, k: usize) -> Vec<(u64, u32)> {
+    let mut v: Vec<(u64, u32)> = Vec::new();
+    if seq.len() < k {
+        return v;
+    }
+    let kmers: Vec<u64> = (0..=seq.len() - k).map(|i| hash_kmer(&seq[i..i + k])).collect();
+    if kmers.len() < w {
+        v.extend(kmers.iter().enumerate().map(|(i, &h)| (h, i as u32)));
+    } else {
+        let mut last = u32::MAX;
+        for (start, win) in kmers.windows(w).enumerate() {
+            let (off, &h) = win
+                .iter()
+                .enumerate()
+                .min_by_key(|(o, &h)| (h, *o))
+                .map(|(o, h)| (o, h))
+                .unwrap();
+            let pos = (start + off) as u32;
+            if pos != last {
+                v.push((h, pos));
+                last = pos;
+            }
+        }
+    }
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
+/// The largest indel implied by the anchor chain, in bases.
+///
+/// Anchors shared by both consensuses are matched by hash, chained co-linearly
+/// (positions increasing in both), and the **offset** `p2 - p1` is tracked along
+/// the chain. A jump in that offset between consecutive anchors *is* an indel of
+/// that size. The merge rejects a pair when an interior indel run exceeds its
+/// tolerance, so a pair whose chain already shows a jump larger than the tolerance
+/// cannot merge, and the full alignment is wasted work.
+///
+/// This is the right question, and it is not "how long is the chain". Chain length
+/// mixes two things --- how much sequence is shared, and how consistently --- and
+/// the shared amount does not discriminate: every isoform in a cluster is from the
+/// same gene, so mergeable and non-mergeable pairs share nearly all their
+/// minimizers. Measured: a shared-count threshold raised 15x moved the skip rate
+/// from 10.5% to 12.4%. What separates them is *structure*, which is exactly this
+/// offset jump.
+///
+/// Returns `u32::MAX` when there is no chain to speak of, so such a pair is
+/// skipped rather than silently admitted.
+fn max_chain_indel(a: &[(u64, u32)], b: &[(u64, u32)]) -> u32 {
+    // Merge join on the hashes; both sides are sorted by hash. A hash present
+    // several times yields every combination, so a repeated anchor can still chain
+    // at its correct copy.
+    let mut hits: Vec<(u32, u32)> = Vec::new();
+    let (mut i, mut j) = (0usize, 0usize);
+    while i < a.len() && j < b.len() {
+        match a[i].0.cmp(&b[j].0) {
+            std::cmp::Ordering::Less => i += 1,
+            std::cmp::Ordering::Greater => j += 1,
+            std::cmp::Ordering::Equal => {
+                let h = a[i].0;
+                let (si, sj) = (i, j);
+                while i < a.len() && a[i].0 == h {
+                    i += 1;
+                }
+                while j < b.len() && b[j].0 == h {
+                    j += 1;
+                }
+                for x in si..i {
+                    for y in sj..j {
+                        hits.push((a[x].1, b[y].1));
+                    }
+                }
+            }
+        }
+    }
+    if hits.len() < 2 {
+        return u32::MAX;
+    }
+    hits.sort_unstable();
+
+    // Greedy co-linear chain: keep an anchor when both positions advance. Ties and
+    // out-of-order copies of a repeat are dropped rather than allowed to fake a
+    // jump.
+    let mut chain: Vec<(u32, u32)> = Vec::with_capacity(hits.len());
+    for &(p1, p2) in &hits {
+        match chain.last() {
+            Some(&(q1, q2)) if p1 <= q1 || p2 <= q2 => {}
+            _ => chain.push((p1, p2)),
+        }
+    }
+    if chain.len() < 2 {
+        return u32::MAX;
+    }
+    // The offset along the chain; a change in it is an indel of that size.
+    let mut worst = 0u32;
+    for w in chain.windows(2) {
+        let (p1, p2) = w[0];
+        let (q1, q2) = w[1];
+        let d = ((q2 as i64 - q1 as i64) - (p2 as i64 - p1 as i64)).unsigned_abs() as u32;
+        worst = worst.max(d);
+    }
+    worst
+}
+
+/// The `(w, k)` minimizers of one sequence, as a sorted deduplicated hash list.
+fn minimizers(seq: &[u8], w: usize, k: usize) -> Vec<u64> {
+    if seq.len() < k + w {
+        // Too short for a full window: take every k-mer, which is a superset of
+        // any windowed choice and so cannot cause a false negative.
+        let mut v: Vec<u64> = (0..seq.len().saturating_sub(k - 1))
+            .map(|i| hash_kmer(&seq[i..i + k]))
+            .collect();
+        v.sort_unstable();
+        v.dedup();
+        return v;
+    }
+    let kmers: Vec<u64> = (0..=seq.len() - k).map(|i| hash_kmer(&seq[i..i + k])).collect();
+    let mut v = Vec::with_capacity(kmers.len() / w + 2);
+    for win in kmers.windows(w) {
+        // `min` per window is the minimizer; equal values collapse in the dedup.
+        v.push(*win.iter().min().unwrap());
+    }
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
+fn hash_kmer(kmer: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for &b in kmer {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    // One mix, so neighbouring k-mers do not land in neighbouring buckets.
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xff51afd7ed558ccd);
+    h ^ (h >> 29)
+}
+
+/// How many minimizers two sorted lists share.
+fn shared(a: &[u64], b: &[u64]) -> usize {
+    let (mut i, mut j, mut n) = (0usize, 0usize, 0usize);
+    while i < a.len() && j < b.len() {
+        match a[i].cmp(&b[j]) {
+            std::cmp::Ordering::Equal => {
+                n += 1;
+                i += 1;
+                j += 1;
+            }
+            std::cmp::Ordering::Less => i += 1,
+            std::cmp::Ordering::Greater => j += 1,
+        }
+    }
+    n
+}
+
 /// One isoform carried through batch merging: `Read(sequence, reads, merged)`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Isoform {
@@ -113,6 +329,20 @@ pub fn actual_merging_process<E: IsoformEngine>(
 
     // Work on indices: two batches are mutated per merge, so the borrow checker
     // wants the pair split rather than held.
+    // One minimizer list per isoform, computed once. Consensuses do not change
+    // during the merge --- the longer one survives unchanged and the shorter is
+    // marked merged --- so these stay valid for the whole pass.
+    let mins: Option<Vec<Vec<Vec<(u64, u32)>>>> = minshare_config().map(|(w, k, _)| {
+        batches
+            .iter()
+            .map(|(_, isos)| {
+                isos.iter()
+                    .map(|(_, iso)| positional_minimizers(&iso.sequence, w, k))
+                    .collect()
+            })
+            .collect()
+    });
+
     for i in 0..batches.len().saturating_sub(1) {
         for j in (i + 1)..batches.len() {
             // `sorted(id_dict.items(), key=lambda x: len(x[1].sequence))` ---
@@ -149,9 +379,38 @@ pub fn actual_merging_process<E: IsoformEngine>(
                     // cannot rest on a rate measured on one corpus. `crate::sketch`
                     // keeps the code and the reasoning; the merge does not use it.
                     PAIRS_SEEN.fetch_add(1, Ordering::Relaxed);
+
+                    // The prefilter: skip pairs that cannot clear the merge's own
+                    // 100bp shared-region floor. The threshold scales with the
+                    // shorter consensus, since a short one cannot host as many
+                    // minimizers as a long one even when it matches perfectly.
+                    let mut skipped = false;
+                    if let (Some((_, _, x)), Some(mins)) = (minshare_config(), mins.as_ref()) {
+                        // `x` is the largest indel the chain may imply, in bases.
+                        // Independent of consensus length: what decides a merge is
+                        // whether a structural difference exists, not how long the
+                        // sequences are. Natural values sit near the merge's own end
+                        // tolerances, `delta_iso_len_3 = 30` and
+                        // `delta_iso_len_5 = 50`.
+                        let worst = max_chain_indel(&mins[i][a], &mins[j][b]);
+                        if worst as usize > x {
+                            PAIRS_SKIPPED.fetch_add(1, Ordering::Relaxed);
+                            if std::env::var_os("ISONFORM_MERGE_MINSHARE_VERIFY").is_none() {
+                                continue;
+                            }
+                            // Verification mode: align anyway and count the
+                            // false negatives instead of hiding them.
+                            skipped = true;
+                        }
+                    }
+
                     PAIRS_ALIGNED.fetch_add(1, Ordering::Relaxed);
                     if !align_to_merge(engine, &long_seq, &short_seq, opts) {
                         continue;
+                    }
+                    if skipped {
+                        SKIPPED_WOULD_MERGE.fetch_add(1, Ordering::Relaxed);
+                        continue; // the filter's decision stands; only counted
                     }
                     MERGES.fetch_add(1, Ordering::Relaxed);
                     // The longer consensus survives unchanged; the shorter

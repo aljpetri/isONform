@@ -203,7 +203,42 @@ pub fn semiglobal(s1: &[u8], s2: &[u8], sc: Scoring) -> Option<Alignment> {
         return None;
     }
 
-    extend_ends_over_matches(&mut cols, s1, s2);
+    // Repair both ends with the exact DP rather than by extending through
+    // matches. `cols` is a column string over the whole of both sequences, so the
+    // dangles are the runs of pure `I`/`D` outside the aligned core.
+    let aligned = |c: u8| c == b'=' || c == b'X';
+    let first = cols.iter().position(|&c| aligned(c));
+    let last = cols.iter().rposition(|&c| aligned(c));
+    if let (Some(f), Some(l)) = (first, last) {
+        // How much of each sequence each region consumes.
+        let consumed = |seg: &[u8]| -> (usize, usize) {
+            let (mut a, mut b) = (0usize, 0usize);
+            for &c in seg {
+                match c {
+                    b'=' | b'X' => { a += 1; b += 1 }
+                    b'I' => a += 1,
+                    b'D' => b += 1,
+                    _ => {}
+                }
+            }
+            (a, b)
+        };
+        let (la, lb) = consumed(&cols[..f]);
+        let (ca, cb) = consumed(&cols[f..=l]);
+        let left = anchored_dp(&s1[..la], &s2[..lb], sc);
+        // The right dangle: anchored at its inner end, so reverse, solve, unreverse.
+        let (mut rx, mut ry) = (s1[la + ca..].to_vec(), s2[lb + cb..].to_vec());
+        rx.reverse();
+        ry.reverse();
+        let mut right = anchored_dp(&rx, &ry, sc);
+        right.reverse();
+        let mut rebuilt = left;
+        rebuilt.extend_from_slice(&cols[f..=l]);
+        rebuilt.extend(right);
+        cols = rebuilt;
+    } else {
+        extend_ends_over_matches(&mut cols, s1, s2);
+    }
     let ops = run_length_encode(&cols);
 
     // Guard against the co-optimal offset. On periodic sequence a shift costs
@@ -229,6 +264,98 @@ pub fn semiglobal(s1: &[u8], s2: &[u8], sc: Scoring) -> Option<Alignment> {
 
     let score = score_ops(&ops, sc);
     Some(Alignment { score, cigar: crate::align::encode_cigar(&ops), ops })
+}
+
+/// The dangle DP: align the unaligned ends *optimally* under parasail's scoring,
+/// instead of only extending through exact matches.
+///
+/// # Why greedy extension is not enough
+///
+/// WFA2 leaves a terminal stretch free whenever aligning it costs penalty, because
+/// penalty is all it can see. parasail is *paid* to align it: ten columns holding
+/// one mismatch earn `9 * 2 - 2 = +16` under MERGE, while WFA2 sees a cost of 4
+/// against 0 for leaving it out. Extending through exact matches recovers the
+/// clean case and halts at the first mismatch --- which is finding 41's 902
+/// suboptimal alignments, and the residual `sirv_real` cost of making WFA2 the
+/// default.
+///
+/// # The formulation
+///
+/// One end is **anchored** (flush against the aligned core) and the other is
+/// **free** (leading gaps cost nothing, since they are the sequence ends a
+/// semi-global alignment does not charge for). So this is a small affine-gap DP
+/// with `H[0][j] = H[i][0] = 0` and the answer forced at `H[a][b]`. Dangles are at
+/// most `FREE_ENDS` bases, so it is ~50x50 --- free next to the alignment it
+/// repairs.
+///
+/// Returns the column string for the dangle, outer free gaps included, so the ops
+/// still account for every base as `ops_to_seq` requires.
+fn anchored_dp(x: &[u8], y: &[u8], sc: Scoring) -> Vec<u8> {
+    let (a, b) = (x.len(), y.len());
+    if a == 0 || b == 0 {
+        // Nothing to align against: the whole dangle is one free gap.
+        let mut v = vec![b'I'; a];
+        v.extend(std::iter::repeat_n(b'D', b));
+        return v;
+    }
+    const NEG: i32 = i32::MIN / 4;
+    let idx = |i: usize, j: usize| i * (b + 1) + j;
+    let mut h = vec![0i32; (a + 1) * (b + 1)];
+    let mut e = vec![NEG; (a + 1) * (b + 1)];
+    let mut f = vec![NEG; (a + 1) * (b + 1)];
+    // Free start: skipping any prefix of either sequence is free.
+    for i in 0..=a {
+        h[idx(i, 0)] = 0;
+    }
+    for j in 0..=b {
+        h[idx(0, j)] = 0;
+    }
+    for i in 1..=a {
+        for j in 1..=b {
+            e[idx(i, j)] = (h[idx(i - 1, j)] - sc.open).max(e[idx(i - 1, j)] - sc.ext);
+            f[idx(i, j)] = (h[idx(i, j - 1)] - sc.open).max(f[idx(i, j - 1)] - sc.ext);
+            let d = h[idx(i - 1, j - 1)]
+                + if x[i - 1] == y[j - 1] {
+                    sc.match_score
+                } else {
+                    sc.mismatch
+                };
+            h[idx(i, j)] = d.max(e[idx(i, j)]).max(f[idx(i, j)]);
+        }
+    }
+    // Traceback from the anchored corner to wherever the free start began.
+    let mut cols: Vec<u8> = Vec::new();
+    let (mut i, mut j) = (a, b);
+    while i > 0 && j > 0 {
+        let cur = h[idx(i, j)];
+        let d = h[idx(i - 1, j - 1)]
+            + if x[i - 1] == y[j - 1] {
+                sc.match_score
+            } else {
+                sc.mismatch
+            };
+        if cur == d {
+            cols.push(if x[i - 1] == y[j - 1] { b'=' } else { b'X' });
+            i -= 1;
+            j -= 1;
+        } else if cur == e[idx(i, j)] {
+            cols.push(b'I');
+            i -= 1;
+        } else {
+            cols.push(b'D');
+            j -= 1;
+        }
+        // A free start was taken: the rest of both prefixes is unaligned.
+        if h[idx(i, j)] == 0 && (i == 0 || j == 0) {
+            break;
+        }
+    }
+    // Whatever prefix the DP declined to align is a free end gap.
+    let mut out = vec![b'I'; i];
+    out.extend(std::iter::repeat_n(b'D', j));
+    cols.reverse();
+    out.extend(cols);
+    out
 }
 
 /// Step 2: pull the aligned core outward through matching base pairs.

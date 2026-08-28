@@ -457,15 +457,88 @@ pub fn join_back_via_batch_merging(
     write_low_abundance: bool,
     opts: crate::isoforms::MergeOpts,
     batch_merge_no_op: bool,
+    threads: usize,
 ) -> std::io::Result<()> {
     println!("Batch Merging");
-    for cl_dir in subdirectories(outdir)? {
+    let dirs = subdirectories(outdir)?;
+
+    // One cluster per thread. Clusters are independent --- `actual_merging_process`
+    // only ever sees one cluster's batches, and `write_final_output` writes that
+    // cluster's own `cluster{id}_merged.*` --- so this is embarrassingly parallel.
+    //
+    // The reference closes its process pool *before* calling this, so it merges
+    // one cluster at a time on one core while the rest idle. That is faithful and
+    // slow: the within-batch half of the deep-12 run uses 8 threads and takes
+    // 179s, and this half had one core for hours. Nothing about the merge's
+    // *result* depends on cluster order, so the port parallelises it.
+    let n = threads.max(1).min(dirs.len().max(1));
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let failed: std::sync::Mutex<Option<std::io::Error>> = std::sync::Mutex::new(None);
+    std::thread::scope(|scope| {
+        for _ in 0..n {
+            scope.spawn(|| {
+                loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some(cl_dir) = dirs.get(i) else { break };
+                    if let Err(e) = merge_one_cluster(
+                        cl_dir,
+                        outdir,
+                        iso_abundance,
+                        write_fastq,
+                        write_low_abundance,
+                        opts,
+                        batch_merge_no_op,
+                    ) {
+                        let mut slot = failed.lock().unwrap();
+                        if slot.is_none() {
+                            *slot = Some(e);
+                        }
+                        break;
+                    }
+                }
+            });
+        }
+    });
+    if let Some(e) = failed.lock().unwrap().take() {
+        return Err(e);
+    }
+    if std::env::var_os("ISONFORM_MERGE_STATS").is_some() {
+        use crate::batch_merge::{MERGES, PAIRS_ALIGNED, PAIRS_SEEN, PAIRS_SKIPPED, SKIPPED_WOULD_MERGE};
+        use std::sync::atomic::Ordering::Relaxed;
+        let (seen, skipped, aligned) = (
+            PAIRS_SEEN.load(Relaxed),
+            PAIRS_SKIPPED.load(Relaxed),
+            PAIRS_ALIGNED.load(Relaxed),
+        );
+        eprintln!(
+            "merge-stats pairs_seen={seen} skipped={skipped} ({:.1}%) aligned={aligned} \
+             merges={} skipped_would_merge={}",
+            if seen > 0 { 100.0 * skipped as f64 / seen as f64 } else { 0.0 },
+            MERGES.load(Relaxed),
+            SKIPPED_WOULD_MERGE.load(Relaxed)
+        );
+    }
+    Ok(())
+}
+
+/// One cluster's cross-batch merge and output. Split out of
+/// [`join_back_via_batch_merging`] so the cluster loop can be threaded.
+fn merge_one_cluster(
+    cl_dir: &Path,
+    outdir: &Path,
+    iso_abundance: usize,
+    write_fastq: bool,
+    write_low_abundance: bool,
+    opts: crate::isoforms::MergeOpts,
+    batch_merge_no_op: bool,
+) -> std::io::Result<()> {
+    {
         let cl_id = cl_dir
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .to_string();
-        let mut cluster = read_cluster(&cl_dir)?;
+        let mut cluster = read_cluster(cl_dir)?;
         let mut engine = crate::isoforms::SpoaParasailMerge;
         crate::batch_merge::actual_merging_process(
             &mut engine,
@@ -476,7 +549,7 @@ pub fn join_back_via_batch_merging(
         // The reference calls `write_final_output` inside its per-batch loop, so
         // a cluster with no batch files at all is never written. Same here.
         if cluster.batches.is_empty() {
-            continue;
+            return Ok(());
         }
         write_final_output(
             &cluster.batches,

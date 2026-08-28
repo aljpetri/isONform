@@ -175,6 +175,7 @@ fn run(args: &ParallelArgs) -> std::io::Result<()> {
         write_low_abundance,
         merge_opts,
         compat.batch_merge_no_op,
+        args.nr_cores.max(1),
     )?;
     parallel::generate_full_output(&outfolder, args.write_fastq, write_low_abundance)?;
     parallel::remove_folders(&outfolder)?;
