@@ -1,6 +1,48 @@
 # isONform — Rust rewrite
 
-## Status: CLI ported and verified, reference determinism fixed, evaluation corpora built
+## Status: ported, scored, and 2.2--3.7x faster than the port as first written
+
+Both entry points run end to end, the differential oracles pass, and the defaults
+now carry three measured changes on top of the faithful port. **Start here**, then
+read findings 40--49; findings 1--39 and the reconnaissance are in
+`PORTING-HISTORY.md`.
+
+### Where it stands, measured
+
+| | python | port as first written | **defaults now** |
+|---|---|---|---|
+| droso | 49.0s | 24.9s | **11.4s** |
+| sirv_sim_gene | 354.8s | 107.8s | **30.0s** |
+| sirv_real | 241.0s | 220.1s | **59.6s** |
+| deep-12 within-batch | --- | 1 403s | **179s** |
+| sirv_sim F1 / redundancy | 0.947 / 2.19 | 0.940 / 1.38 | **0.946 / 1.25** |
+| sirv_real strict / lenient F1 | 0.773 / 0.892 | 0.734 / 0.873 | 0.722 / 0.862 |
+| droso FSM / ISM / NIC | 443 / 14 / 29 | 470 / 12 / 30 | 466 / **9** / **26** |
+
+On by default, each backing out alone: **WFA2** at the two alignment sites
+(`ISONFORM_WFA2=0`), the **consensus rebuilt once per group at the end** rather
+than per merge (`ISONFORM_MERGE_REBUILD_MAX=50 ISONFORM_FINAL_CONSENSUS=0`), and
+**node identity by minimizer pair** (`ISONFORM_PAIR_NODES=0`). The one regression
+is `sirv_real` strict F1, 0.734 -> 0.722.
+
+### What is worth doing next, in order
+
+1. **Merge in the graph.** The cross-batch stage spends 43 minutes on one deep
+   cluster to remove 17% of its isoforms, while `iso_abundance >= 5` removes 78%.
+   Its cost is quadratic in the 133 isoforms each 1 000-read batch emits, so
+   halving that quarters the stage. Everything else here trims a constant.
+2. **The WFA2 dangle DP.** Written (`anchored_dp` in `src/wfa.rs`) and **unscored**.
+   It should recover part of the `sirv_real` loss, which is WFA2's verdict flips.
+3. **Verify the anchor-chain merge filter on a second deep cluster.**
+   `ISONFORM_MERGE_MINSHARE=30` is sound on the two measured so far.
+
+### A warning about method, earned repeatedly
+
+Every hypothesis in this file that was stated before it was measured turned out
+wrong --- twenty-odd of them, including several that looked certain. Comparisons are
+only valid at fixed N, `nodes-per-read` is dominated by N at small sizes, and a
+binary must be re-frozen after every rebuild or a sweep measures the previous one.
+Measure first, then conclude.
 
 This document is the plan, the reconnaissance, and the method carried over from the isONcorrect
 port, which is finished and released as v0.2.0.
