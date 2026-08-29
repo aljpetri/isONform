@@ -27,14 +27,26 @@ is `sirv_real` strict F1, 0.734 -> 0.722.
 
 ### What is worth doing next, in order
 
-1. **Merge in the graph.** The cross-batch stage spends 43 minutes on one deep
-   cluster to remove 17% of its isoforms, while `iso_abundance >= 5` removes 78%.
-   Its cost is quadratic in the 133 isoforms each 1 000-read batch emits, so
-   halving that quarters the stage. Everything else here trims a constant.
-2. **The WFA2 dangle DP.** Written (`anchored_dp` in `src/wfa.rs`) and **unscored**.
-   It should recover part of the `sirv_real` loss, which is WFA2's verdict flips.
+1. **Confirm the recursive merge's batch floor on `droso_deep`.** Finding 52: on
+   `sirv_real_deep` a floor of 10 batches beats the pairwise merge on every metric
+   and is 1.39x faster. `droso_deep` is measured only at floor 2, where it already
+   gains. One run settles whether 10 is the value for both.
+2. **Bound the recursive stage's concurrency.** It costs 3.1 -> 9.7 GB, which is
+   eight threads times a handful of large clusters --- p99 of the instance size is
+   104 sequences and the max is 3 466.
 3. **Verify the anchor-chain merge filter on a second deep cluster.**
-   `ISONFORM_MERGE_MINSHARE=30` is sound on the two measured so far.
+   `ISONFORM_MERGE_MINSHARE=30` is sound on the two measured so far, and is still
+   opt-in.
+4. **Find where WFA2 actually loses.** Finding 50 closed the two candidates the
+   record named --- the dangle DP and the free-end budget --- and neither was it.
+   The remaining `sirv_real` cost is somewhere in WFA2's *core*, unlocated.
+
+~~**Merge in the graph.**~~ **Done** --- finding 52, and it is the largest win in
+this round: 1.2--1.4x faster than the pairwise cross-batch merge and better on
+every `sirv_real_deep` metric at a batch floor of 10.
+
+~~**The WFA2 dangle DP.**~~ **Done, and negative** --- it costs 0.029 strict F1 on
+`sirv_real`. Finding 50.
 
 ### A warning about method, earned repeatedly
 
@@ -945,7 +957,8 @@ tie-break difference, and the mechanism follows from the objectives: a terminal
 stretch of ten columns holding one mismatch earns parasail `9x2 - 2 = +16`, so it
 aligns it, while WFA2 sees penalty 4 against 0 for leaving it free and declines.
 Greedy extension then halts at that mismatch. The fix is an exact DP over the
-`<=50`-base dangles, which is cheap and not yet written.
+`<=50`-base dangles, which is cheap. **Written and measured since, and this
+prediction was wrong: it makes `sirv_real` worse. See finding 50.**
 
 WFA2 is wired at both hot sites behind `ISONFORM_WFA2=1`, with a parasail
 fallback whenever the layer declines a pair.
@@ -982,6 +995,11 @@ costing 2 sirv_real transcripts. This costs 1 but buys 2x, so the trade is not t
 same one --- and the 902 suboptimal alignments have a known, unwritten fix (an
 exact DP over the `<=50`-base dangles) that would likely recover most of the loss.
 Turning it on by default is a decision to take after that, not before.
+
+**Superseded on both counts.** WFA2 went on by default anyway (finding 49), and
+the DP was written and scored: it recovers none of the loss and costs more
+(finding 50). "Would likely recover most of the loss" is one more entry for the
+warning at the top of this file.
 
 ### Finding 42 --- the bottleneck is POA, not pairwise alignment
 
@@ -1762,6 +1780,179 @@ right move --- a wrong alignment is worse than a slower one --- and it is what k
 `simplify`'s smoke test, whose fixture is `ACGTACGT...` and so exactly periodic,
 answering `20=`.
 
+### Finding 50 --- the dangle DP is written, scored, and worse; and 50 free-end bases is right after all
+
+Finding 41 named one unwritten fix for WFA2's verdict flips and finding 49 carried
+it forward as the thing that would recover `sirv_real`. It is written
+(`anchored_dp` in `src/wfa.rs`), and it does the opposite.
+
+The measurement is one binary with one variable, `ISONFORM_WFA2_DANGLE_DP`:
+
+| corpus | metric | DP on | DP off (greedy) |
+|---|---|---|---|
+| `sirv_real` | **strict F1** | **0.693** | **0.722** |
+| | transcripts recovered | 45 / 68 | **47 / 68** |
+| | lenient F1 | **0.874** | 0.862 |
+| | isoforms / redundancy | 81 / 1.31 | 86 / 1.38 |
+| | identity | **0.9758** | 0.9742 |
+| `sirv_sim_gene` | F1 / redundancy | 0.946 / 1.25 | 0.946 / 1.25 |
+| `droso` | FSM / NNC / canonical | 466 / 12 / 0.982 | 466 / 12 / 0.982 |
+
+It over-merges: five fewer isoforms, less redundancy, and two real SIRV
+transcripts collapsed. Default is now **off**; `ISONFORM_WFA2_DANGLE_DP=1` opts in.
+The DP itself is correct --- it never scores above the exact DP, and a new fixture
+for finding 41's stated mechanism passes.
+
+#### Why: there is nothing there to repair
+
+Two diagnostics added to `wfa::oracle::verdicts_match_parasail`, over 48 486 droso
+and 49 508 `sirv_real` calls sampled from the merge call site
+(`IsoformGeneration.py:381`) of a full reference run:
+
+```text
+                          droso              sirv_real
+                       DP on   DP off      DP on   DP off
+verdict flips           1189    1137         347     350
+worse-scoring cases    17413   17253       21704   21793
+fell back to parasail   4416    4716        7378    7425
+two-sided dangles          0     436           0     460
+```
+
+A dangle the DP can act on needs **both** sequences to contribute bases. Only
+~2% of the losing cases have one --- 436 of 17 253 on droso, 460 of 21 793 on
+`sirv_real` --- and the DP consumes all of them. The rest is one-sided overhang:
+one sequence running past the other, nothing to pair against, and free for
+parasail too.
+
+And the repair backfires through the coverage guard. A better-covered alignment
+trips it less, so WFA2 declines less (4 716 -> 4 416 on droso) and answers more
+pairs itself instead of handing them to exact parasail --- pushing the flip rate
+**up**, 2.35% -> 2.45%. **Declining is worth more than repairing.** That is the
+lever this investigation actually found, and it is untuned.
+
+#### And the free-end budget, which was argued rather than measured
+
+The losing cases carry far more unaligned end material than `FREE_ENDS = 50`
+admits --- median 56--77 bases, p90 140--195, max 4 395. parasail's semi-global
+gives an unbounded free end; WFA2 is capped and pays for the remainder. This file
+argued 50 was safe because `delta_iso_len_5` refuses such pairs anyway, so a wider
+budget "could not change a verdict". `ISONFORM_WFA2_FREE_ENDS` makes that a
+measurement:
+
+| | 50 | 100 | 200 | 400 |
+|---|---|---|---|---|
+| droso flip rate | **2.35%** | 2.58% | 3.51% | 4.50% |
+| `sirv_real` flip rate | **0.71%** | 1.23% | 1.06% | 0.96% |
+| droso worse-scoring | 17 253 | 15 643 | 14 695 | **14 441** |
+| `sirv_real` worse-scoring | 21 793 | 19 966 | 17 579 | **14 411** |
+| droso parasail fallbacks | **4 716** | 6 276 | 7 046 | 7 396 |
+| `sirv_real` parasail fallbacks | **7 425** | 10 953 | 13 436 | 16 604 |
+
+Widening buys back the scores exactly as the overhang picture predicts, makes the
+**verdicts worse anyway**, and costs speed through the fallback rate. 50 is the
+best value on both corpora --- the right answer, reached for a reason that was not
+the stated one. Finding 41's lesson a second time: score and verdict are different
+objectives, and here they move in opposite directions.
+
+#### What this leaves
+
+The residual `sirv_real` cost of WFA2-by-default is not in the ends. It is in the
+core WFA2 chooses, and no end repair reaches it. That is now the open question,
+and unlike the previous two candidates it has no proposed fix behind it.
+
+### Finding 51 --- `--max_seqs` never reached the work it names, and bigger batches cost memory
+
+`isONform_parallel --max_seqs` only ever changed how cluster *files* are split.
+The reference comments the flag out of the child argument list, so the per-batch
+size stayed at `main`'s own default of 1 000 whatever was passed --- finding 37's
+class, found by sweeping it and getting byte-identical merge statistics at 1 000,
+2 000 and 4 000 on three clusters. `ISONFORM_FORWARD_MAX_SEQS=1` forwards it.
+
+The premise behind wanting it is sound. Isoforms per batch grow **sublinearly**
+with reads, so fewer, larger batches leave less for the quadratic cross-batch
+stage. `droso_deep` cluster 3 (9 261 reads), driving `main` directly:
+
+| max_seqs | batches | isoforms | per batch | cross-batch pairs | within-batch |
+|---|---|---|---|---|---|
+| 1 000 | 10 | 386 | 38.6 | 65 700 | 28.6s |
+| 2 000 | 5 | 343 | 68.6 | 45 805 | 43.2s |
+| 4 000 | 3 | 286 | 95.3 | 24 880 | 63.8s |
+| 10 000 | 1 | 215 | 215.0 | **0** | 186.6s |
+
+Four times the batch is 2.6x fewer cross-batch pairs for 2.2x more within-batch
+work. But end to end on the deep corpora the trade does not pay:
+
+| | | 1 000 | 10 000 |
+|---|---|---|---|
+| `sirv_real_deep` | wall / peak RSS | 1 859s / **1.8 GB** | 2 792s / **20.7 GB** |
+| | recall / redundancy | **82.4%** / 3.48 | 79.4% / **3.06** |
+| `droso_deep` | wall / peak RSS | 5 678s / **3.1 GB** | **4 380s** / 13.6 GB |
+| | FSM / NNC | 9 339 / 934 | 9 098 / **920** |
+
+Less redundancy and fewer fragments, slightly fewer real transcripts, and **4--11x
+the memory**. Wall clock improves only where cross-batch dominated. 10 000 is not
+a viable default; the flag is worth forwarding, the value is not worth raising.
+
+### Finding 52 --- merge in the graph, not pairwise: 1.2--1.4x faster and better
+
+The cross-batch merge proves non-mergeability one alignment at a time. Running
+isONform's own front end over a cluster's consensuses instead lets the graph do
+it, and is not quadratic in the batch count. `ISONFORM_RECURSIVE_MERGE=<passes>`,
+opt-in --- it is a different algorithm, not a repair of the reference's.
+
+**What the redundancy actually is.** Of the 61 multi-member groups the first pass
+forms on `droso_deep` cluster 3, **57 draw from several source batches and only 4
+from within one**. So the initial bubble popping is not failing; what it leaves is
+a *batching artifact*, the same isoform independently reconstructed in different
+batches.
+
+**Weights are the precondition.** Support is a count of read accessions
+everywhere it matters, so on a recursive pass it becomes a count of *consensuses*
+--- one to three --- and `--iso_abundance 5` discards nearly everything. Each
+consensus therefore enters carrying `:w=<reads behind it>` ([`crate::weights`]),
+which is read by interval selection, and each isoform that comes out inherits its
+members' **original read accessions**, so the abundance gate and the mapping files
+keep their meaning. Weight is conserved: 9 163 in, 9 157 after three passes.
+
+**One pass, and a batch floor.** More passes cost 1.5--2.3x wall clock and move
+nothing. The floor is the larger finding, on `sirv_real_deep`:
+
+| min batches | strict F1 | transcripts | recall | precision | redundancy | wall |
+|---|---|---|---|---|---|---|
+| pairwise | 0.681 | 56 | 82.4% | 58.0% | 3.48 | 1 894s |
+| 2 | 0.689 | 55 | 80.9% | 60.0% | 3.38 | 1 397s |
+| 5 | 0.703 | 57 | 83.8% | 60.6% | 3.32 | 1 376s |
+| **10** | **0.713** | **58** | **85.3%** | **61.2%** | **3.29** | **1 364s** |
+| 20 | 0.710 | 58 | 85.3% | 60.9% | 3.38 | 1 370s |
+
+At floor 10 it beats the pairwise merge on **every** metric and is 1.39x faster.
+At floor 2 it costs a transcript --- which is why the floor exists, and why "batch
+count is not the discriminating variable" (written down before the sweep) was
+wrong. `droso_deep` at floor 2 already gains: 9 356 FSM against 9 339, 1 330
+off-target genic against 1 459, 1.20x faster.
+
+The cost is memory, 3.1 -> 9.7 GB on `droso_deep`. The recursive instance is
+unbatched by construction, and its size is the cluster's isoform count: median
+**4**, p95 25, p99 104, max **3 466**. So the peak is a handful of clusters on
+eight threads, and the lever is bounding the stage's concurrency rather than
+batching it --- batching would reintroduce the cross-batch problem the pass exists
+to remove.
+
+#### Two things measured and dropped, and one bug worth recording
+
+* **Weighting the graph's bubble-candidacy gate** (`inter.len() >= 2`, the only
+  magnitude decision in simplification) is **byte-identical** on all three shallow
+  corpora. The hypothesis --- thinly supported consensuses outvoting well supported
+  ones --- is disproved. Reverted.
+* **`sirv_real` has exactly one multi-batch cluster**, 4 595 reads in 5 batches, so
+  its whole 0.034 strict-F1 loss at floor 2 comes from one cluster. Worth knowing
+  before generalising from that corpus.
+* **The stage was wired as an if/else**, so a cluster the recursive pass declined
+  got *no* cross-batch merging rather than the pairwise one. Invisible at floor 2,
+  where declining only happens on single-batch clusters and the pairwise merge is
+  a no-op anyway; the floor sweep exposed it immediately --- floor 6 on `sirv_real`
+  gave 109 isoforms where the baseline gives 86. Declining now falls through.
+
 ## Method
 
 Carried over from the isONcorrect port. The full version, with the measurements behind each point, is
@@ -1861,11 +2052,17 @@ does it, and it now has a measurement to be judged against.
 
 ## Working agreements
 
-**Report results, not progress.** Do not narrate intermediate reasoning or partial
-findings while measurements are running --- wait for the numbers, then report once.
+**Report results, not progress.** While anything is running, say nothing --- no
+interim findings, no partial tables, no "here is what I am about to do". One work
+stint gets one reply, in three parts and no more:
+
+1. **what was measured**, in a sentence or two;
+2. **the numbers**, as a table;
+3. **what to do next**, as a proposal.
+
 Never restate a conclusion already given. Corrections are one sentence: what is now
-true, not a retrospective on the error. This file is the place for the reasoning
-trail; a reply is the place for the result.
+true, not a retrospective on the error. Detail goes in this file, not in the reply
+--- the reader will ask if they want more.
 
 
 - **Never run `git commit`, `git push`, or any history-changing git command.** Leave finished work in
