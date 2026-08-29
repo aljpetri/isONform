@@ -458,6 +458,9 @@ pub fn join_back_via_batch_merging(
     opts: crate::isoforms::MergeOpts,
     batch_merge_no_op: bool,
     threads: usize,
+    // `Some((params, passes))` replaces the pairwise merge with
+    // `recursive_merge_cluster`. Opt-in: `ISONFORM_RECURSIVE_MERGE=<passes>`.
+    recursive: Option<(crate::driver::RunParams, usize)>,
 ) -> std::io::Result<()> {
     println!("Batch Merging");
     let dirs = subdirectories(outdir)?;
@@ -488,6 +491,7 @@ pub fn join_back_via_batch_merging(
                         write_low_abundance,
                         opts,
                         batch_merge_no_op,
+                        recursive,
                     ) {
                         let mut slot = failed.lock().unwrap();
                         if slot.is_none() {
@@ -531,6 +535,7 @@ fn merge_one_cluster(
     write_low_abundance: bool,
     opts: crate::isoforms::MergeOpts,
     batch_merge_no_op: bool,
+    recursive: Option<(crate::driver::RunParams, usize)>,
 ) -> std::io::Result<()> {
     {
         let cl_id = cl_dir
@@ -539,13 +544,21 @@ fn merge_one_cluster(
             .to_string_lossy()
             .to_string();
         let mut cluster = read_cluster(cl_dir)?;
-        let mut engine = crate::isoforms::SpoaParasailMerge;
-        crate::batch_merge::actual_merging_process(
-            &mut engine,
-            &mut cluster.batches,
-            opts,
-            batch_merge_no_op,
-        );
+        let handled = match recursive {
+            Some((params, passes)) => {
+                recursive_merge_cluster(&mut cluster.batches, params, passes)
+            }
+            None => false,
+        };
+        if !handled {
+            let mut engine = crate::isoforms::SpoaParasailMerge;
+            crate::batch_merge::actual_merging_process(
+                &mut engine,
+                &mut cluster.batches,
+                opts,
+                batch_merge_no_op,
+            );
+        }
         // The reference calls `write_final_output` inside its per-batch loop, so
         // a cluster with no batch files at all is never written. Same here.
         if cluster.batches.is_empty() {
@@ -561,6 +574,154 @@ fn merge_one_cluster(
         )?;
     }
     Ok(())
+}
+
+
+/// The recursive merge: run isONform's own front end over a cluster's
+/// consensuses instead of aligning every pair of them.
+///
+/// # Why
+///
+/// `actual_merging_process` is `O(batch pairs x isoforms per batch^2)` and proves
+/// non-mergeability one alignment at a time --- 43 minutes on `droso_deep`
+/// cluster 0 to remove 17% of its isoforms. Feeding the consensuses back through
+/// the graph is not quadratic in the batch count, and the redundancy it removes
+/// is the same redundancy: of the 61 multi-member groups the first pass forms on
+/// cluster 3, **57 draw from several source batches and only 4 from within one**,
+/// so what this collapses is the duplication batching created.
+///
+/// Measured on that cluster: 386 consensuses -> 231 -> 211 -> 205, converging,
+/// against 47 merges for 55 643 aligned pairs by the pairwise route, at the same
+/// wall clock.
+///
+/// # How the accounting stays honest
+///
+/// Each consensus enters carrying `:w=<supporting reads>` so interval support and
+/// the abundance gate see read-scale numbers ([`crate::weights`]), and each
+/// isoform that comes out inherits the **original read accessions** of its
+/// members --- so `--iso_abundance` and the mapping file mean exactly what they
+/// meant before. Consensuses the pass cannot place (`skipped`) are carried
+/// through unchanged rather than dropped.
+/// Returns `false` when it declined the cluster, so the caller runs the ordinary
+/// pairwise merge instead. Declining must not mean "no merging at all" --- that
+/// is not the alternative being measured.
+fn recursive_merge_cluster(
+    batches: &mut Vec<(String, Vec<(u32, crate::batch_merge::Isoform)>)>,
+    params: crate::driver::RunParams,
+    passes: usize,
+) -> bool {
+    crate::weights::enable_for_thread();
+    // `key -> the original reads behind it`, so support survives every pass.
+    let mut reads_of: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut live: Vec<(String, Vec<u8>)> = Vec::new();
+    for (b, isos) in batches.iter() {
+        for (i, iso) in isos {
+            if iso.merged {
+                continue;
+            }
+            let key = format!("b{b}_i{i}");
+            reads_of.insert(key.clone(), iso.reads.clone());
+            live.push((key, iso.sequence.clone()));
+        }
+    }
+    if live.len() < 2 {
+        return false;
+    }
+    // A single-batch cluster has no cross-batch duplication to remove --- the
+    // pairwise merge is a no-op on it, and so must this be. Without the guard
+    // every one of `droso_deep`'s ~9 000 single-batch clusters pays a full
+    // front-end pass per iteration to change nothing.
+    //
+    // `ISONFORM_RECURSIVE_MIN_BATCHES` raises the floor. Measured need: the pass
+    // is a clear win at depth (droso_deep +17 FSM, 1.20x faster) and a clear loss
+    // on shallow two-batch clusters (sirv_real -0.034 strict F1, -3 transcripts),
+    // so a floor exists somewhere between.
+    let floor = std::env::var("ISONFORM_RECURSIVE_MIN_BATCHES")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(2)
+        .max(2);
+    if batches.len() < floor {
+        return false;
+    }
+
+    for _ in 0..passes.max(1) {
+        let before = live.len();
+        let records: Vec<crate::fastq::Record> = live
+            .iter()
+            .map(|(key, seq)| crate::fastq::Record {
+                acc: format!("{key}:w={}", reads_of[key].len()),
+                seq: seq.clone(),
+                qual: Some(vec![b'+'; seq.len()]),
+            })
+            .collect();
+
+        // One batch: the whole point is to see every consensus at once.
+        let mut p = params;
+        p.max_seqs = records.len().max(1);
+        let outs = crate::driver::run_cluster(&records, &p);
+
+        let strip = |acc: &str| -> String {
+            acc.rfind(":w=").map_or_else(|| acc.to_string(), |i| acc[..i].to_string())
+        };
+        let mut next: Vec<(String, Vec<u8>)> = Vec::new();
+        let mut next_reads: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for out in &outs {
+            let members: std::collections::HashMap<u32, &Vec<String>> =
+                out.mapping.iter().map(|(i, a)| (*i, a)).collect();
+            for (i, seq) in &out.isoforms {
+                let key = format!("p{}_i{i}", out.batch_id);
+                // Union the original reads of every consensus that folded in.
+                let mut reads: Vec<String> = Vec::new();
+                for m in members.get(i).into_iter().flat_map(|v| v.iter()) {
+                    if let Some(r) = reads_of.get(&strip(m)) {
+                        reads.extend(r.iter().cloned());
+                    }
+                }
+                reads.sort_unstable();
+                reads.dedup();
+                next_reads.insert(key.clone(), reads);
+                next.push((key, seq.clone()));
+            }
+            // A consensus with no usable interval is carried through, not lost.
+            for (acc, seq) in &out.skipped {
+                let key = strip(acc);
+                if let Some(r) = reads_of.get(&key) {
+                    next_reads.insert(key.clone(), r.clone());
+                    next.push((key, seq.clone()));
+                }
+            }
+        }
+        if next.is_empty() {
+            return false; // nothing came back; leave it to the pairwise merge
+        }
+        live = next;
+        reads_of = next_reads;
+        if live.len() >= before {
+            break; // converged
+        }
+    }
+
+    // One synthetic batch holds the result. Ids stay unique per cluster, which is
+    // all `select_output` and `generate_full_output` require.
+    let merged: Vec<(u32, crate::batch_merge::Isoform)> = live
+        .into_iter()
+        .enumerate()
+        .map(|(n, (key, sequence))| {
+            (
+                n as u32,
+                crate::batch_merge::Isoform {
+                    sequence,
+                    reads: reads_of.remove(&key).unwrap_or_default(),
+                    merged: false,
+                },
+            )
+        })
+        .collect();
+    *batches = vec![("0".to_string(), merged)];
+    true
 }
 
 /// `[f.path for f in os.scandir(outfolder) if f.is_dir()]` --- directory order.

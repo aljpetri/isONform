@@ -168,6 +168,40 @@ fn run(args: &ParallelArgs) -> std::io::Result<()> {
         final_consensus_pass: isonform_poa_sched.1,
         cigar_diversity_counts_runs: compat.cigar_diversity_counts_runs,
     };
+    // `ISONFORM_RECURSIVE_MERGE=<passes>` replaces the all-vs-all cross-batch
+    // merge with a pass of isONform's own front end over the cluster's
+    // consensuses --- see `parallel::recursive_merge_cluster`. Opt-in, because it
+    // is a different algorithm rather than a repair of the reference's.
+    let recursive = std::env::var("ISONFORM_RECURSIVE_MERGE")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .map(|passes| {
+            let params = isonform::driver::RunParams {
+                k: args.k,
+                w: args.w,
+                xmin: args.xmin,
+                xmax: args.xmax,
+                delta_len: args.delta_len as i64,
+                max_seqs: args.max_seqs,
+                max_seqs_to_spoa: args.max_seqs_to_spoa,
+                // `--set_w_dynamically` and `--slow` are collected by this entry
+                // point and never passed to `main` (finding 37), so the
+                // recursive stage uses `main`'s own defaults for them rather
+                // than inventing a reachability the reference does not have.
+                set_w_dynamically: false,
+                slow: false,
+                delta: args.delta,
+                delta_iso_len_3: args.delta_iso_len_3,
+                delta_iso_len_5: args.delta_iso_len_5,
+                wis: compat.wis,
+                build: compat.build,
+                merge_delta_len: merge_opts.delta_len,
+                cigar_diversity_counts_runs: compat.cigar_diversity_counts_runs,
+            };
+            (params, passes)
+        });
+
     parallel::join_back_via_batch_merging(
         &outfolder,
         args.iso_abundance,
@@ -176,6 +210,7 @@ fn run(args: &ParallelArgs) -> std::io::Result<()> {
         merge_opts,
         compat.batch_merge_no_op,
         args.nr_cores.max(1),
+        recursive,
     )?;
     parallel::generate_full_output(&outfolder, args.write_fastq, write_low_abundance)?;
     parallel::remove_folders(&outfolder)?;
