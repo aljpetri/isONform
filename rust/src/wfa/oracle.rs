@@ -14,8 +14,8 @@
 //! The corpus is the recorded real `parasail_alignment` calls: two tab-separated
 //! sequences plus the scoring the caller passed.
 
-use crate::isoforms::{align_to_merge, IsoformEngine, MergeOpts};
 use crate::align::CigarOp;
+use crate::isoforms::{align_to_merge, IsoformEngine, MergeOpts};
 use crate::parasail::Scoring;
 
 /// Drives `align_to_merge` with WFA2 in place of parasail, falling back exactly
@@ -137,6 +137,90 @@ fn verdicts_match_parasail() {
         }
     }
 
+    // Score quality over *every* case, not only the disagreeing ones. Verdicts
+    // are a threshold on the score, so a change that improves alignments without
+    // crossing the threshold is invisible above --- which is exactly what the
+    // dangle DP (`ISONFORM_WFA2_DANGLE_DP`) is meant to do most of the time.
+    let (mut sworse, mut sequal, mut sbetter) = (0usize, 0usize, 0usize);
+    let (mut ssum, mut sworst) = (0i64, 0i64);
+    let mut dangle_hist: Vec<usize> = Vec::new();
+    let mut two_sided = 0usize;
+    for (s1, s2) in &cases {
+        if s1.is_empty() || s2.is_empty() {
+            continue;
+        }
+        let p = crate::parasail::semiglobal(s1, s2, Scoring::MERGE).score;
+        let Some(w) = crate::wfa::semiglobal(s1, s2, Scoring::MERGE) else {
+            continue; // declined; the call site uses parasail, so nothing is lost
+        };
+        // How much sequence is left *outside* the aligned core: the leading and
+        // trailing pure-gap runs of the returned alignment. This is the material
+        // the dangle DP has to work with, so if it is ~0 on the cases WFA2 loses,
+        // the loss is in the core and no end repair can reach it.
+        let al = |&(_, t): &(usize, u8)| t == b'=' || t == b'X';
+        let lead: usize = w.ops.iter().take_while(|o| !al(o)).map(|&(n, _)| n).sum();
+        let trail: usize = w
+            .ops
+            .iter()
+            .rev()
+            .take_while(|o| !al(o))
+            .map(|&(n, _)| n)
+            .sum();
+        // Two-sided or one-sided? `anchored_dp` can only align a dangle where
+        // BOTH sequences contribute bases; a pure overhang (one side only) is a
+        // free end for parasail too, so there is nothing there to win.
+        let side = |it: &mut dyn Iterator<Item = (usize, u8)>| -> (usize, usize) {
+            let (mut i, mut dd) = (0usize, 0usize);
+            for (n, t) in it {
+                match t {
+                    b'I' => i += n,
+                    b'D' => dd += n,
+                    _ => break,
+                }
+            }
+            (i, dd)
+        };
+        let (li, ld) = side(&mut w.ops.iter().copied());
+        let (ti, td) = side(&mut w.ops.iter().rev().copied());
+        let d = (w.score - p) as i64;
+        if d < 0 {
+            dangle_hist.push(lead + trail);
+            if li.min(ld) > 0 || ti.min(td) > 0 {
+                two_sided += 1;
+            }
+        }
+        ssum += d;
+        sworst = sworst.min(d);
+        match d.cmp(&0) {
+            std::cmp::Ordering::Less => sworse += 1,
+            std::cmp::Ordering::Equal => sequal += 1,
+            std::cmp::Ordering::Greater => sbetter += 1,
+        }
+    }
+    let scored = sworse + sequal + sbetter;
+    eprintln!("score quality over {scored} non-declined cases");
+    eprintln!("  worse:  {sworse}");
+    eprintln!("  equal:  {sequal}");
+    eprintln!("  better: {sbetter}  (must be 0; parasail is exact)");
+    eprintln!(
+        "  mean delta {:.4}, worst {sworst}",
+        ssum as f64 / scored.max(1) as f64
+    );
+
+    if !dangle_hist.is_empty() {
+        dangle_hist.sort_unstable();
+        let n = dangle_hist.len();
+        let zero = dangle_hist.iter().filter(|&&v| v == 0).count();
+        eprintln!(
+            "  unaligned end bases on the {n} worse cases: zero on {zero} ({:.1}%), \
+             median {}, p90 {}, max {}; two-sided (DP can act) on {two_sided}",
+            100.0 * zero as f64 / n as f64,
+            dangle_hist[n / 2],
+            dangle_hist[n * 9 / 10],
+            dangle_hist[n - 1]
+        );
+    }
+
     eprintln!("verdict gate over {} cases", agree + disagree);
     eprintln!("  agree:      {agree}");
     eprintln!("  disagree:   {disagree}");
@@ -147,8 +231,10 @@ fn verdicts_match_parasail() {
     eprintln!("    equal:  {equal}   (co-optimal, different shape --- a tie-break difference)");
     eprintln!("    better: {better}  (must be 0; parasail is exact)");
     if !disagreeing.is_empty() {
-        eprintln!("    worst delta {worst_delta}, mean {:.2}",
-                  sum_delta as f64 / disagreeing.len() as f64);
+        eprintln!(
+            "    worst delta {worst_delta}, mean {:.2}",
+            sum_delta as f64 / disagreeing.len() as f64
+        );
     }
     for e in &examples {
         eprintln!("{e}");

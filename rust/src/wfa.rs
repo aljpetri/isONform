@@ -64,6 +64,43 @@ use crate::parasail::{Alignment, Scoring};
 /// not change a verdict. Not unbounded, because unbounded is degenerate (above).
 pub const FREE_ENDS: i32 = 50;
 
+/// The free-end budget actually used, `ISONFORM_WFA2_FREE_ENDS` overriding
+/// [`FREE_ENDS`].
+///
+/// Tunable because 50 was justified by argument, and the argument needed
+/// checking: on the recorded merge calls the sequence left *outside* the aligned
+/// core on the cases WFA2 loses has median 56--77 bases and p90 140--195 --- well
+/// past 50, and one-sided, so it is overhang parasail gets free and this layer
+/// must pay for.
+///
+/// Swept, and **50 is the best value on both corpora**. Widening does buy back
+/// the scores, exactly as the overhang picture predicts --- droso 17 253 -> 14 441
+/// worse-scoring cases at 400, `sirv_real` 21 793 -> 14 411 --- and makes the
+/// *verdicts* worse anyway:
+///
+/// ```text
+/// verdict flip rate      50      100     200     400
+///   droso              2.35%   2.58%   3.51%   4.50%
+///   sirv_real          0.71%   1.23%   1.06%   0.96%
+/// parasail fallbacks     50      100     200     400
+///   droso              4 716   6 276   7 046   7 396
+///   sirv_real          7 425  10 953  13 436  16 604
+/// ```
+///
+/// So a wider budget costs accuracy *and* speed. This is finding 41's lesson a
+/// second time: score and verdict are different objectives, and here they move in
+/// opposite directions.
+pub fn free_ends() -> i32 {
+    static V: std::sync::OnceLock<i32> = std::sync::OnceLock::new();
+    *V.get_or_init(|| {
+        std::env::var("ISONFORM_WFA2_FREE_ENDS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .filter(|&v| v > 0)
+            .unwrap_or(FREE_ENDS)
+    })
+}
+
 /// Is WFA2 enabled at the hot sites? **On by default.**
 ///
 /// 4.5x faster than parasail on the 54 884 recorded calls, and it flips 2.19% of
@@ -74,12 +111,44 @@ pub const FREE_ENDS: i32 = 50;
 /// accuracy cost: `sirv_real` strict F1 0.735 -> 0.711, of which 0.017 is WFA2's
 /// and 0.006 finding 48's.
 ///
-/// `ISONFORM_WFA2=0` restores parasail. The known fix for the larger half of that
-/// cost is an exact DP over the `<=50`-base dangles (finding 41), not yet written.
+/// `ISONFORM_WFA2=0` restores parasail. Finding 41 expected an exact DP over the
+/// `<=50`-base dangles to recover the larger half of that cost; it is written
+/// ([`anchored_dp`]) and measured, and it does not --- see [`dangle_dp`].
 pub fn enabled() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| {
-        !matches!(std::env::var("ISONFORM_WFA2").ok().as_deref(), Some("0") | Some("off"))
+        !matches!(
+            std::env::var("ISONFORM_WFA2").ok().as_deref(),
+            Some("0") | Some("off")
+        )
+    })
+}
+
+/// Is the dangle DP enabled? **Off by default, because it measured worse.**
+///
+/// Finding 41 predicted this would recover the larger half of WFA2's `sirv_real`
+/// cost. Measured against greedy extension on the same binary, it does the
+/// opposite: strict F1 **0.722 -> 0.693** and 47 -> 45 SIRV transcripts, with
+/// `sirv_sim_gene` and `droso` unmoved.
+///
+/// Two reasons, both visible in the oracle. It has almost nothing to act on --- a
+/// repairable dangle needs *both* sequences to contribute bases, and only ~2% of
+/// the cases WFA2 loses have one (436 of 17 253 on droso, 460 of 21 793 on
+/// `sirv_real`); the rest is one-sided overhang with nothing to pair against. And
+/// what it does repair *raises coverage*, so the guard in [`semiglobal`] declines
+/// less (droso 4 716 -> 4 416 fallbacks) and WFA2 answers more pairs itself,
+/// pushing droso's verdict flip rate 2.35% -> 2.45%. Declining is worth more than
+/// repairing: a decline routes the pair to parasail, which is exact.
+///
+/// Kept behind `ISONFORM_WFA2_DANGLE_DP=1` rather than deleted --- it is correct
+/// (it never scores above the exact DP), and the null result is the finding.
+pub fn dangle_dp() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| {
+        matches!(
+            std::env::var("ISONFORM_WFA2_DANGLE_DP").ok().as_deref(),
+            Some("1") | Some("on")
+        )
     })
 }
 
@@ -103,7 +172,10 @@ impl Aligner {
             attr.affine_penalties.gap_opening = sc.open - sc.ext;
             attr.affine_penalties.gap_extension = sc.ext + sc.match_score / 2;
             attr.alignment_scope = sys::alignment_scope_t_compute_alignment;
-            Self { raw: sys::wavefront_aligner_new(&mut attr), sc }
+            Self {
+                raw: sys::wavefront_aligner_new(&mut attr),
+                sc,
+            }
         }
     }
 
@@ -120,8 +192,9 @@ impl Aligner {
             // of 1). Capping each bound at a third of its own sequence forces at
             // least a third of both to align, so the empty path is unreachable at
             // every length.
-            let f1 = FREE_ENDS.min(s1.len() as i32 / 3);
-            let f2 = FREE_ENDS.min(s2.len() as i32 / 3);
+            let fe = free_ends();
+            let f1 = fe.min(s1.len() as i32 / 3);
+            let f2 = fe.min(s2.len() as i32 / 3);
             sys::wavefront_aligner_set_alignment_free_ends(self.raw, f1, f1, f2, f2);
             sys::wavefront_align(
                 self.raw,
@@ -207,15 +280,25 @@ pub fn semiglobal(s1: &[u8], s2: &[u8], sc: Scoring) -> Option<Alignment> {
     // matches. `cols` is a column string over the whole of both sequences, so the
     // dangles are the runs of pure `I`/`D` outside the aligned core.
     let aligned = |c: u8| c == b'=' || c == b'X';
-    let first = cols.iter().position(|&c| aligned(c));
-    let last = cols.iter().rposition(|&c| aligned(c));
-    if let (Some(f), Some(l)) = (first, last) {
+    // `dangle_dp()` off falls back to greedy extension, which is what this was
+    // before the DP existed --- so the two are measurable against each other.
+    let core = dangle_dp()
+        .then(|| {
+            let f = cols.iter().position(|&c| aligned(c))?;
+            let l = cols.iter().rposition(|&c| aligned(c))?;
+            Some((f, l))
+        })
+        .flatten();
+    if let Some((f, l)) = core {
         // How much of each sequence each region consumes.
         let consumed = |seg: &[u8]| -> (usize, usize) {
             let (mut a, mut b) = (0usize, 0usize);
             for &c in seg {
                 match c {
-                    b'=' | b'X' => { a += 1; b += 1 }
+                    b'=' | b'X' => {
+                        a += 1;
+                        b += 1
+                    }
                     b'I' => a += 1,
                     b'D' => b += 1,
                     _ => {}
@@ -263,7 +346,11 @@ pub fn semiglobal(s1: &[u8], s2: &[u8], sc: Scoring) -> Option<Alignment> {
     }
 
     let score = score_ops(&ops, sc);
-    Some(Alignment { score, cigar: crate::align::encode_cigar(&ops), ops })
+    Some(Alignment {
+        score,
+        cigar: crate::align::encode_cigar(&ops),
+        ops,
+    })
 }
 
 /// The dangle DP: align the unaligned ends *optimally* under parasail's scoring,
@@ -388,7 +475,9 @@ fn extend_ends_over_matches(cols: &mut Vec<u8>, s1: &[u8], s2: &[u8]) {
                     _ => {}
                 }
             }
-            let (Some(pi), Some(pd)) = (last_i, last_d) else { break };
+            let (Some(pi), Some(pd)) = (last_i, last_d) else {
+                break;
+            };
             // Which bases those columns consume: count the consumption of each
             // sequence up to that column.
             let idx = |upto: usize, op: u8| -> usize {
@@ -398,7 +487,9 @@ fn extend_ends_over_matches(cols: &mut Vec<u8>, s1: &[u8], s2: &[u8]) {
                     .count()
             };
             let (bi, bd) = (idx(pi, b'I'), idx(pd, b'D'));
-            let (Some(&x), Some(&y)) = (s1.get(bi), s2.get(bd)) else { break };
+            let (Some(&x), Some(&y)) = (s1.get(bi), s2.get(bd)) else {
+                break;
+            };
             if x != y {
                 break;
             }
@@ -495,13 +586,42 @@ mod tests {
         assert_eq!(a.score, 400);
     }
 
+    /// Finding 41's mechanism, as a fixture. A terminal stretch holding one
+    /// mismatch earns parasail `9 * match - mismatch` and costs WFA2 a penalty
+    /// against 0 for leaving it free, so WFA2 declines it and greedy extension
+    /// halts at the mismatch. The dangle DP exists to align it anyway.
+    #[test]
+    fn a_terminal_mismatch_does_not_stop_the_end_being_aligned() {
+        for tail in [5usize, 10, 25, 45] {
+            let s1 = seq(7, 200);
+            let mut s2 = s1.clone();
+            // One mismatch, `tail` bases in from the right end.
+            let p = s2.len() - tail;
+            s2[p] = match s2[p] {
+                b'A' => b'C',
+                _ => b'A',
+            };
+            let want = crate::parasail::semiglobal(&s1, &s2, Scoring::MERGE).score;
+            let got = semiglobal(&s1, &s2, Scoring::MERGE).expect("aligns");
+            eprintln!(
+                "tail={tail} parasail={want} wfa2={} cigar={}",
+                got.score, got.cigar
+            );
+            assert_eq!(got.score, want, "tail={tail}: {}", got.cigar);
+        }
+    }
+
     #[test]
     fn a_terminal_overhang_is_free_but_still_appears_in_the_cigar() {
         let s = seq(2, 200);
         let mut tail = s.clone();
         tail.extend_from_slice(&[b'G'; 20]);
         let a = semiglobal(&tail, &s, Scoring::BUBBLE).expect("aligns");
-        assert_eq!(a.score, 400, "the 20-base overhang must cost nothing: {}", a.cigar);
+        assert_eq!(
+            a.score, 400,
+            "the 20-base overhang must cost nothing: {}",
+            a.cigar
+        );
         // `ops_to_seq` needs every base accounted for, so the dangle stays.
         assert!(a.cigar.ends_with("20I"), "dangle missing: {}", a.cigar);
     }
@@ -550,7 +670,9 @@ mod tests {
         // left dangle is all `I` with no `D` to pair against. The coverage guard
         // catches the bad ones and declines; whatever comes back must never be
         // worse than the exact score.
-        let s: Vec<u8> = (0..200u32).map(|i| b"ACGTTGCAAGCT"[(i as usize * 7) % 12]).collect();
+        let s: Vec<u8> = (0..200u32)
+            .map(|i| b"ACGTTGCAAGCT"[(i as usize * 7) % 12])
+            .collect();
         let exact = crate::parasail::semiglobal(&s, &s, Scoring::BUBBLE);
         assert_eq!(exact.score, 400);
         match semiglobal(&s, &s, Scoring::BUBBLE) {
