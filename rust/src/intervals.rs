@@ -132,7 +132,13 @@ pub fn find_most_supported_span(
                 instance.push((other, pos1, pos2));
             }
         }
-        let support = instance.len();
+        // Reads spanning the interval --- by total *weight* when the input is
+        // consensuses standing for many reads each, and by count otherwise,
+        // which is identical since every weight is then 1.
+        let support: usize = instance
+            .iter()
+            .map(|(r, _, _)| crate::weights::of(*r) as usize)
+            .sum();
         out.push(ChosenInterval {
             // `(p1 + k_size, p2, len(seqs) // 3, seqs)`. The interval starts
             // *after* the first anchor and ends at the start of the second.

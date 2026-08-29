@@ -504,13 +504,16 @@ pub fn select_output(
                 continue;
             }
             let id = format!("{cluster}_{batch_id}_{iso_id}");
-            if iso.reads.len() >= iso_abundance || iso_abundance == 1 {
+            // The support the isoform really has: the summed weight of its
+            // accessions, which is `reads.len()` for ordinary reads.
+            let support = crate::weights::sum_accs(&iso.reads);
+            if support >= iso_abundance || iso_abundance == 1 {
                 out.push(OutputRecord {
                     id,
                     sequence: iso.sequence.clone(),
                     reads: iso.reads.clone(),
                     destination: Destination::Main,
-                    support: iso.reads.len(),
+                    support,
                 });
             } else if write_low_abundance {
                 out.push(OutputRecord {
@@ -522,7 +525,7 @@ pub fn select_output(
                     // literal 1 here because `if new_id in all_infos_dict`
                     // compares a string id against integer batch keys and can
                     // never match --- finding 32, fixed.
-                    support: iso.reads.len(),
+                    support,
                 });
             } else {
                 out.push(OutputRecord {
@@ -530,7 +533,7 @@ pub fn select_output(
                     sequence: iso.sequence.clone(),
                     reads: iso.reads.clone(),
                     destination: Destination::Dropped,
-                    support: iso.reads.len(),
+                    support,
                 });
             }
         }

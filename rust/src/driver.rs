@@ -594,6 +594,11 @@ pub fn run_cluster(records: &[crate::fastq::Record], params: &RunParams) -> Vec<
         })
         .collect();
 
+    // Weights ride on the accession (`:w=<n>`), so they are available to every
+    // stage that carries an accession or an `r_id` without threading a parameter
+    // through them. No-op unless `ISONFORM_WEIGHTS=1`.
+    crate::weights::install(&all);
+
     // `read_len_dict = get_read_lengths(all_reads)`: the whole file, keyed by
     // global read id, computed once and reused for every batch.
     let all_read_len: Vec<(u32, u32)> = all.iter().map(|(r, _, s)| (*r, s.len() as u32)).collect();

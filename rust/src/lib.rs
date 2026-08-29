@@ -29,4 +29,5 @@ pub mod simd;
 pub mod wfa;
 pub mod simplify;
 pub mod sketch;
+pub mod weights;
 pub mod wis;
