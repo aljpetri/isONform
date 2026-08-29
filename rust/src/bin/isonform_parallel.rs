@@ -333,7 +333,27 @@ fn run_one(exe: &Path, inst: &parallel::Instance, args: &ParallelArgs) -> std::i
     // out there, and `--set_w_dynamically` and `--slow` are collected into the
     // params dict but never passed — so they do not reach `main`. This argument
     // list is why seven of this entry point's flags do nothing: finding 37.
-    let status = std::process::Command::new(exe)
+    // Finding 37, opt-in repair: `--max_seqs` never reaches the child, so
+    // `isONform_parallel --max_seqs` only changes how cluster files are *split*
+    // and the per-batch size stays at `main`'s own default of 1000. Forwarding it
+    // is a behaviour change, so it is opt-in --- `ISONFORM_FORWARD_MAX_SEQS=1`.
+    //
+    // Why it is worth having: isoforms per batch grow *sublinearly* with reads
+    // (38.6 -> 68.6 -> 95.3 per batch at 1k/2k/4k on droso_deep cluster 3), while
+    // the cross-batch merge is quadratic in them. Four times the batch gave 2.6x
+    // fewer cross-batch pairs there for 2.2x more within-batch work --- a trade
+    // that pays wherever cross-batch dominates, which is exactly the deep
+    // clusters.
+    let forward_max_seqs = matches!(
+        std::env::var("ISONFORM_FORWARD_MAX_SEQS").ok().as_deref(),
+        Some("1") | Some("on")
+    );
+
+    let mut cmd = std::process::Command::new(exe);
+    if forward_max_seqs {
+        cmd.arg("--max_seqs").arg(args.max_seqs.to_string());
+    }
+    let status = cmd
         .arg("--fastq")
         .arg(&inst.fastq)
         .arg("--outfolder")
