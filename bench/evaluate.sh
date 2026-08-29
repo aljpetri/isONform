@@ -109,6 +109,10 @@ MAKE_SIRV_CORPUS="${MAKE_SIRV_CORPUS:-$HOME/source/isONcorrect/bench/make_sirv_c
 
 THREADS="${THREADS:-8}"
 ISO_ABUNDANCE="${ISO_ABUNDANCE:-5}"
+# Extra flags appended to every isONform invocation, for sweeping a setting the
+# corpora do not otherwise exercise (e.g. EXTRA_ARGS="--max_seqs 2000"). Applied
+# to both implementations so a comparison stays honest. Recorded in runs.tsv.
+EXTRA_ARGS="${EXTRA_ARGS:-}"
 
 die() { echo "error: $*" >&2; exit 1; }
 note() { printf '\033[36m==>\033[0m %s\n' "$*"; }
@@ -265,14 +269,14 @@ run_one() {
   if [[ "$kind" == python ]]; then
     ( cd "$impl" && PYTHONHASHSEED="$seed" $timer "$PY_BIN" "$entry" \
         --fastq_folder "$out/in" --outfolder "$out/out" --t "$THREADS" \
-        --split_wrt_batches --iso_abundance "$ISO_ABUNDANCE" ) >"$out/log" 2>&1
+        --split_wrt_batches --iso_abundance "$ISO_ABUNDANCE" $EXTRA_ARGS ) >"$out/log" 2>&1
   else
     # No PYTHONHASHSEED: the port has no seeded hash to pin, which is the
     # point of finding 28's ascending order. `seed` is still recorded so the
     # two implementations' rows line up in runs.tsv.
     ( cd "$impl" && $timer "$entry" \
         --fastq_folder "$out/in" --outfolder "$out/out" --t "$THREADS" \
-        --split_wrt_batches --iso_abundance "$ISO_ABUNDANCE" ) >"$out/log" 2>&1
+        --split_wrt_batches --iso_abundance "$ISO_ABUNDANCE" $EXTRA_ARGS ) >"$out/log" 2>&1
   fi
   local ec=$?
   end=$("$PY_BIN" -c 'import time;print(time.time())')
@@ -284,8 +288,8 @@ run_one() {
   rss=$(grep -oE '[0-9]+ +maximum resident set size' "$out/log" | grep -oE '^[0-9]+' | sort -n | tail -1)
   rss=$("$PY_BIN" -c "print(f'{${rss:-0}/1048576:.0f}')" 2>/dev/null || echo 0)
   printf '    exit=%s  %ss  %s isoforms  peakRSS=%sMB\n' "$ec" "$secs" "$n" "$rss"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$corpus" "$tag" "$seed" "$ec" "$secs" "$n" \
-      >> "$WORK/eval/runs.tsv"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$corpus" "$tag" "$seed" "$ec" "$secs" "$n" \
+      "${EXTRA_ARGS:-none}" >> "$WORK/eval/runs.tsv"
   # The private input copy is large and reproducible; the corpus is the source
   # of truth.
   rm -rf "$out/in"
@@ -314,7 +318,7 @@ score_corpus() {
         --transcriptome "$SIRV_TRANSCRIPTOME" \
         --expressed-from "$SIRV_SIM_FASTQ" "${specs[@]}"
       ;;
-    sirv_real|sirv_real_deep)
+    sirv_real|sirv_real_deep|sirv_real_deep_*)
       # Real SIRV: no per-read truth, so every reference transcript counts and
       # recall is a lower bound. Said out loud by the script itself.
       #
@@ -325,7 +329,7 @@ score_corpus() {
       "$PY_BIN" "$REPO_ROOT/bench/accuracy_isoforms.py" \
         --transcriptome "$SIRV_TRANSCRIPTOME" "${specs[@]}"
       ;;
-    droso|droso_deep)
+    droso|droso_deep|droso_deep_*)
       local -a ann=()
       if [[ -f "$DROSO_ANNOTATION" ]]; then
         ann=(--annotation "$DROSO_ANNOTATION")
