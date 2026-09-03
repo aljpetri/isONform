@@ -39,6 +39,22 @@ Full comparison against the python implementation --- accuracy,
 redundancy, runtime and peak memory on five corpora from 10 000 to 1 000 000 reads
 are found here: [Port-benchmark.md](Port-benchmark.md).
 
+### Running a test <a name="runtest"></a>
+
+`test_data/sirv_sim` is a small dataset for checking an installation: two
+clusters of 51 corrected simulated SIRV reads each.
+
+```
+isONform_parallel --fastq_folder test_data/sirv_sim --outfolder /tmp/isonform_test \
+                  --t 4 --split_wrt_batches --iso_abundance 3
+```
+
+This should finish in seconds and write **7 isoforms** to
+`/tmp/isonform_test/transcriptome.fasta`, recovering SIRV101, SIRV102, SIRV103,
+SIRV201, SIRV202 and SIRV204 at >= 0.993 identity. See
+[test_data/README.md](test_data/README.md) for provenance and for what the
+numbers mean.
+
 ## Introduction <a name="introduction"></a>
 
 IsONform generates isoforms out of clustered and corrected long reads.
