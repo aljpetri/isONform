@@ -121,6 +121,47 @@ pub fn free_ends() -> i32 {
 /// *bubble poppability* site, not only the merge site, and there it breaks
 /// simplification outright: 24 of 27 recorded `sirv_real` cases disagree with it
 /// on, 0 with it off.
+/// Which of WFA2's two call sites are enabled. `ISONFORM_WFA2_SITES`.
+///
+/// The two are not equivalent and are worth separating:
+///
+/// * **merge** --- `align_to_merge`, deciding whether two isoform consensuses
+///   collapse. This is where the speed is: the merge stage dominates wall clock
+///   at depth.
+/// * **bubble** --- the poppability decision in [`crate::simplify`]. The
+///   simplification oracle disagrees with the reference on **24 of 27** recorded
+///   `sirv_real` cases with WFA2 here and **0** with it off, and a single flipped
+///   verdict in the first iteration cascades through every later one.
+///
+/// `merge`, `bubble` or `both` (the default).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sites {
+    Merge,
+    Bubble,
+    Both,
+}
+
+pub fn sites() -> Sites {
+    static S: std::sync::OnceLock<Sites> = std::sync::OnceLock::new();
+    *S.get_or_init(
+        || match std::env::var("ISONFORM_WFA2_SITES").ok().as_deref() {
+            Some("merge") => Sites::Merge,
+            Some("bubble") => Sites::Bubble,
+            _ => Sites::Both,
+        },
+    )
+}
+
+/// Is WFA2 on at the merge site?
+pub fn enabled_merge() -> bool {
+    enabled() && matches!(sites(), Sites::Merge | Sites::Both)
+}
+
+/// Is WFA2 on at the bubble-poppability site?
+pub fn enabled_bubble() -> bool {
+    enabled() && matches!(sites(), Sites::Bubble | Sites::Both)
+}
+
 pub fn enabled() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| match std::env::var("ISONFORM_WFA2").ok().as_deref() {

@@ -211,7 +211,7 @@ impl IsoformEngine for SpoaParasailMerge {
     fn align_merge(&mut self, s1: &[u8], s2: &[u8]) -> (Vec<CigarOp>, Vec<u8>, Vec<u8>) {
         let t = std::time::Instant::now();
         let sc = crate::parasail::Scoring::MERGE;
-        let aln = crate::wfa::enabled()
+        let aln = crate::wfa::enabled_merge()
             .then(|| crate::wfa::semiglobal(s1, s2, sc))
             .flatten()
             .unwrap_or_else(|| crate::parasail::semiglobal(s1, s2, sc));
@@ -669,7 +669,60 @@ pub fn merge_stats() -> MergeStats {
 }
 
 /// `align_to_merge`: should these two consensuses become one isoform?
+/// `align_to_merge`, with WFA2's **positive** verdicts confirmed by parasail.
+///
+/// WFA2 merges more than parasail does --- 9% of parasail's merges flip --- and
+/// the extra merges rebuild the consensus over a larger read union, so the ends
+/// creep out and the isoform lands just under the scorer's identity cutoff. The
+/// asymmetry is what makes this cheap: merges are rare (1 650 of 51 447 recorded
+/// calls, 3.2%), so re-deciding only the positives with the exact aligner costs a
+/// few percent of the alignment work and makes every merge exactly parasail's.
+///
+/// It does **not** catch pairs WFA2 wrongly refuses; that would need confirming
+/// the negatives too, which is every pair and no saving. Whether those matter is
+/// a measurement, not an argument.
+///
+/// `ISONFORM_WFA2_CONFIRM=1`.
+pub fn wfa_confirm() -> bool {
+    static C: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *C.get_or_init(|| {
+        matches!(
+            std::env::var("ISONFORM_WFA2_CONFIRM").ok().as_deref(),
+            Some("1") | Some("on")
+        )
+    })
+}
+
+/// The exact-aligner verdict for a pair, for [`wfa_confirm`].
+struct ParasailMergeOnly;
+
+impl IsoformEngine for ParasailMergeOnly {
+    fn spoa(&mut self, _seqs: &[&[u8]]) -> Vec<u8> {
+        unreachable!("confirmation never builds a consensus")
+    }
+    fn align_merge(&mut self, s1: &[u8], s2: &[u8]) -> (Vec<CigarOp>, Vec<u8>, Vec<u8>) {
+        let aln = crate::parasail::semiglobal(s1, s2, crate::parasail::Scoring::MERGE);
+        let (a, b) = crate::align::ops_to_seq(&aln.ops, s1, s2).unwrap_or_default();
+        (aln.ops, a, b)
+    }
+}
+
 pub fn align_to_merge<E: IsoformEngine>(
+    engine: &mut E,
+    consensus1: &[u8],
+    consensus2: &[u8],
+    opts: MergeOpts,
+) -> bool {
+    let verdict = align_to_merge_inner(engine, consensus1, consensus2, opts);
+    // Only a positive needs confirming, and only when the fast aligner produced
+    // it --- with WFA2 off the two are the same aligner and this is a no-op.
+    if verdict && wfa_confirm() && crate::wfa::enabled_merge() {
+        return align_to_merge_inner(&mut ParasailMergeOnly, consensus1, consensus2, opts);
+    }
+    verdict
+}
+
+fn align_to_merge_inner<E: IsoformEngine>(
     engine: &mut E,
     consensus1: &[u8],
     consensus2: &[u8],
