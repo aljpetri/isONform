@@ -930,7 +930,7 @@ impl Consensus for SpoaParasail {
         let a = if bubble_global() {
             crate::parasail::global(s1, s2, crate::parasail::Scoring::BUBBLE)
         } else {
-            crate::wfa::enabled()
+            crate::wfa::enabled_bubble()
                 .then(|| crate::wfa::semiglobal(s1, s2, crate::parasail::Scoring::BUBBLE))
                 .flatten()
                 .unwrap_or_else(|| {
@@ -1285,6 +1285,30 @@ impl<C: Consensus> BubbleAligner for RealAligner<'_, C> {
                     .join(",")
             };
             let (s0, s1) = (sig(&req.attrs[0]), sig(&req.attrs[1]));
+            // `ISONFORM_TRACE_DECIDE=*` dumps *every* verdict in one line, for
+            // diffing against the reference's own sequence of decisions
+            // (`dump_reference.py --record-decide`). A read signature watches one
+            // bubble instead, which is what findings 24/25 used.
+            if watch == "*" {
+                let mut reads: Vec<u32> = req.path_support[0]
+                    .iter()
+                    .chain(req.path_support[1].iter())
+                    .copied()
+                    .collect();
+                reads.sort_unstable();
+                reads.dedup();
+                eprintln!(
+                    "DECIDE\t{}\t{}\t{}\t{}",
+                    req.bubble_start,
+                    req.bubble_end,
+                    reads
+                        .iter()
+                        .map(|r| r.to_string())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                    poppable
+                );
+            }
             if s0 == watch || s1 == watch {
                 eprintln!(
                     "DECIDE mega={} p0=[{s0}] p1=[{s1}] len0={} len1={} poppable={}",
@@ -1826,6 +1850,16 @@ pub fn pop_bubbles<A: BubbleAligner>(g: &mut Graph, aligner: &mut A, opts: PopOp
             }
         }
 
+        // `ISONFORM_TRACE_POPS=1`: this iteration's pop count, to line up against
+        // the reference's own "This iterations pops" line. Comparing totals hides
+        // *where* two runs diverge; comparing the per-iteration series says which
+        // iteration to look at.
+        if std::env::var_os("ISONFORM_TRACE_POPS").is_some() {
+            eprintln!(
+                "trace-pops iteration {} pops {this_it_pops}",
+                stats.iterations
+            );
+        }
         if this_it_pops < pop_threshold {
             break;
         }

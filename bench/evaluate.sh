@@ -357,6 +357,21 @@ case "$cmd" in
     note "corpora in $WORK"
     ;;
 
+  corpus)
+    # One corpus by name. `corpora` builds all four, which is wrong when a sweep
+    # wants the same corpus rebuilt at several read depths --- point the source
+    # fastq and ISONFORM_WORK at the depth and build just that one.
+    [[ $# -ge 1 ]] || die "usage: evaluate.sh corpus <name>"
+    mkdir -p "$WORK/eval"
+    case "$1" in
+      sirv_sim_gene) corpus_sirv_sim_gene ;;
+      sirv_real)     corpus_sirv_real ;;
+      droso)         corpus_droso ;;
+      droso_deep)    corpus_droso_deep ;;
+      *) die "unknown corpus '$1'" ;;
+    esac
+    ;;
+
   run)
     [[ $# -ge 3 ]] || die "usage: evaluate.sh run <corpus> <impl-dir> <tag> [seed]"
     mkdir -p "$WORK/eval"

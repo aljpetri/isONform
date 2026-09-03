@@ -81,6 +81,14 @@ fn parse_case(path: &Path) -> Case {
         opts: MergeOpts {
             merge_rebuild_max: 50,
             final_consensus_pass: false,
+            // The reference's diversity accumulator counts mismatch *runs* times
+            // `delta_len` (finding 30). This oracle replays recorded *reference*
+            // output, so it must run the reference's rule --- with the port's fix
+            // applied instead, every merge the fix changes was scored as a
+            // failure, which is what made 13 of 27 cases look like a port defect
+            // when the port is exact. An oracle must compare like with like; a
+            // deliberate divergence is measured end to end, not here.
+            cigar_diversity_counts_runs: true,
             ..Default::default()
         },
         ..Default::default()

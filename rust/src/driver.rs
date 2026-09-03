@@ -92,7 +92,9 @@ pub fn build_opts_from_env(base: BuildOpts) -> BuildOpts {
     match std::env::var("ISONFORM_PAIR_NODES").ok().as_deref() {
         Some("1") => o.pair_nodes = true,
         Some("0") => o.pair_nodes = false,
-        _ => {}
+        // Faithful mode keys nodes by `(read, start, stop)` as the reference
+        // does; finding 48's pair key is an opt-in optimisation over that.
+        _ => o.pair_nodes = !crate::reference_semantics(),
     }
     o
 }
@@ -486,7 +488,7 @@ impl Default for BugCompat {
             build: build_opts_from_env(BuildOpts::default()),
             batch_merge_no_op: false,
             batch_name_collision: false,
-        cigar_diversity_counts_runs: false,
+            cigar_diversity_counts_runs: false,
         }
     }
 }
@@ -499,7 +501,7 @@ impl BugCompat {
             build: build_opts_from_env(BuildOpts::reference()),
             batch_merge_no_op: true,
             batch_name_collision: true,
-        cigar_diversity_counts_runs: true,
+            cigar_diversity_counts_runs: true,
         }
     }
 
@@ -533,6 +535,11 @@ impl BugCompat {
 
 pub fn bug_compat_from_env() -> Result<BugCompat, String> {
     match std::env::var_os("ISONFORM_BUG_COMPAT") {
+        // Faithful mode reproduces the reference, bugs included --- that is what
+        // makes it the baseline an optimisation can be measured against one at a
+        // time. `ISONFORM_FAITHFUL=0` selects the fixed behaviour instead, and an
+        // explicit `ISONFORM_BUG_COMPAT=` list overrides both.
+        None if crate::reference_semantics() => Ok(BugCompat::reference()),
         None => Ok(BugCompat::default()),
         Some(raw) => parse_bug_compat(&raw.to_string_lossy()),
     }
@@ -631,7 +638,7 @@ mod tests {
             wis: WisOpts::default(),
             build: build_opts_from_env(BuildOpts::default()),
             merge_delta_len: 5,
-        cigar_diversity_counts_runs: false,
+            cigar_diversity_counts_runs: false,
         }
     }
 

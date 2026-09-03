@@ -718,6 +718,36 @@ def install(outdir):
     return original
 
 
+def install_decide(outdir):
+    """Record every `align_bubble_nodes` verdict.
+
+    Both call sites in `new_bubble_popping_routine` resolve the name through the
+    module dict at call time, so patching the module attribute catches both.
+    `this_combi` is `(start, end, reads)`, which is exactly the identity the port
+    prints, so the two files diff line for line.
+    """
+    import modules.SimplifyGraph as SG
+
+    original = SG.align_bubble_nodes
+    path = os.path.join(outdir, "decide_calls.tsv")
+    fh = open(path, "w")
+    fh.write("# start\tend\treads\tpoppable\n")
+    state = {"n": 0, "fh": fh, "path": path}
+
+    def wrapper(all_reads, consensus_infos, work_dir, k_size, spoa_count,
+                multi_consensuses, is_megabubble, this_combi, delta_len):
+        result = original(all_reads, consensus_infos, work_dir, k_size, spoa_count,
+                          multi_consensuses, is_megabubble, this_combi, delta_len)
+        start, end, reads = this_combi[0], this_combi[1], this_combi[2]
+        fh.write("%s\t%s\t%s\t%s\n" % (
+            start, end, ",".join(str(r) for r in sorted(reads)), bool(result[0])))
+        state["n"] += 1
+        return result
+
+    SG.align_bubble_nodes = wrapper
+    return state
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -747,6 +777,15 @@ def main():
         "oracle and its tie-break sweep.",
     )
     ap.add_argument(
+        "--record-decide",
+        action="store_true",
+        help="also record every `align_bubble_nodes` verdict as "
+        "`start<TAB>end<TAB>reads<TAB>poppable` in decide_calls.tsv, for diffing "
+        "against the port's `ISONFORM_TRACE_DECIDE=*` output. The two sequences "
+        "of decisions are what say WHICH bubble two runs disagree on; pop counts "
+        "only say that they do.",
+    )
+    ap.add_argument(
         "--record-spoa",
         action="store_true",
         help="also record every `spoa` call as a replayable case in "
@@ -769,6 +808,7 @@ def main():
         install_isoforms(args.outdir)
     if args.stage == "batchmerge":
         install_batch_merge(args.outdir)
+    decide_state = install_decide(args.outdir) if args.record_decide else None
     spoa_state = install_spoa(args.outdir) if args.record_spoa else None
     para_state = install_parasail(args.outdir) if args.record_parasail else None
 
@@ -881,6 +921,13 @@ def main():
                 "judges them rather than this script.",
                 file=sys.stderr,
             )
+    if decide_state is not None:
+        decide_state["fh"].close()
+        print(
+            f"[dump] {decide_state['n']} align_bubble_nodes verdict(s) -> "
+            f"{decide_state['path']}",
+            file=sys.stderr,
+        )
     if para_state is not None:
         para_state["fh"].close()
         sites = ", ".join(

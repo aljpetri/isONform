@@ -63,18 +63,82 @@ pub fn spoa_sort_by_length() -> bool {
 
 /// The reads of `members`, longest first when [`spoa_sort_by_length`] is on, then
 /// capped. Sorting happens **before** the cap so the cap keeps the longest.
+/// How the sequences handed to spoa are ordered. `ISONFORM_SPOA_ORDER`.
+///
+/// spoa seeds its graph with the **first** sequence, so that one is the backbone
+/// every later sequence is aligned into --- the order is not cosmetic.
+///
+/// `len` (equivalently `ISONFORM_SPOA_SORT=1`) sorts longest-first *before* the
+/// `max_seqs_to_spoa` cap, so it changes the backbone **and** which reads survive
+/// the cap. Finding 44 measured that and rejected it: clearly worse on real ONT
+/// data (`sirv_real` strict F1 0.735 -> 0.700), because the longest real reads are
+/// the likeliest to be chimeric and a chimeric backbone propagates.
+///
+/// The two variants below separate the knobs finding 44 conflated. Both cap
+/// first, in the port's ordinary ascending order, so selection is untouched and
+/// only the backbone changes:
+///
+/// * `cap_len` --- longest of the survivors as backbone. The backbone benefit
+///   without letting long chimeras displace ordinary reads at the cap.
+/// * `median` --- the **median-length** survivor as backbone. Still a full-length
+///   read, but not the outlier that chimeras concentrate in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpoaOrder {
+    /// Ascending read id, capped. The port's default.
+    None,
+    /// Longest first, then capped. Finding 44's variant.
+    Len,
+    /// Capped, then longest of the survivors first.
+    CapLen,
+    /// Capped, then the median-length survivor first.
+    Median,
+}
+
+pub fn spoa_order() -> SpoaOrder {
+    static O: std::sync::OnceLock<SpoaOrder> = std::sync::OnceLock::new();
+    *O.get_or_init(
+        || match std::env::var("ISONFORM_SPOA_ORDER").ok().as_deref() {
+            Some("len") => SpoaOrder::Len,
+            Some("cap_len") => SpoaOrder::CapLen,
+            Some("median") => SpoaOrder::Median,
+            _ if spoa_sort_by_length() => SpoaOrder::Len,
+            _ => SpoaOrder::None,
+        },
+    )
+}
+
 fn ordered_for_spoa(
     members: &[u32],
     reads: &FxHashMap<u32, Vec<u8>>,
     max_seqs_to_spoa: usize,
 ) -> Vec<u32> {
     let mut v = members.to_vec();
-    if spoa_sort_by_length() {
-        // Descending by read length; stable, so equal lengths keep their order.
-        v.sort_by(|x, y| {
-            let len = |q: &u32| reads.get(q).map_or(0, |r| r.len());
-            len(y).cmp(&len(x))
-        });
+    let len = |q: &u32| reads.get(q).map_or(0, |r| r.len());
+    match spoa_order() {
+        SpoaOrder::None => {}
+        SpoaOrder::Len => {
+            // Descending by read length; stable, so equal lengths keep their
+            // order. Before the cap, so the cap keeps the longest.
+            v.sort_by(|x, y| len(y).cmp(&len(x)));
+        }
+        SpoaOrder::CapLen => {
+            v.truncate(max_seqs_to_spoa);
+            v.sort_by(|x, y| len(y).cmp(&len(x)));
+        }
+        SpoaOrder::Median => {
+            v.truncate(max_seqs_to_spoa);
+            if v.len() > 2 {
+                // Index of the median-length survivor, by a stable ordering so
+                // the pick does not depend on sort implementation.
+                let mut by_len: Vec<u32> = v.clone();
+                by_len.sort_by(|x, y| len(x).cmp(&len(y)).then(x.cmp(y)));
+                let med = by_len[by_len.len() / 2];
+                if let Some(i) = v.iter().position(|&r| r == med) {
+                    v.remove(i);
+                    v.insert(0, med);
+                }
+            }
+        }
     }
     v.truncate(max_seqs_to_spoa);
     v
@@ -91,14 +155,24 @@ fn ordered_for_spoa(
 pub fn poa_schedule_from_env() -> (usize, bool) {
     static S: std::sync::OnceLock<(usize, bool)> = std::sync::OnceLock::new();
     *S.get_or_init(|| {
+        // Faithful mode is the reference's schedule: rebuild after every merge
+        // (capped at 50) and no final pass. Finding 44's end-only scheme is the
+        // optimisation, opted into with `ISONFORM_FAITHFUL=0` or by setting these
+        // explicitly.
+        let (d_max, d_fin) = if crate::faithful() {
+            (50, false)
+        } else {
+            (0, true)
+        };
         let max = std::env::var("ISONFORM_MERGE_REBUILD_MAX")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
-        let fin = !matches!(
-            std::env::var("ISONFORM_FINAL_CONSENSUS").ok().as_deref(),
-            Some("0") | Some("off")
-        );
+            .unwrap_or(d_max);
+        let fin = match std::env::var("ISONFORM_FINAL_CONSENSUS").ok().as_deref() {
+            Some("0") | Some("off") => false,
+            Some(_) => true,
+            None => d_fin,
+        };
         (max, fin)
     })
 }
@@ -137,7 +211,7 @@ impl IsoformEngine for SpoaParasailMerge {
     fn align_merge(&mut self, s1: &[u8], s2: &[u8]) -> (Vec<CigarOp>, Vec<u8>, Vec<u8>) {
         let t = std::time::Instant::now();
         let sc = crate::parasail::Scoring::MERGE;
-        let aln = crate::wfa::enabled()
+        let aln = crate::wfa::enabled_merge()
             .then(|| crate::wfa::semiglobal(s1, s2, sc))
             .flatten()
             .unwrap_or_else(|| crate::parasail::semiglobal(s1, s2, sc));
@@ -253,6 +327,13 @@ pub fn compute_equal_reads(g: &Graph, support: &[u32]) -> Vec<(u32, Vec<u32>)> {
         // `pop()` then `current_node_support = node_support_left` then `.add(read)`
         // --- the alias means the removal never took effect.
         let mut current: FxHashSet<u32> = left.iter().copied().collect();
+        // The insertion order the reference's set has, which decides its slot
+        // layout and so `list(...)`. Each `intersection(edge_supp)` builds a
+        // **fresh** set by iterating `edge_supp` --- a list, so in list order ---
+        // and inserting the members it finds, so the order is simply the last
+        // traversed edge's support filtered to the survivors. `None` until the
+        // first intersection, while `current_node_support` is still the alias.
+        let mut insertion: Option<Vec<u32>> = None;
         let mut node: NodeId = s;
         while node != t {
             let mut next_found = false;
@@ -260,6 +341,12 @@ pub fn compute_equal_reads(g: &Graph, support: &[u32]) -> Vec<(u32, Vec<u32>)> {
                 if let Some(supp) = g.edge_support(node, nb) {
                     if supp.contains(&read) {
                         let keep: FxHashSet<u32> = supp.iter().copied().collect();
+                        insertion = Some(
+                            supp.iter()
+                                .copied()
+                                .filter(|r| current.contains(r))
+                                .collect(),
+                        );
                         current.retain(|r| keep.contains(r));
                         node = nb;
                         next_found = true;
@@ -278,10 +365,23 @@ pub fn compute_equal_reads(g: &Graph, support: &[u32]) -> Vec<(u32, Vec<u32>)> {
             // intersection along its own path. Break rather than hang.
             break;
         }
-        let mut group: Vec<u32> = current.iter().copied().collect();
-        group.sort_unstable();
-        // `id = list(current_node_support)[0]` --- a set-order-dependent
-        // representative. Smallest, for the reason in the doc comment.
+        // `list(current_node_support)` is CPython set-iteration order, which is
+        // slot order and therefore a function of the values and the order they
+        // were inserted. `crate::pyset` models that exactly, so faithful mode
+        // reproduces the reference's member order and its `[0]` representative.
+        // Finding 28's ascending order is the divergence, kept for the optimised
+        // configuration so the two remain comparable.
+        let group: Vec<u32> = match (&insertion, crate::reference_semantics()) {
+            (Some(ins), true) => crate::pyset::order_of(ins.iter().map(|&r| r as u64))
+                .into_iter()
+                .map(|r| r as u32)
+                .collect(),
+            _ => {
+                let mut v: Vec<u32> = current.iter().copied().collect();
+                v.sort_unstable();
+                v
+            }
+        };
         let id = group[0];
         for r in &group {
             left.remove(r);
@@ -569,7 +669,60 @@ pub fn merge_stats() -> MergeStats {
 }
 
 /// `align_to_merge`: should these two consensuses become one isoform?
+/// `align_to_merge`, with WFA2's **positive** verdicts confirmed by parasail.
+///
+/// WFA2 merges more than parasail does --- 9% of parasail's merges flip --- and
+/// the extra merges rebuild the consensus over a larger read union, so the ends
+/// creep out and the isoform lands just under the scorer's identity cutoff. The
+/// asymmetry is what makes this cheap: merges are rare (1 650 of 51 447 recorded
+/// calls, 3.2%), so re-deciding only the positives with the exact aligner costs a
+/// few percent of the alignment work and makes every merge exactly parasail's.
+///
+/// It does **not** catch pairs WFA2 wrongly refuses; that would need confirming
+/// the negatives too, which is every pair and no saving. Whether those matter is
+/// a measurement, not an argument.
+///
+/// `ISONFORM_WFA2_CONFIRM=1`.
+pub fn wfa_confirm() -> bool {
+    static C: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *C.get_or_init(|| {
+        matches!(
+            std::env::var("ISONFORM_WFA2_CONFIRM").ok().as_deref(),
+            Some("1") | Some("on")
+        )
+    })
+}
+
+/// The exact-aligner verdict for a pair, for [`wfa_confirm`].
+struct ParasailMergeOnly;
+
+impl IsoformEngine for ParasailMergeOnly {
+    fn spoa(&mut self, _seqs: &[&[u8]]) -> Vec<u8> {
+        unreachable!("confirmation never builds a consensus")
+    }
+    fn align_merge(&mut self, s1: &[u8], s2: &[u8]) -> (Vec<CigarOp>, Vec<u8>, Vec<u8>) {
+        let aln = crate::parasail::semiglobal(s1, s2, crate::parasail::Scoring::MERGE);
+        let (a, b) = crate::align::ops_to_seq(&aln.ops, s1, s2).unwrap_or_default();
+        (aln.ops, a, b)
+    }
+}
+
 pub fn align_to_merge<E: IsoformEngine>(
+    engine: &mut E,
+    consensus1: &[u8],
+    consensus2: &[u8],
+    opts: MergeOpts,
+) -> bool {
+    let verdict = align_to_merge_inner(engine, consensus1, consensus2, opts);
+    // Only a positive needs confirming, and only when the fast aligner produced
+    // it --- with WFA2 off the two are the same aligner and this is a no-op.
+    if verdict && wfa_confirm() && crate::wfa::enabled_merge() {
+        return align_to_merge_inner(&mut ParasailMergeOnly, consensus1, consensus2, opts);
+    }
+    verdict
+}
+
+fn align_to_merge_inner<E: IsoformEngine>(
     engine: &mut E,
     consensus1: &[u8],
     consensus2: &[u8],
