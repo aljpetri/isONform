@@ -120,7 +120,8 @@ fn run(args: &MainArgs) -> std::io::Result<()> {
         );
     }
 
-    let text = std::fs::read_to_string(fastq)?;
+    let text = std::fs::read_to_string(fastq)
+        .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", fastq.display())))?;
     let records = isonform::fastq::read_fastq(&text);
 
     // `if len(all_reads) <= args.exact_instance_limit: args.exact = True` --- the

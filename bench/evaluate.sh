@@ -95,6 +95,9 @@ DROSO_FASTQ="${DROSO_FASTQ:-$HOME/data/lrRNA-seq/droso/full_length_output_first_
 # corpus_droso_deep.
 DROSO_DEEP_FASTQ="${DROSO_DEEP_FASTQ:-$HOME/data/lrRNA-seq/droso/full_length_output_first_1M.fq}"
 SIRV_TRANSCRIPTOME="${SIRV_TRANSCRIPTOME:-$HOME/source/isONcorrect/test_data/sirv_transcriptome.fasta}"
+# SIRV set 4: the 68 short transcripts plus the 15 long SIRVs, for the PacBio
+# corpus, whose library was spiked with set 4 rather than set 1.
+SIRV_SET4_TRANSCRIPTOME="${SIRV_SET4_TRANSCRIPTOME:-$WORK/sirv_transcriptome_set4.fasta}"
 DROSO_GENOME="${DROSO_GENOME:-$HOME/data/genomes/fruitfly.fa}"
 # Optional. When present, the droso corpus is additionally scored into the SQANTI
 # structural categories. Filter the FlyBase whole-genome GFF first --- it is
@@ -329,7 +332,16 @@ score_corpus() {
       "$PY_BIN" "$REPO_ROOT/bench/accuracy_isoforms.py" \
         --transcriptome "$SIRV_TRANSCRIPTOME" "${specs[@]}"
       ;;
-    droso|droso_deep|droso_deep_*)
+    pacbio_sirv)
+      # PacBio HiFi SIRV pulled out of the LRGASP WTC11 library by alignment.
+      # Scored against SIRV set 4 --- 68 short transcripts plus the 15 long ones
+      # (4-12 kb) --- because the library was spiked with set 4, and scoring it
+      # against the 68 alone would count every recovered long SIRV as a false
+      # positive.
+      "$PY_BIN" "$REPO_ROOT/bench/accuracy_isoforms.py" \
+        --transcriptome "$SIRV_SET4_TRANSCRIPTOME" "${specs[@]}"
+      ;;
+    droso|droso_deep|droso_deep_*|pacbio_droso)
       local -a ann=()
       if [[ -f "$DROSO_ANNOTATION" ]]; then
         ann=(--annotation "$DROSO_ANNOTATION")

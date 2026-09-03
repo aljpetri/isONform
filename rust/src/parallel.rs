@@ -182,7 +182,13 @@ pub fn split_cluster_in_batches_clust(
         } else {
             let link = out.join(format!("{cl_id}_0.{ext}"));
             println!("SYMLINK {}", link.display());
-            symlink_force(&path, &link)?;
+            // The link lives in a temp directory, so a **relative** target
+            // resolves against that directory and dangles --- which is why the
+            // reference's README says to pass absolute paths. Resolving the
+            // target here makes a relative `--fastq_folder` work, and changes
+            // nothing when the path was already absolute.
+            let target = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+            symlink_force(&target, &link)?;
         }
     }
     Ok(out)
@@ -479,26 +485,24 @@ pub fn join_back_via_batch_merging(
     let failed: std::sync::Mutex<Option<std::io::Error>> = std::sync::Mutex::new(None);
     std::thread::scope(|scope| {
         for _ in 0..n {
-            scope.spawn(|| {
-                loop {
-                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    let Some(cl_dir) = dirs.get(i) else { break };
-                    if let Err(e) = merge_one_cluster(
-                        cl_dir,
-                        outdir,
-                        iso_abundance,
-                        write_fastq,
-                        write_low_abundance,
-                        opts,
-                        batch_merge_no_op,
-                        recursive,
-                    ) {
-                        let mut slot = failed.lock().unwrap();
-                        if slot.is_none() {
-                            *slot = Some(e);
-                        }
-                        break;
+            scope.spawn(|| loop {
+                let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let Some(cl_dir) = dirs.get(i) else { break };
+                if let Err(e) = merge_one_cluster(
+                    cl_dir,
+                    outdir,
+                    iso_abundance,
+                    write_fastq,
+                    write_low_abundance,
+                    opts,
+                    batch_merge_no_op,
+                    recursive,
+                ) {
+                    let mut slot = failed.lock().unwrap();
+                    if slot.is_none() {
+                        *slot = Some(e);
                     }
+                    break;
                 }
             });
         }
@@ -507,7 +511,9 @@ pub fn join_back_via_batch_merging(
         return Err(e);
     }
     if std::env::var_os("ISONFORM_MERGE_STATS").is_some() {
-        use crate::batch_merge::{MERGES, PAIRS_ALIGNED, PAIRS_SEEN, PAIRS_SKIPPED, SKIPPED_WOULD_MERGE};
+        use crate::batch_merge::{
+            MERGES, PAIRS_ALIGNED, PAIRS_SEEN, PAIRS_SKIPPED, SKIPPED_WOULD_MERGE,
+        };
         use std::sync::atomic::Ordering::Relaxed;
         let (seen, skipped, aligned) = (
             PAIRS_SEEN.load(Relaxed),
@@ -517,7 +523,11 @@ pub fn join_back_via_batch_merging(
         eprintln!(
             "merge-stats pairs_seen={seen} skipped={skipped} ({:.1}%) aligned={aligned} \
              merges={} skipped_would_merge={}",
-            if seen > 0 { 100.0 * skipped as f64 / seen as f64 } else { 0.0 },
+            if seen > 0 {
+                100.0 * skipped as f64 / seen as f64
+            } else {
+                0.0
+            },
             MERGES.load(Relaxed),
             SKIPPED_WOULD_MERGE.load(Relaxed)
         );
@@ -545,9 +555,7 @@ fn merge_one_cluster(
             .to_string();
         let mut cluster = read_cluster(cl_dir)?;
         let handled = match recursive {
-            Some((params, passes)) => {
-                recursive_merge_cluster(&mut cluster.batches, params, passes)
-            }
+            Some((params, passes)) => recursive_merge_cluster(&mut cluster.batches, params, passes),
             None => false,
         };
         if !handled {
@@ -575,7 +583,6 @@ fn merge_one_cluster(
     }
     Ok(())
 }
-
 
 /// The recursive merge: run isONform's own front end over a cluster's
 /// consensuses instead of aligning every pair of them.
@@ -663,7 +670,8 @@ fn recursive_merge_cluster(
         let outs = crate::driver::run_cluster(&records, &p);
 
         let strip = |acc: &str| -> String {
-            acc.rfind(":w=").map_or_else(|| acc.to_string(), |i| acc[..i].to_string())
+            acc.rfind(":w=")
+                .map_or_else(|| acc.to_string(), |i| acc[..i].to_string())
         };
         let mut next: Vec<(String, Vec<u8>)> = Vec::new();
         let mut next_reads: std::collections::HashMap<String, Vec<String>> =
