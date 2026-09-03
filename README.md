@@ -1,16 +1,8 @@
 # isONform - Reference-free isoform reconstruction from long read sequencing data
-# Table of contents
-1. [Installation](#installation)
-2. [Introduction](#introduction)
-3. [Output](#output) 
-4. [Input data](#Input_data)
-5. [Running isONform](#Running)
-	1. [Running a test](#runtest)
-6. [Credits](#credits)
 
 ## Installation <a name="installation"></a>
 
-isONform has been re-implemented in Rust (2026-09-03). It needs a Rust toolchain
+isONform has been **re-implemented in Rust (2026-09-04)**. It needs a Rust toolchain
 ([rustup.rs](https://rustup.rs)).
 
 ```
@@ -26,14 +18,14 @@ them on your `PATH` and run them as shown under
 The original python implementation is still available and is the reference this
 port is checked against; see [INSTALL-python.md](INSTALL-python.md).
 
-### Which version of the rust-port
+### Rust-port versions
 
-By default, the rust port uses the WFA2 aligner, and is much faster and
-slightly more accurate on average, but does not produce identical results to the Python version. 
-The **`--faithful`** parameter reproduces the python implementation **byte for byte**, but
-is only about **~2x faster than python** on shallow data and about the
+By default, the rust port uses the WFA2 aligner, and is much faster (**8-10x**) at similar
+accuracy, but does not produce identical results to the Python version. 
+
+The `--faithful` parameter reproduces the python implementation byte for byte, but
+is only about **~2x faster than Python** on shallow data and about the
 same speed on the deepest clusters. We recommend using the port in default mode (no `--faithful` flag). 
-
 
 Full comparison against the python implementation --- accuracy,
 redundancy, runtime and peak memory on five corpora from 10 000 to 1 000 000 reads
@@ -49,25 +41,21 @@ isONform_parallel --fastq_folder test_data/sirv_sim --outfolder /tmp/isonform_te
                   --t 4 --split_wrt_batches --iso_abundance 3
 ```
 
-This should finish in seconds and write **7 isoforms** to
-`/tmp/isonform_test/transcriptome.fasta`, recovering SIRV101, SIRV102, SIRV103,
-SIRV201, SIRV202 and SIRV204 at >= 0.993 identity. See
-[test_data/README.md](test_data/README.md) for provenance and for what the
-numbers mean.
+This should finish in seconds and write 7 isoforms to
+`/tmp/isonform_test/transcriptome.fasta`. See
+[test_data/README.md](test_data/README.md) if you want details on the test data.
 
-## Introduction <a name="introduction"></a>
 
-IsONform generates isoforms out of clustered and corrected long reads.
-For this a graph is built up using the networkx api and different simplification strategies are applied to it, such as bubble popping and node merging.
-The algorithm uses spoa to generate the final isoforms.<br />
 ## Input data <a name="Input_data"></a>
-The isONpipeline takes .fastq files generated with long-read sequencing techniques (ONT or Pacbio) as an input that additionally have been cleaned of barcodes.
-Please make sure that you run the isONpipeline on data that have been processed with  [LIMA](https://lima.how/) (Pacbio data) or [Pychopper](https://github.com/epi2me-labs/pychopper) (ONT data) so that all the barcodes are removed from the reads
+The isONpipeline takes .fastq files generated with long-read sequencing techniques 
+(ONT or Pacbio) as an input that additionally have been cleaned of barcodes.
+Please make sure that you run the isONpipeline on data that have been processed with
+[LIMA](https://lima.how/) (Pacbio data) or [Pychopper](https://github.com/epi2me-labs/pychopper) (ONT data) 
+so that all the barcodes are removed from the reads
 
 ## Running isONform <a name="Running"></a>
 
-To only run the isONform algorithm:<br />
-
+To only run the isONform algorithm:
 
 ```
 isONform_parallel --fastq_folder path/to/input/files --t <nr_cores> --outfolder /path/to/outfolder --split_wrt_batches 
