@@ -28,8 +28,8 @@ port is checked against; see [INSTALL-python.md](INSTALL-python.md).
 
 ### Which version of the rust-port
 
-By **default**, the rust port uses the WFA2 aligner, and is much faster and
-slightly more accurate on average, but does not produce identical results. 
+By default, the rust port uses the WFA2 aligner, and is much faster and
+slightly more accurate on average, but does not produce identical results to the Python version. 
 The **`--faithful`** parameter reproduces the python implementation **byte for byte**, but
 is only about **~2x faster than python** on shallow data and about the
 same speed on the deepest clusters. We recommend using the port in default mode (no `--faithful` flag). 
