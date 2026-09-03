@@ -930,7 +930,7 @@ impl Consensus for SpoaParasail {
         let a = if bubble_global() {
             crate::parasail::global(s1, s2, crate::parasail::Scoring::BUBBLE)
         } else {
-            crate::wfa::enabled_bubble()
+            crate::wfa::enabled()
                 .then(|| crate::wfa::semiglobal(s1, s2, crate::parasail::Scoring::BUBBLE))
                 .flatten()
                 .unwrap_or_else(|| {
