@@ -121,9 +121,7 @@ visible: it costs a transcript on shallow data and stops costing anything by
 | | faithful | 56 | 340 | 0.791 | 0.929 | 4.62 | 797.9s | 1 771 MB |
 | | default | 56 | 342 | 0.783 | 0.924 | 4.55 | **113.1s** | **1 412 MB** |
 
-The simulated corpus has no depth series: its source is a single 10 000-read
-simulated library, so 10 000 is the only depth available without regenerating the
-simulation.
+
 
 ## Accuracy --- Drosophila
 
