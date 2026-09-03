@@ -48,6 +48,10 @@ isONform_parallel --faithful --fastq_folder path/to/input --outfolder path/to/ou
 `--faithful` is the one flag the python entry points do not accept; everything else
 about the command line is identical.
 
+Full head-to-head measurements against the python implementation --- accuracy,
+redundancy, runtime and peak memory on five corpora from 10 000 to 1 000 000 reads
+--- are in [Port-benchmark.md](Port-benchmark.md).
+
 ## Introduction <a name="introduction"></a>
 
 IsONform generates isoforms out of clustered and corrected long reads.
