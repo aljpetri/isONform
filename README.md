@@ -11,8 +11,7 @@
 ## Installation <a name="installation"></a>
 
 isONform has been re-implemented in Rust (2026-09-03). It needs a Rust toolchain
-([rustup.rs](https://rustup.rs)) and nothing else --- no python, no conda, and no
-separate spoa or parasail install.
+([rustup.rs](https://rustup.rs)).
 
 ```
 git clone https://github.com/aljpetri/isONform.git
@@ -29,28 +28,16 @@ port is checked against; see [INSTALL-python.md](INSTALL-python.md).
 
 ### Which version of the rust-port
 
-**By default** isONform reproduces the published python implementation and
-additionally uses the WFA2 aligner. On real Drosophila ONT cDNA that is **4.7x faster
-than python** and slightly more accurate --- 457 full-splice-match isoforms against
-443, with fewer fragments and fewer off-target calls. On deep SIRV data it is
-**6--7x faster**. The default is what we recommend.
+By **default**, the rust port uses the WFA2 aligner, and is much faster and
+slightly more accurate on average, but does not produce identical results. 
+The **`--faithful`** parameter reproduces the python implementation **byte for byte**, but
+is only about **~2x faster than python** on shallow data and about the
+same speed on the deepest clusters. We recommend using the port in default mode (no `--faithful` flag). 
 
-**`--faithful`** reproduces the python implementation **byte for byte**, verified
-with `cmp` on real ONT SIRV spike-in data at 1 000--50 000 reads and on 1M reads of
-Drosophila cDNA. It is **~2x faster than python** on shallow data and about the
-same speed on the deepest clusters, since it gives up the faster aligner. Use it to
-reproduce a previous python run, or to check a result.
 
-```
-isONform_parallel --faithful --fastq_folder path/to/input --outfolder path/to/out --t 8
-```
-
-`--faithful` is the one flag the python entry points do not accept; everything else
-about the command line is identical.
-
-Full head-to-head measurements against the python implementation --- accuracy,
+Full comparison against the python implementation --- accuracy,
 redundancy, runtime and peak memory on five corpora from 10 000 to 1 000 000 reads
---- are in [Port-benchmark.md](Port-benchmark.md).
+are found here: [Port-benchmark.md](Port-benchmark.md).
 
 ## Introduction <a name="introduction"></a>
 

@@ -19,10 +19,6 @@ only wall clock varies.
 **port (faithful)** is `--faithful`: the reference reproduced exactly.
 **port (default)** is the shipped configuration: faithful plus the WFA2 aligner.
 
-Runs taken during a power outage on 2026-09-03 were discarded and repeated on
-mains; only wall clock was affected, and only on jobs long enough to trigger
-thermal/battery throttling (a 72-minute run read 4 353s on battery and 1 422s on
-mains, while five runs under four minutes were unchanged).
 
 ## The corpora
 
