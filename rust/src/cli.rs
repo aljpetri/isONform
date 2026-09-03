@@ -164,6 +164,16 @@ pub struct MainArgs {
     #[arg(long = "max_seqs", default_value_t = 1000)]
     pub max_seqs: usize,
 
+    /// Reproduce the python implementation **byte for byte**.
+    ///
+    /// A port-only flag: the python entry points reject it, because the thing it
+    /// selects is the absence of this implementation's own changes. Off by
+    /// default, where the WFA2 aligner is used --- faster, and more accurate on
+    /// real Drosophila cDNA. It does not appear in the `ARGS Namespace` line,
+    /// which stays exactly what the reference prints.
+    #[arg(long = "faithful", action = ArgAction::SetTrue)]
+    pub faithful: bool,
+
     /// Activates slower exact mode for instance smaller than this limit
     ///
     /// INERT in the reference: its only effect is `args.exact = True`, and
@@ -362,6 +372,16 @@ pub struct ParallelArgs {
     /// Process reads per batch (of max_seqs sequences) instead of per cluster
     #[arg(long = "split_wrt_batches", action = ArgAction::SetTrue)]
     pub split_wrt_batches: bool,
+
+    /// Reproduce the python implementation **byte for byte**.
+    ///
+    /// A port-only flag: the python entry points reject it, because the thing it
+    /// selects is the absence of this implementation's own changes. Off by
+    /// default, where the WFA2 aligner is used --- faster, and more accurate on
+    /// real Drosophila cDNA. It does not appear in the `ARGS Namespace` line,
+    /// which stays exactly what the reference prints.
+    #[arg(long = "faithful", action = ArgAction::SetTrue)]
+    pub faithful: bool,
 
     /// Outfolder with all corrected reads
     #[arg(long)]

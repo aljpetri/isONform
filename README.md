@@ -10,37 +10,43 @@
 
 ## Installation <a name="installation"></a>
 
+isONform has been re-implemented in Rust (2026-09-03). It needs a Rust toolchain
+([rustup.rs](https://rustup.rs)) and nothing else --- no python, no conda, and no
+separate spoa or parasail install.
 
-### Via pip
 ```
-pip install isONform
+git clone https://github.com/aljpetri/isONform.git
+cd isONform/rust
+cargo build --release
 ```
 
-This command installs isONforms dependencies:
+That produces `target/release/isONform_parallel` and `target/release/main`. Put
+them on your `PATH` and run them as shown under
+[Running isONform](#Running).
 
-1. `networkx`
-2. `ordered-set`
-3. `matplotlib`
-4. `parasail`
-5. `edlib`
-6. `pyinstrument`
-7. `namedtuple`
-8. `recordclass`
+The original python implementation is still available and is the reference this
+port is checked against; see [INSTALL-python.md](INSTALL-python.md).
 
+### Which version of the rust-port
 
-### From github source
-1. Create a new environment for isONform (at least python 3.7 required):<br />
-		`conda create -n isonform python=3.10 pip` <br />
-		`conda activate isonform` <br />
-2.  Install isONcorrect and SPOA <br />
-		`pip install isONcorrect` <br />
-		`conda install -c bioconda spoa` <br />
-3.  Install other dependencies of isONform:<br />
-		`conda install networkx`<br />
-		`pip install parasail`<br />
+**By default** isONform reproduces the published python implementation and
+additionally uses the WFA2 aligner. On real Drosophila ONT cDNA that is **4.7x faster
+than python** and slightly more accurate --- 457 full-splice-match isoforms against
+443, with fewer fragments and fewer off-target calls. On deep SIRV data it is
+**6--7x faster**. The default is what we recommend.
 
-4. clone this repository
+**`--faithful`** reproduces the python implementation **byte for byte**, verified
+with `cmp` on real ONT SIRV spike-in data at 1 000--50 000 reads and on 1M reads of
+Drosophila cDNA. It is **~2x faster than python** on shallow data and about the
+same speed on the deepest clusters, since it gives up the faster aligner. Use it to
+reproduce a previous python run, or to check a result.
 
+```
+isONform_parallel --faithful --fastq_folder path/to/input --outfolder path/to/out --t 8
+```
+
+`--faithful` is the one flag the python entry points do not accept; everything else
+about the command line is identical.
 
 ## Introduction <a name="introduction"></a>
 
@@ -61,6 +67,10 @@ isONform_parallel --fastq_folder path/to/input/files --t <nr_cores> --outfolder 
 ```
 
 Note: Please always use absolute paths to the files or folders
+
+Argument names, defaults, validation messages and exit codes match the python
+implementation, so any existing command or script works unchanged. Add
+`--faithful` to reproduce the python output byte for byte.
 
 The full isON-pipeline (isONclust, isONcorrect, isONform) can be found [here](https://github.com/aljpetri/isONform/blob/master/isON_pipeline.sh) and is run via:
 

@@ -1,29 +1,49 @@
 # isONform — Rust rewrite
 
-## Status: ported, scored, and 2.2--3.7x faster than the port as first written
+## Status: byte-identical to the reference, and 4.7x faster
 
-Both entry points run end to end, the differential oracles pass, and the defaults
-now carry three measured changes on top of the faithful port. **Start here**, then
-read findings 40--49; findings 1--39 and the reconnaissance are in
+The port reproduces the Python reference **exactly** --- `cmp` reports identical
+`transcriptome.fasta` on `sirv_real` at 1 000/2 000/5 000/10 000/20 000/50 000
+reads and on `droso` (1M reads, 561 clusters, 504 isoforms). That is the baseline
+every optimisation is now measured against. **Start here**, then read findings
+53--55; findings 40--52 follow, and 1--39 plus the reconnaissance are in
 `PORTING-HISTORY.md`.
+
+### The three configurations
+
+| `ISONFORM_FAITHFUL` | what it is |
+|---|---|
+| `1` | **byte-identical** to the reference |
+| unset | **the default**: faithful plus WFA2 |
+| `0` | every optimisation --- fastest, and it loses transcripts |
+
+`--faithful` on either entry point selects the first; it sets the variable the
+mode is read from, which carries it to every spawned `main` without touching the
+child's argument list. Any single optimisation can also be switched on or off by
+its own variable, which wins over the mode.
+
+The CLI is otherwise unchanged: `bench/equivalence.sh cli` passes **37 of 37**
+cases against the live reference --- exit codes, stderr diagnostics, the stray
+stdout prints, argparse's prefix abbreviation. `--faithful` is the one flag the
+reference does not accept, and it is deliberately absent from the `ARGS Namespace`
+line so that line stays exactly what the reference prints.
 
 ### Where it stands, measured
 
-| | python | port as first written | **defaults now** |
+| | python | faithful | **default (+wfa2)** |
 |---|---|---|---|
-| droso | 49.0s | 24.9s | **11.4s** |
-| sirv_sim_gene | 354.8s | 107.8s | **30.0s** |
-| sirv_real | 241.0s | 220.1s | **59.6s** |
-| deep-12 within-batch | --- | 1 403s | **179s** |
-| sirv_sim F1 / redundancy | 0.947 / 2.19 | 0.940 / 1.38 | **0.946 / 1.25** |
-| sirv_real strict / lenient F1 | 0.773 / 0.892 | 0.734 / 0.873 | 0.722 / 0.862 |
-| droso FSM / ISM / NIC | 443 / 14 / 29 | 470 / 12 / 30 | 466 / **9** / **26** |
+| droso wall | 51.5s | 26.0s | **10.9s** |
+| droso FSM / ISM / genic | 443 / 14 / 29 | 443 / 14 / 29 | **457** / **12** / **25** |
+| droso canonical | 0.983 | 0.983 | 0.983 |
+| `sirv_real` 50 000 wall | 796.5s | 797.9s | **113.1s** |
+| `sirv_real` 50 000 transcripts | 56 / 68 | 56 / 68 | 56 / 68 |
+| `sirv_real` 20 000 wall | 327.2s | 309.2s | **50.8s** |
+| `sirv_real` 20 000 transcripts | 50 / 68 | 50 / 68 | 49 / 68 |
 
-On by default, each backing out alone: **WFA2** at the two alignment sites
-(`ISONFORM_WFA2=0`), the **consensus rebuilt once per group at the end** rather
-than per merge (`ISONFORM_MERGE_REBUILD_MAX=50 ISONFORM_FINAL_CONSENSUS=0`), and
-**node identity by minimizer pair** (`ISONFORM_PAIR_NODES=0`). The one regression
-is `sirv_real` strict F1, 0.734 -> 0.722.
+**4.7x faster than Python on droso with +14 FSM, fewer fragments and fewer
+off-target isoforms**, and within 0--2 transcripts of Python on the 68-transcript
+SIRV panel at every depth. `ISONFORM_WFA2_CONFIRM=1` recovers those for 5--10%
+runtime; it is opt-in because droso cannot distinguish it.
 
 ### What is worth doing next, in order
 
@@ -37,9 +57,17 @@ is `sirv_real` strict F1, 0.734 -> 0.722.
 3. **Verify the anchor-chain merge filter on a second deep cluster.**
    `ISONFORM_MERGE_MINSHARE=30` is sound on the two measured so far, and is still
    opt-in.
-4. **Find where WFA2 actually loses.** Finding 50 closed the two candidates the
-   record named --- the dangle DP and the free-end budget --- and neither was it.
-   The remaining `sirv_real` cost is somewhere in WFA2's *core*, unlocated.
+~~**Find where WFA2 actually loses.**~~ **Done** --- finding 55. It is the
+free-end objective mismatch, it makes WFA2 merge more, and the losses are near
+misses 6--21 bases too long rather than failures to reconstruct.
+`ISONFORM_WFA2_CONFIRM=1` recovers them for 5--10%.
+
+4. **Re-measure findings 41--52 against the exact baseline.** Every number in
+   those findings was taken with other divergences active, and finding 55 shows
+   that changes the sign of the conclusion at least once --- WFA2 read as a trade
+   there and is a clear gain here. The measurements are cheap now that a
+   byte-identical baseline exists; the conclusions drawn from them are not
+   trustworthy until repeated.
 
 ~~**Merge in the graph.**~~ **Done** --- finding 52, and it is the largest win in
 this round: 1.2--1.4x faster than the pairwise cross-batch merge and better on
@@ -51,10 +79,27 @@ every `sirv_real_deep` metric at a batch floor of 10.
 ### A warning about method, earned repeatedly
 
 Every hypothesis in this file that was stated before it was measured turned out
-wrong --- twenty-odd of them, including several that looked certain. Comparisons are
-only valid at fixed N, `nodes-per-read` is dominated by N at small sizes, and a
-binary must be re-frozen after every rebuild or a sweep measures the previous one.
-Measure first, then conclude.
+wrong --- thirty-odd of them now, including several that looked certain.
+Comparisons are only valid at fixed N, `nodes-per-read` is dominated by N at small
+sizes, and a binary must be re-frozen after every rebuild or a sweep measures the
+previous one. Measure first, then conclude.
+
+Four more rules, each earned by a wrong turn in findings 50--55:
+
+* **A conclusion at one depth is not a conclusion.** `delta_len=3` fixed
+  `sirv_real` at 20 000 and did nothing at 5 000/10 000; a median spoa backbone won
+  at 5 000 and lost at 10 000; finding 44's `SPOA_SORT` penalty does not reproduce
+  at these depths at all. Sweep the depth before writing the sentence.
+* **Weight the corpus by its statistical power.** Six depths of a 68-transcript
+  panel put every WFA2 arm within +-2 transcripts, non-monotonically --- noise.
+  droso's 561 annotated clusters said +14 FSM without ambiguity. Do not pick a
+  default from the panel that cannot separate the options.
+* **A mechanism confirmed on one case is not a prediction about the population.**
+  Finding 48 genuinely causes SIRV308's over-extension and turning it off still
+  does not help the corpus.
+* **Measure one divergence at a time, against an exact baseline.** Everything in
+  findings 41--52 was measured with other divergences active, and finding 55 shows
+  that inverted the sign for WFA2. This is what finding 53 is *for*.
 
 This document is the plan, the reconnaissance, and the method carried over from the isONcorrect
 port, which is finished and released as v0.2.0.
@@ -1952,6 +1997,139 @@ to remove.
   where declining only happens on single-batch clusters and the pairwise merge is
   a no-op anyway; the floor sweep exposed it immediately --- floor 6 on `sirv_real`
   gave 109 isoforms where the baseline gives 86. Declining now falls through.
+
+### Finding 53 --- byte-identical to the reference, by modelling CPython's set
+
+The port reproduces the reference **exactly**. `cmp` reports identical
+`transcriptome.fasta` on `sirv_real` at 1 000/2 000/5 000/10 000/20 000/50 000
+reads and on `droso` (1M reads, 561 clusters, 504 isoforms). `ISONFORM_FAITHFUL=1`
+selects that configuration.
+
+The last gap was finding 28's group ordering. `src/pyset.rs` models CPython
+3.10's `set` for integer keys --- open addressing, `hash(int) == int`, nine linear
+probes then the `i * 5 + 1 + perturb` jump with `perturb >>= 5`, growth at
+`fill * 5 >= mask * 3` to `used * 4` rounded to a power of two, and a resize that
+reinserts in **old slot order**. Validated against the real interpreter on
+**1 755 vectors, 0 mismatches**, over sizes 1--5 000 and dense/sparse/ascending/
+descending/wide-valued shapes.
+
+**Finding 28 overestimated the scope, and that is the transferable part.** It
+declined this as needing CPython's probing, its resize rule *and* insertion-order
+propagation through `set()` / `.intersection()` / `-=`. Only the first two are
+reachable: `edge_supp` is a **list**, so `set.intersection(edge_supp)` iterates
+the list and inserts matches in list order, and every set whose order reaches the
+output is built that way. `pop`, dummy slots and `-=` touch only
+`node_support_left`, whose order never reaches a result. Insert-and-iterate was
+the whole job.
+
+The isoform oracle goes from `24 set-order, 13 merging` to **27 of 27 fully
+agree**.
+
+`ISONFORM_FAITHFUL` now names three points on the reference axis: `1` byte-identical,
+unset the stable default (faithful plus WFA2), `0` every optimisation. An
+individual variable always wins over the mode, so one optimisation can be measured
+against an exact baseline --- which is what makes the table in finding 55 mean
+anything.
+
+### Finding 54 --- an oracle that measured a deliberate divergence, and hid exactness
+
+The isoform oracle replayed recorded *reference* output while running the port's
+**finding-30 diversity fix**, so every merge the fix changes was scored as a
+failure. That is what made 13 of 27 cases look like a port defect. With the
+reference's own accumulator restored the same cases give **0 merging failures**.
+
+It cost several hours and three wrong hypotheses --- the fault was read as the
+cross-batch merge, then as WFA2, then as finding 28's ordering --- because the
+oracle reports `SET-ORDER` and `MERGING` on adjacent lines and the first looks
+like an explanation for the second.
+
+**An oracle compares like with like.** A deliberate divergence is measured end to
+end, never inside a replay of recorded reference output. Worth checking every
+oracle for the same shape: it is silent, it always fails, and the failure looks
+exactly like a bug in the code under test.
+
+Two more coverage gaps found the same way, both now closed by using real SIRV at
+depth as an oracle corpus:
+
+* every stage oracle had run on `sirv_small`, Drosophila samples and `dsim_mid`
+  --- **never on real SIRV**, which is where WFA2's bubble-site divergence lives;
+* every `--record-parasail` / `--record-spoa` recording in this round was taken on
+  `clusters/` (raw isONclust output) rather than `corrected/`, so it described an
+  input distribution isONform never sees. On the corrected corpus the call-site
+  split inverts: `SimplifyGraph.py:657` 656 255 calls against the merge site's
+  154 341, where the raw recordings had the merge site dominating.
+
+With those fixed, **every stage is exact** on 5 000-read corrected `sirv_real`:
+graph 27/27, simplification 27/27, partitioning 0 wrong, spoa 4 436/4 436,
+parasail 137 351/137 351 (score *and* CIGAR), merging 0 failures.
+
+### Finding 55 --- WFA2 measured against an exact baseline, and why it cannot be tuned
+
+With a byte-identical baseline, each optimisation is measurable alone. Distinct
+reference transcripts recovered of 68 on `sirv_real`, and wall clock:
+
+| reads | python | faithful | +wfa2 | +wfa2 +confirm | +pairnodes | +poasched | +mergefix |
+|---|---|---|---|---|---|---|---|
+| 1 000 | 28 / 25.7s | 28 / 14.3s | 26 / **7.3s** | 26 / 8.4s | 25 | 26 | 26 |
+| 2 000 | 35 / 78.5s | 35 / 38.7s | 35 / **18.5s** | 35 / 19.8s | 34 | 35 | 33 |
+| 5 000 | 46 / 119.2s | 46 / 60.7s | 44 / **17.9s** | 44 / 18.4s | 43 | 44 | 43 |
+| 10 000 | 49 / 233.3s | 49 / 220.3s | 48 / **45.9s** | **49** / 50.5s | 49 | 48 | 47 |
+| 20 000 | 50 / 327.2s | 50 / 309.2s | 49 / **50.8s** | **50** / 53.6s | 48 | 49 | 47 |
+| 50 000 | 56 / 796.5s | 56 / 797.9s | 56 / **113.1s** | **57** / 110.6s | 55 | 56 | 55 |
+
+`+pairnodes`, `+poasched` and `+mergefix` are stacked on `+wfa2`. **`+mergefix`
+is the destructive one** --- it halves the called count (340 -> 199 at 50 000) and
+is 5x slower than `+wfa2` alone there. `+poasched` is inert. `+pairnodes` costs
+1--2 transcripts and buys nothing on top of WFA2.
+
+**droso is what decides it.** 561 clusters and a real annotation carry far more
+weight than a 68-transcript panel where every arm sits within 2, non-monotonically:
+
+| | isoforms | FSM | ISM | genic | canonical | wall |
+|---|---|---|---|---|---|---|
+| python | 504 | 443 | 14 | 29 | 0.983 | 51.5s |
+| faithful | 504 | 443 | 14 | 29 | 0.983 | 26.0s |
+| **+wfa2** | 512 | **457** | **12** | **25** | 0.983 | **10.9s** |
+
++14 FSM over both Python and the faithful port, fewer fragments, fewer off-target
+isoforms, and 4.7x faster. So WFA2 is a genuine improvement, not the trade this
+file has recorded since finding 41 --- that reading came from measuring it stacked
+on divergences that were themselves costing transcripts.
+
+#### The two call sites are not equivalent
+
+`ISONFORM_WFA2_SITES=merge|bubble|both`. On `sirv_real` at 50 000, merge-only runs
+in **106s** against the faithful port's 798s while bubble-only takes **609s** ---
+7.5x versus 1.3x. And the simplification oracle disagrees on **24 of 27** cases
+with WFA2 at the bubble site and **0** with it off, because one flipped
+poppability verdict in iteration 1 cascades: pops go 57/29/22/22/16 in the
+reference against 56/27/20/16 in the port, which then ends an iteration early.
+
+So the site carrying the speed is not the site carrying the divergence.
+
+#### Why WFA2 merges more, and why penalties cannot fix it
+
+parasail maximises a score with a positive match reward; WFA2 minimises a penalty
+with `match = 0`. For **global** alignment these are the same problem --- every
+base sits in a column, so the two objectives differ by a constant, which is what
+the standard affine transform exploits. **Semi-global breaks the invariant**: with
+ends free the number of aligned columns is itself the aligner's choice, WFA2 pays
+nothing to drop a terminal column and parasail is paid to keep it, and the
+objectives now differ by a term proportional to the unaligned end length. No fixed
+penalty assignment cancels a term that is not constant.
+
+Consequence: WFA2 merges more, each extra merge rebuilds the consensus over a
+larger read union, the ends creep outward, and the isoform lands just under the
+scorer's cutoff. The lost transcripts are **near misses at identity 0.943--0.950
+against a 0.95 threshold, 6--21 bases too long** --- not failures to reconstruct.
+
+`ISONFORM_WFA2_CONFIRM=1` re-decides every **positive** merge verdict with
+parasail. Merges are 1 650 of 51 447 recorded calls (3.2%), so confirming only the
+positives costs **5--10% runtime** and recovers exactly those transcripts:
+48 -> 49 at 10 000, 49 -> 50 at 20 000, 56 -> **57** at 50 000, one better than
+Python, still 4.3--7.2x faster. It cannot catch pairs WFA2 wrongly *refuses* ---
+confirming those means confirming every pair and saves nothing. Left opt-in: droso
+cannot distinguish it (455 against 457 FSM).
 
 ## Method
 

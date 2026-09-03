@@ -30,6 +30,14 @@ fn main() -> ExitCode {
         Err(e) => e.exit(),
     };
 
+    // `--faithful` is a port-only flag; it selects `isonform::Mode::Faithful` by
+    // setting the variable the mode is read from, which also carries it to every
+    // spawned `main` without touching the child's argument list --- that list is
+    // held byte-identical to the reference's on purpose (finding 37).
+    if args.faithful {
+        std::env::set_var("ISONFORM_FAITHFUL", "1");
+    }
+
     let (emissions, action) = cli::resolve_parallel(args, argc);
 
     // The first of these is `print(len(sys.argv))` — a debug leftover in the

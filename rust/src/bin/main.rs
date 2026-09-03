@@ -86,7 +86,19 @@ fn main() -> ExitCode {
 }
 
 /// `main.main(args)`: read, trim, batch, and run each batch through the stages.
+/// `--faithful` selects [`isonform::Mode::Faithful`]. The mode is read once, from
+/// the environment, so the flag sets that variable before any consumer looks ---
+/// which also means the setting reaches a spawned child unchanged. An explicit
+/// `ISONFORM_FAITHFUL` in the environment already agrees with the flag or was set
+/// deliberately, so the flag only ever adds.
+fn apply_faithful_flag(faithful: bool) {
+    if faithful {
+        std::env::set_var("ISONFORM_FAITHFUL", "1");
+    }
+}
+
 fn run(args: &MainArgs) -> std::io::Result<()> {
+    apply_faithful_flag(args.faithful);
     let Some(fastq) = &args.fastq else {
         return Ok(());
     };
