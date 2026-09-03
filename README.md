@@ -73,8 +73,6 @@ To only run the isONform algorithm:<br />
 isONform_parallel --fastq_folder path/to/input/files --t <nr_cores> --outfolder /path/to/outfolder --split_wrt_batches 
 ```
 
-Note: Please always use absolute paths to the files or folders
-
 Argument names, defaults, validation messages and exit codes match the python
 implementation, so any existing command or script works unchanged. Add
 `--faithful` to reproduce the python output byte for byte.
