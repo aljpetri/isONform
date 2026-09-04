@@ -1,66 +1,73 @@
 # isONform - Reference-free isoform reconstruction from long read sequencing data
-# Table of contents
-1. [Installation](#installation)
-2. [Introduction](#introduction)
-3. [Output](#output) 
-4. [Input data](#Input_data)
-5. [Running isONform](#Running)
-	1. [Running a test](#runtest)
-6. [Credits](#credits)
+
+### isONform has been re-implemented in Rust (2026-09-04) and is 5-50x faster (see below).
+
+
 
 ## Installation <a name="installation"></a>
 
+It needs a Rust toolchain ([rustup.rs](https://rustup.rs)).
 
-### Via pip
 ```
-pip install isONform
+git clone https://github.com/aljpetri/isONform.git
+cd isONform/rust
+cargo build --release
 ```
 
-This command installs isONforms dependencies:
+That produces `target/release/isONform_parallel` and `target/release/main`. Put
+them on your `PATH` and run them as shown under
+[Running isONform](#Running).
 
-1. `networkx`
-2. `ordered-set`
-3. `matplotlib`
-4. `parasail`
-5. `edlib`
-6. `pyinstrument`
-7. `namedtuple`
-8. `recordclass`
+The original python implementation is still available and is the reference this
+port is checked against; see [INSTALL-python.md](INSTALL-python.md).
+
+### Rust-port versions
+
+By default the Rust port uses the WFA2 aligner: **5–11×** faster than the Python 
+implementation on ONT data and **~50×** on PacBio HiFi, at comparable accuracy, 
+though it does not produce identical output.
+
+The `--faithful` parameter reproduces the python implementation byte for byte, but
+is only about **~2x faster than Python** on shallow data and about the
+same speed on the deepest clusters. We recommend using the port in default mode (no `--faithful` flag). 
+
+Full comparison against the python implementation --- accuracy,
+redundancy, runtime and peak memory on five corpora from 10 000 to 1 000 000 reads
+are found here: [Port-benchmark.md](Port-benchmark.md).
+
+### Running a test <a name="runtest"></a>
+
+`test_data/sirv_sim` is a small dataset for checking an installation: two
+clusters of 51 corrected simulated SIRV reads each.
+
+```
+isONform_parallel --fastq_folder test_data/sirv_sim --outfolder /tmp/isonform_test \
+                  --t 4 --split_wrt_batches --iso_abundance 3
+```
+
+This should finish in seconds and write 7 isoforms to
+`/tmp/isonform_test/transcriptome.fasta`. See
+[test_data/README.md](test_data/README.md) if you want details on the test data.
 
 
-### From github source
-1. Create a new environment for isONform (at least python 3.7 required):<br />
-		`conda create -n isonform python=3.10 pip` <br />
-		`conda activate isonform` <br />
-2.  Install isONcorrect and SPOA <br />
-		`pip install isONcorrect` <br />
-		`conda install -c bioconda spoa` <br />
-3.  Install other dependencies of isONform:<br />
-		`conda install networkx`<br />
-		`pip install parasail`<br />
-
-4. clone this repository
-
-
-## Introduction <a name="introduction"></a>
-
-IsONform generates isoforms out of clustered and corrected long reads.
-For this a graph is built up using the networkx api and different simplification strategies are applied to it, such as bubble popping and node merging.
-The algorithm uses spoa to generate the final isoforms.<br />
 ## Input data <a name="Input_data"></a>
-The isONpipeline takes .fastq files generated with long-read sequencing techniques (ONT or Pacbio) as an input that additionally have been cleaned of barcodes.
-Please make sure that you run the isONpipeline on data that have been processed with  [LIMA](https://lima.how/) (Pacbio data) or [Pychopper](https://github.com/epi2me-labs/pychopper) (ONT data) so that all the barcodes are removed from the reads
+The isONpipeline takes .fastq files generated with long-read sequencing techniques 
+(ONT or Pacbio) as an input that additionally have been cleaned of barcodes.
+Please make sure that you run the isONpipeline on data that have been processed with
+[LIMA](https://lima.how/) (Pacbio data) or [Pychopper](https://github.com/epi2me-labs/pychopper) (ONT data) 
+so that all the barcodes are removed from the reads
 
 ## Running isONform <a name="Running"></a>
 
-To only run the isONform algorithm:<br />
-
+To only run the isONform algorithm:
 
 ```
 isONform_parallel --fastq_folder path/to/input/files --t <nr_cores> --outfolder /path/to/outfolder --split_wrt_batches 
 ```
 
-Note: Please always use absolute paths to the files or folders
+Argument names, defaults, validation messages and exit codes match the python
+implementation, so any existing command or script works unchanged. Add
+`--faithful` to reproduce the python output byte for byte.
 
 The full isON-pipeline (isONclust, isONcorrect, isONform) can be found [here](https://github.com/aljpetri/isONform/blob/master/isON_pipeline.sh) and is run via:
 

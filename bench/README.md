@@ -1,0 +1,396 @@
+# bench
+
+Differential harness for the isONform Rust port. The method is carried over
+from the isONcorrect port; `PORTING.md` at the repository root has the reasoning
+and the measurements, this file is the operator's guide.
+
+## Start here
+
+```bash
+bench/setup_reference_env.sh      # pinned conda env `isonform-ref`
+bench/equivalence.sh cli          # port vs reference, argument handling
+```
+
+`bench/equivalence.sh` builds the Rust port itself (always, so a stale release
+binary cannot pass), locates the reference env, and runs both against each other.
+
+## The scripts
+
+| script | what it does |
+| --- | --- |
+| `setup_reference_env.sh` | creates/verifies the pinned `isonform-ref` env and writes `env/resolved-<platform>.txt`, which is the audit trail for every golden |
+| `check_seed_sensitivity.py` | runs the reference under N hash seeds and reports which output files vary. The regression check for the minimizer determinism fix |
+| `equivalence.sh` | the differential harness: port against reference. Three layers, `cli`, `invariants` and `stages` |
+| `evaluate.sh` | builds the three evaluation corpora and scores isONform on them. `corpora` / `run` / `score` / `compare` |
+| `accuracy_isoforms.py` | isoform accuracy against a known transcriptome (SIRV): recall, precision, redundancy, per-isoform identity |
+| `accuracy_isoforms_genome.py` | isoform accuracy against a genome (Drosophila) via `minimap2 -ax splice`: error rate, aligned fraction, canonical splice fraction, intron-chain redundancy. With `--annotation`, also SQANTI structural categories |
+| `annotation.py` | GFF3 parsing and SQANTI-style classification (FSM/ISM/NIC/NNC/...). Run it directly to execute its self-tests — no genome or minimap2 needed |
+| `dump_reference.py` | records a stage’s inputs and outputs from the live driver: `--stage intervals` writes `intervals_*.txt` (the front half of `main`), `--stage isoforms` writes `isoforms_*.txt`, `--stage graph` writes `graph_*.txt`, `--stage simplify` writes the graph before and after each `simplifyGraph` call, `--record-spoa` and `--record-parasail` write every `spoa` / `parasail_alignment` call to `spoa_cases.tsv` / `parasail_cases.tsv` |
+
+## Two different questions
+
+Keep them apart, because they need different tools and they fail differently.
+
+**"Do the two implementations agree?"** — `equivalence.sh`'s `cli` and `stages`
+layers. Byte-level, no tolerance, and how the port is proven faithful stage by
+stage. Its `invariants` layer answers a third question that neither of the other
+two can — *which side is wrong* — by checking properties the reference must
+satisfy regardless of implementation.
+
+**"Is the output any good?"** — `evaluate.sh` and the two `accuracy_*` scripts.
+This is the question that matters whenever the *reference itself* changes: a
+determinism fix, a deliberate divergence in the port, a performance tradeoff.
+Equivalence cannot answer it, by construction — two implementations can agree
+perfectly on a wrong answer.
+
+isONform's accuracy question is also not isONcorrect's. isONcorrect emits one
+corrected read per input read, so accuracy is per-read error against the read's
+source transcript. isONform emits *isoforms*, and how many is an output rather
+than an input, so the metric has to be recall, precision and per-isoform identity
+**together**. Any one alone is trivially gamed: emit one confident isoform and
+precision and identity look perfect while recall collapses; emit hundreds and the
+reverse.
+
+## `check_seed_sensitivity.py` — what it used to say, and what it says now
+
+`main` used to select minimizers by `hash()` of the k-mer string, and CPython's
+string hash is SipHash seeded randomly per process. So the shipped tool produced
+a different transcriptome on every run. Measured on `corpus/sirv_small` over 8
+seeds: all 9 of `isONform_parallel`'s output files varied and
+`transcriptome.fasta` took 5 distinct values.
+
+That is fixed — minimizer selection compares the k-mers lexicographically, as
+isONcorrect's `get_kmer_minimizers_lex` does — so this script is now a
+**regression check** and exits 0:
+
+```bash
+bench/check_seed_sensitivity.py --fastq-folder bench/corpus/sirv_small --seeds 24
+```
+
+The harness still exports `PYTHONHASHSEED=0` everywhere, and that is **not** just
+belt and braces any more. `PORTING.md` finding 14 documents a second, independent
+seed dependency — `find_connecting_edges` returns a `set` of string tuples and
+`prepare_adding_edges` takes `conn_list[0]` — which survives the minimizer fix and
+produces two distinct graphs across eight seeds on real data. It is rare (one
+occurrence in 19 831 calls) and `corpus/sirv_small` never reaches it, which is
+exactly why this script still exits 0. So a pass here means "minimizer selection
+is deterministic", not "the tool is".
+
+Note the sample size. In isONcorrect, six seeds made six records look like
+porting bugs; at 24 they were all reference behaviour. Prefer more seeds than
+feels necessary.
+
+## The oracles
+
+Seven replay recorded reference behaviour through one Rust function each. An
+eighth, `compare_end_to_end.py`, runs both whole programs and diffs what lands on
+disk — see below; it is the only one that tests the *wiring between* stages.
+
+```bash
+bench/dump_reference.py --fastq-folder bench/corpus/sirv_small --outdir /tmp/d \
+    --record-spoa --record-parasail
+
+ISONFORM_GRAPH_DUMPS=/tmp/d    cargo test --manifest-path rust/Cargo.toml \
+    --release --test graph_oracle -- --nocapture
+ISONFORM_SIMPLIFY_DUMPS=/tmp/d cargo test --manifest-path rust/Cargo.toml \
+    --release --test simplify_oracle -- --nocapture
+SPOA_CASES=/tmp/d/spoa_cases.tsv cargo test --manifest-path rust/Cargo.toml \
+    --release --lib poa::oracle -- --nocapture
+PARASAIL_CASES=/tmp/d/parasail_cases.tsv cargo test --manifest-path rust/Cargo.toml \
+    --release --lib parasail::oracle -- --nocapture
+```
+
+All seven **skip loudly** without their variable rather than passing silently,
+and CI sets all seven.
+
+The **interval** oracle is the odd one out and the most load-bearing:
+
+```bash
+bench/dump_reference.py --fastq-folder bench/corpus/sirv_small --outdir /tmp/i --stage intervals
+ISONFORM_INTERVAL_DUMPS=/tmp/i cargo test --manifest-path rust/Cargo.toml \
+    --release --test intervals_oracle -- --nocapture
+```
+
+It covers the front half of `main` — minimizer selection, the anchor database, span support and
+weighted interval scheduling — and it is the only oracle whose input is a **read** rather than a
+recorded intermediate. That matters: the graph oracle replays the *reference's* intervals, so a wrong
+minimizer would have produced a graph it happily agreed with. It compares the chosen intervals, the
+`graph_id` assignment and each interval's full instance list in order.
+
+Its dump is also produced differently. The other stages are recorded by replacing an importable
+function with a wrapper; the front half's values (`w`, the `x` bounds, the batch's reads *including*
+the ones it skips) exist only as locals inside `main.main`, which `runpy` executes. So
+`--stage intervals` compiles `main`'s own source with a single recorder call injected just before
+`generateGraphfromIntervals`. Same code, same driver, one extra line.
+
+The next two replay a *stage*: recorded inputs in, diff the outputs. The graph
+oracle passes on 72 recorded calls covering 47 963 nodes. The simplification
+oracle rebuilds the entry graph from the dump — in **insertion order**, because
+node and adjacency order decide `nx.topological_sort` and therefore which node
+pairs are candidate bubbles — and asserts that order matches the reference's
+before it will judge anything downstream.
+
+The third replays a *dependency* rather than a stage. `crate::poa` wraps `spoars`
+in place of the `spoa` binary, and simplification's poppability decisions run
+through it, so it needs its own evidence. `--record-spoa` wraps
+`IsoformGeneration.run_spoa` — the single function all four live call sites
+resolve through — and writes `consensus<TAB>seq<TAB>seq…` lines, one per call,
+deduplicated (spoa is deterministic, so a repeat exercises nothing) with the
+call site kept as a `#` comment above each case so a mismatch localises without
+regenerating anything.
+
+The fourth does the same for `crate::parasail`, and needed doing for the same
+reason even though this file previously said otherwise: the *score* is exact by
+construction, but the **CIGAR** is a tie-break among equally-optimal paths, and
+`parse_cigar_diversity` reads the CIGAR, not the score. Recording isONform's own
+calls found 12 outright score errors and 136 CIGAR errors in 54 884
+(`PORTING.md` finding 25). Both are now zero across **56 549** recorded calls and
+both are gated exactly.
+
+`PARASAIL_SWEEP` re-runs the tie-break sweep and `PARASAIL_HARD_OUT` writes just
+the mismatching cases out. Two warnings on those, both learned the hard way. Do
+**not** sweep on the failing subset and take the winner — it picked a setting that
+fixed all 112 of them and made the full corpus worse (54 772 → 54 522). And a
+sweep that fits nothing bounds the *parameter space*, not the problem: the last
+CIGAR errors were not a `TieBreak` value at all but a rule outside the
+parameterisation, and "no setting fits, therefore structural" sat in `PORTING.md`
+for a commit before that turned out to be wrong.
+
+That third oracle is what makes the second one unconditional. The simplification
+oracle used to report-but-not-fail any disagreement that had called spoa, since
+attributing one would have been claiming evidence that did not exist. It now
+exists — 5 368 of 5 368 recorded isONform calls match the binary, see
+`PORTING.md` — so every disagreement fails.
+
+When a simplification case does disagree, the report gives three things before you reach for a
+debugger: the port's **iteration and pop counts** (the reference prints its own, so the useful
+comparison is the sequence rather than the total), node `reads` differences **naming** the reads and
+marking synthetic ones (`*` = `original_support == false`, i.e. invented by
+`additional_node_support`), and edge support compared as a **multiset** (`<read>x<surplus>`, because
+`edge_supp` is a Python list and a read can legitimately appear twice — a set difference reports "no
+difference" on exactly that case).
+
+`ISONFORM_TRACE_POPS=1` goes one level deeper: one line per pop, with iteration, branch, bubble
+endpoints and both path supports. `ISONFORM_TRACE_DECIDE=<comma-separated read ids>` goes deeper
+still, dumping the inputs, both consensus sequences and the verdict for the one bubble whose path
+carries exactly that read set --- the companion question, *why* did this one pop. That pair is what
+found findings 24 and 25: in both, the two sides computed byte-identical consensus sequences and
+disagreed anyway, which is what moved the search out of the stage and into the aligner. Diffing that against the reference's equivalent and finding the
+first surplus or missing pop has localised two of the three bugs found here. It is worth knowing that
+the *aggregate* counts have twice beaten a more precise-looking local signal — in finding 24 the
+"only synthetic reads differ" observation was true and pointed at the wrong function, and what
+corrected it was 94 pops against 92.
+
+The **isoform** oracle has the most nuanced gate, and the nuance is the point:
+
+```bash
+bench/dump_reference.py --fastq-folder bench/corpus/sirv_small --outdir /tmp/o --stage isoforms
+ISONFORM_ISOFORM_DUMPS=/tmp/o cargo test --manifest-path rust/Cargo.toml \
+    --release --test isoforms_oracle -- --nocapture
+```
+
+It reports three outcomes, not one. A wrong **partition** — reads in the wrong
+groups — fails. A **merging** disagreement fails. A difference that is *only*
+CPython **set-iteration order** is reported, counted, and *costed*, because the
+port deliberately diverges there (`PORTING.md` finding 28). On 114 real cases:
+0 wrong partitions, 0 merging failures, 28 set-order differences.
+
+Two details of how it gets there are worth copying rather than collapsing.
+
+**The merge is seeded with the reference's own grouping**, read from the dump,
+not with the port's. Otherwise the 28 cases where the ordering diverges could
+never be checked at all — the merge would be judged on input it was never meant
+to see, and a genuine merging bug in those cases would be invisible. That
+distinction is what lets the gate read "0 merging failures on **all** 114".
+
+**The `Q` records are written in dict order, not sorted.** `merge_consensuses`
+iterates `curr_best_seqs.items()`, so `equal_reads`' insertion order decides how
+equal-length consensuses tie-break in the merge scan. Sorting them in the dump
+made the oracle replay an order the reference never used — and hid two real
+merging disagreements until it was fixed.
+
+## `compare_end_to_end.py` — the one that tests the wiring
+
+```bash
+bench/compare_end_to_end.py --fastq-folder bench/corpus/sirv_small \
+    --workdir /tmp/e2e --parallel
+```
+
+Runs `main` and `rust/target/release/main` on the same cluster and diffs all four
+outputs. Exits non-zero on any disagreement.
+
+**Why it exists, when seven oracles already pass.** Each stage oracle replays
+*recorded reference inputs* through one function. That makes them sharp — a
+failure localises to a single stage — but it means no oracle owns the code that
+computes one stage's input from the previous stage's output. A driver can pass
+every stage oracle and still be wrong. That is not hypothetical: finding 33 is
+exactly this, a driver that fed the graph the batch's read lengths where the
+reference feeds it the whole file's. Seven green oracles, every corpus green, and
+batches 1–3 of a split cluster collapsing to one isoform per read.
+
+**Run it on a cluster that splits.** The default `--max_seqs` is 1000, so every
+cluster in every corpus here is a single batch, and a single batch hides an entire
+class of bug — anything that confuses a per-batch quantity with a per-file one.
+Forcing several batches is one flag:
+
+```bash
+bench/compare_end_to_end.py --fastq-folder bench/corpus/sirv_small \
+    --workdir /tmp/e2e4 --limit 1 --extra --max_seqs 25
+```
+
+**Three of the four outputs are Python pickles** (`{id}_batch`, `spoa{id}`,
+`mapping{id}`); the port writes the same content as TSV, because a Rust binary has
+no business emitting pickles. The script unpickles the reference's side rather than
+comparing bytes. `skip{id}.fa` is text on both sides and *is* compared as bytes.
+
+**Both entry points.** `--entry main` runs one process per cluster and diffs the
+four per-batch intermediates. `--entry parallel` runs `isONform_parallel` once
+over the whole folder and diffs every file it leaves behind — the per-cluster
+`cluster*_merged.fa`, `cluster*_mapping.txt` and `support_*.txt`, and the three
+concatenated `transcriptome*` files. All of those are plain text, so that one is a
+straight byte comparison with no unpickling. The per-batch intermediates do not
+survive a parallel run: `remove_folders` deletes every cluster subdirectory at the
+end.
+
+Worth running the parallel one with `--extra --split_wrt_batches --max_seqs 25`
+as well. That is the only path on which `--max_seqs` does anything at all
+(finding 37), and the only way a cluster ends up with more than one batch file to
+read back — which is also what exposes that record order is `readdir(3)` order
+(finding 38).
+
+**What a clean run looks like today.** `sirv_small` 2/2 on both entry points, and
+on the split parallel run. The two Drosophila
+corpora disagree on 16 of 56 and 12 of 56 — and those are exactly the counts the
+isoform oracle attributes to finding 28's set-order divergence on the same corpora
+at the same `--k`/`--w`. Matching counts is the check that keeps this honest: it
+says the end-to-end divergence is entirely the one divergence already accepted and
+measured, with nothing unexplained hiding behind it. If that number ever exceeds
+the isoform oracle's, the excess is a wiring bug.
+
+## Regenerate dumps after touching the dumper
+
+A dump is a recording, so it does not go stale when the *port* changes — but it
+absolutely does when the *recorder* changes. The `Q`-record ordering fix below
+landed 40 minutes after a set of isoform dumps was written, and re-running the
+oracle against the old directory reported two merging failures that did not exist.
+The tell was that replaying the reference's own recorded input through the
+*reference* reproduced only 84 of its own 90 consensuses — when the reference
+cannot reproduce itself, the dump is wrong, not the port. That check costs one
+script and settles the question immediately; reach for it before reading any Rust.
+
+Delete and regenerate rather than reusing a directory whose provenance you are not
+sure of.
+
+## One mistake this harness has made three times: sorting a dump
+
+Every stage after graph construction depends somewhere on **Python dict or set
+insertion order**, and the natural thing to write in a recorder is
+`for k in sorted(d)`. Sorting produces a stable, diffable dump — and replays an
+order the reference never used. It has happened three times here:
+
+| record | what it broke |
+| --- | --- |
+| `Q` (isoform groups) | `merge_consensuses` iterates `curr_best_seqs.items()`, so insertion order decides how equal-length consensuses tie-break. Sorting hid **two real merging disagreements**. |
+| `B` (batch-merge isoforms) | `write_final_output` iterates `all_infos_dict.items()` and `id_dict.items()`, so insertion order is the order records appear in the output files. Sorting produced 19 false failures. |
+| `BN`/`BE` (simplification graph) | caught before it shipped: node and adjacency insertion order decide `nx.topological_sort`, which decides which bubbles are found. |
+
+The rule, learned the hard way: **record in the reference's own iteration order,
+and sort only when the consumer sorts.** A dump that is harder to eyeball is worth
+far more than one that is easy to eyeball and wrong. Where a record really is
+order-independent — `AN`/`AE`, `C` — say so in a comment, so the next person does
+not have to work it out again.
+
+The failures look different depending on which side is wrong, which is the useful
+tell: a *sorted dump* produces disagreements that are permutations of each other
+(same ids, same members, different order), while a real bug changes contents.
+
+One boundary worth holding onto when reading a failure: the spoa result licenses
+"same inputs ⇒ same consensus", not "the port computes the same inputs". A
+divergence in span extraction hands spoa different sequences and gets a
+faithfully different consensus back. Still a port bug — hence the unconditional
+gate — but it means `spoa_calls` in the report is now a *diagnostic* (did this
+failure go through the consensus path at all?) rather than a verdict.
+
+## Scoring Drosophila against the annotation
+
+```bash
+# once: the FlyBase whole-genome GFF is 6.7 GB and mostly alignment evidence
+awk -F'\t' 'BEGIN{OFS="\t"} !/^#/ && NF>=9 && ($3=="gene" || $3=="mRNA" || $3=="exon" \
+    || $3=="ncRNA" || $3=="pseudogene" || $3=="pre_miRNA" || $3=="miRNA" || $3=="tRNA" \
+    || $3=="snRNA" || $3=="snoRNA" || $3=="rRNA") {print $1,$2,$3,$4,$5,$7,$9}' \
+    ~/data/annotations/dmel-all-r6.68.gff > ~/work/dmel-r6.68-transcripts.tsv
+
+bench/accuracy_isoforms_genome.py --genome ~/data/genomes/fruitfly.fa \
+    --annotation ~/work/dmel-r6.68-transcripts.tsv \
+    --isoforms lex=$ISONFORM_WORK/eval/droso__a/out/transcriptome.fasta
+```
+
+`annotation.py` reads either the full 9-column GFF or that 7-column projection.
+The filtered file is 18 MB and loads in seconds; the raw one works but is not
+worth re-reading.
+
+**Read `bench/annotation.py`'s docstring before interpreting the output.** Two
+things in there are easy to get wrong and both were, at first: the recall
+denominator (a percentage against all 34 989 annotated transcripts measures
+sequencing depth, not the tool) and the fusion test (a span-based one reports 13%
+fusions on real data, because FlyBase has 3 305 fully nested gene pairs).
+
+## Evaluating a change to the reference
+
+```bash
+bench/evaluate.sh corpora                                    # once, ~10 min
+git archive <commit> | tar -x -C /tmp/before                 # the "before" tree
+bench/evaluate.sh compare /path/to/repo /tmp/before          # after vs before
+```
+
+`compare` runs the "before" implementation at **three** hash seeds rather than
+one, deliberately: with a seeded hash, a single run of it says nothing about what
+the tool does, and the spread across seeds *is* the finding.
+
+Extracting the old tree with `git archive` rather than checking it out is the
+point — the working tree is never disturbed, and both implementations are live at
+once.
+
+## Scoring the Rust port
+
+The port is just another impl directory, and `run_one` works out which it is by
+reading the file rather than trusting its name — macOS is case-insensitive, so
+`$impl/isonform_parallel` happily resolves to the repository's
+`isONform_parallel`, and a name test would have scored the reference twice and
+called it perfect agreement.
+
+```bash
+cargo build --manifest-path rust/Cargo.toml --release
+bench/evaluate.sh run sirv_real "$PWD" py                    # reference
+bench/evaluate.sh run sirv_real "$PWD/rust/target/release" rs   # port
+bench/evaluate.sh score sirv_real py rs
+```
+
+Run the reference at more than one seed. It has no seeded hash left in minimizer
+selection, but `PORTING.md` finding 14 is a second dependency that survives that
+fix, so one run is a sample, not a baseline. On the SIRV corpora it happens to be
+bit-identical across seeds 0/1/2 — which is worth knowing, because it means a
+difference there is *real* and has to be explained rather than waved at.
+
+`PORTING.md`'s "What the port scores" holds the current numbers and, more
+usefully, the worked example of explaining a gap: `sirv_real`'s strict F1 differs,
+its lenient F1 does not, and running all four stage oracles against dumps of that
+corpus is what turned "probably finding 28" into "0 wrong partition, 0 merging,
+25 set-order only".
+
+## The corpus
+
+`corpus/sirv_small` is not checked in — `corpus/README.md` says how to rebuild
+it, and why the reference needs *corrected* reads to do anything at all.
+
+## Reading a mismatch
+
+A mismatch is evidence, not a verdict: the first question is which side is
+wrong. Answering it needs a check independent of both implementations —
+brute force over small inputs, replay under many hash seeds, or an invariant the
+reference should satisfy regardless. Graph code is good hunting ground for the
+third: acyclicity, connectivity, and node and edge counts are all checkable
+without trusting either implementation. `corpus/sirv_small` carries one such
+invariant for free (its two clusters are the same reads, so they must yield the
+same isoforms), and that invariant is what proved finding 1 without reference to
+the port at all.

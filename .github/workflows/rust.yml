@@ -1,0 +1,293 @@
+# CI for the Rust port.
+#
+# Deliberately a matrix from the first commit, not "once it settles". Three of
+# the nine defects in the isONcorrect port existed only because every local
+# check ran on one machine — an aarch64-only build that did not compile on
+# x86_64 at all, a C dependency hidden behind a default cargo feature, and
+# glibc-2.34-only release binaries that exclude CentOS 7, RHEL 8 and Ubuntu
+# 20.04. See PORTING.md method point 7.
+#
+# The `equivalence` job needs the Python reference *and* spoa, so it runs in the
+# pinned conda environment. It is the differential check against the reference,
+# and it is what makes the matrix worth having: `cargo test` alone cannot notice
+# that the reference disagrees.
+
+name: rust
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'rust/**'
+      - 'bench/**'
+      - '.github/workflows/rust.yml'
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'rust/**'
+      - 'bench/**'
+      - '.github/workflows/rust.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Belt and braces. The reference no longer depends on the hash seed (minimizer
+  # selection is lexicographic --- PORTING.md finding 1), and the determinism job
+  # below is what asserts that. Pinning it here means a failure elsewhere is a
+  # real disagreement rather than a different draw.
+  PYTHONHASHSEED: '0'
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # x86_64 Linux — the commonest deployment target, and the one an
+          # arm64-only development machine never exercises.
+          - { os: ubuntu-latest,  name: 'linux x86_64' }
+          # arm64 Linux.
+          - { os: ubuntu-24.04-arm, name: 'linux aarch64' }
+          # arm64 macOS — the development machine.
+          - { os: macos-latest,   name: 'macos arm64' }
+          # x86_64 macOS, still in wide use. `macos-13` was the Intel image
+          # until GitHub retired it --- a job targeting it now queues forever
+          # rather than failing, which is worse than either. `macos-15-intel`
+          # is the supported Intel runner.
+          - { os: macos-15-intel, name: 'macos x86_64' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Build
+        run: cargo build --release --manifest-path rust/Cargo.toml
+
+      - name: Test
+        run: cargo test --manifest-path rust/Cargo.toml
+
+      # Warnings-as-errors from the start: the alternative is a backlog nobody
+      # reads.
+      - name: Clippy
+        run: cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+
+      - name: Formatting
+        run: cargo fmt --manifest-path rust/Cargo.toml --check
+
+      # The entry point names are part of the contract; existing pipelines and
+      # isON_pipeline.sh invoke them by name. A rename would otherwise only
+      # surface at install time.
+      - name: Entry points exist under their contract names
+        run: |
+          test -x rust/target/release/main
+          test -x rust/target/release/isONform_parallel
+          rust/target/release/main --version | grep -qx 'main 0.3.9'
+          rust/target/release/isONform_parallel --version | grep -qx 'isONform_parallel 0.3.9'
+
+  equivalence:
+    name: differential vs the Python reference (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    env:
+      # The port's *default* is no longer reference semantics: it runs WFA2 and
+      # the accepted optimisations (PORTING.md finding 55). Reference semantics
+      # are what this whole job compares, so ask for them explicitly --- every
+      # step below would otherwise diff two programs that are meant to differ.
+      # The `build` job's `cargo test` deliberately runs the default instead.
+      ISONFORM_FAITHFUL: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, name: 'linux x86_64' }
+          - { os: macos-latest,  name: 'macos arm64' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          activate-environment: isonform-ref
+          environment-file: bench/env/reference.yml
+          auto-activate-base: false
+
+      - name: Record what actually resolved
+        shell: bash -el {0}
+        run: |
+          python -c "import networkx, parasail, sys; \
+            print('python', sys.version.split()[0]); \
+            print('networkx', networkx.__version__); \
+            print('parasail', parasail.__version__)"
+          spoa --version || true
+
+      # sirv_small is committed precisely so this cannot skip. It has to be
+      # *corrected* reads: on raw isONclust output every read is skipped for low
+      # interval abundance and the graph comes out 2 nodes and 0 edges, which
+      # would make the determinism gate below pass trivially on empty output.
+      - name: Smoke corpus is present
+        run: |
+          test -s bench/corpus/sirv_small/0.fastq
+          test -s bench/corpus/sirv_small/1.fastq
+
+      - name: CLI equivalence
+        shell: bash -el {0}
+        run: bench/equivalence.sh cli
+
+      # A real gate, not informational: minimizer selection is lexicographic now,
+      # so the reference must agree with itself across seeds. If this fails,
+      # something whose iteration order reaches results has crept back in and no
+      # golden recorded after that point means anything. See PORTING.md finding 1.
+      - name: Determinism check
+        shell: bash -el {0}
+        run: |
+          python bench/check_seed_sensitivity.py --fastq-folder bench/corpus/sirv_small --seeds 8
+
+      # The SQANTI classifier's self-tests. Pure logic over a toy annotation --
+      # no genome, no minimap2, no corpus -- so they are cheap and they guard a
+      # part of the harness that has already been wrong once: a span-based
+      # fusion test reported 13% fusions on real Drosophila data and emptied the
+      # NIC category. Both conditions of the fix are asserted here.
+      - name: Isoform classifier self-tests
+        shell: bash -el {0}
+        run: python bench/annotation.py
+
+      # The graph-construction oracle: record the stage's inputs and outputs from
+      # the live reference, then replay them through the port and diff node set,
+      # attributes, edges, edge support and the exact topological order. This is
+      # the only check that says the ported algorithm agrees with the reference on
+      # real data; `cargo test` alone covers hand-built fixtures.
+      #
+      # The test skips loudly without ISONFORM_GRAPH_DUMPS, so setting it here is
+      # what makes it a gate rather than a no-op.
+      # The interval oracle drives `main` itself rather than replaying a
+      # recorded intermediate, so it is the only check that covers minimizer
+      # selection, the anchor database and weighted interval scheduling. It runs
+      # as its own step because `--stage intervals` executes a different driver
+      # path from the wrapper-based stages.
+      - name: Interval oracle (the front half of main)
+        shell: bash -el {0}
+        run: |
+          python bench/dump_reference.py --fastq-folder bench/corpus/sirv_small \
+              --outdir "$RUNNER_TEMP/ivdumps" --stage intervals
+          test -n "$(ls "$RUNNER_TEMP/ivdumps"/intervals_*.txt 2>/dev/null)"
+          ISONFORM_INTERVAL_DUMPS="$RUNNER_TEMP/ivdumps" \
+              cargo test --manifest-path rust/Cargo.toml --release \
+              --test intervals_oracle -- --nocapture
+
+      # Isoform generation. Its gate is deliberately split: a wrong read
+      # partition or a merging disagreement fails, while a difference that is
+      # only CPython set-iteration order is reported --- see PORTING.md finding
+      # 28, which is an open decision rather than a settled one.
+      - name: Isoform oracle
+        shell: bash -el {0}
+        run: |
+          python bench/dump_reference.py --fastq-folder bench/corpus/sirv_small \
+              --outdir "$RUNNER_TEMP/isodumps" --stage isoforms
+          test -n "$(ls "$RUNNER_TEMP/isodumps"/isoforms_*.txt 2>/dev/null)"
+          ISONFORM_ISOFORM_DUMPS="$RUNNER_TEMP/isodumps" \
+              cargo test --manifest-path rust/Cargo.toml --release \
+              --test isoforms_oracle -- --nocapture
+
+      # The last stage, and the only one `main` never reaches --- its call is
+      # commented out at main:583, so this drives `isONform_parallel`, which
+      # calls it in the parent process after pool.join().
+      - name: Batch-merge oracle
+        shell: bash -el {0}
+        run: |
+          python bench/dump_reference.py --fastq-folder bench/corpus/sirv_small \
+              --outdir "$RUNNER_TEMP/bmdumps" --stage batchmerge
+          test -n "$(ls "$RUNNER_TEMP/bmdumps"/batchmerge_*.txt 2>/dev/null)"
+          ISONFORM_BATCHMERGE_DUMPS="$RUNNER_TEMP/bmdumps" \
+              cargo test --manifest-path rust/Cargo.toml --release \
+              --test batch_merge_oracle -- --nocapture
+
+      # The end-to-end check. Every step above replays *recorded* reference
+      # inputs through one Rust function, so none of them covers the code that
+      # turns one stage's output into the next stage's input. This runs both
+      # whole programs and diffs all four output files. PORTING.md finding 33 is
+      # a bug that passed all seven stage oracles and every corpus, and only this
+      # caught it.
+      - name: End-to-end vs the reference
+        shell: bash -el {0}
+        run: |
+          cargo build --manifest-path rust/Cargo.toml --release
+          # Single batch: must agree exactly. sirv_small is small enough that
+          # finding 28's set-order divergence does not arise on it.
+          python bench/compare_end_to_end.py \
+              --fastq-folder bench/corpus/sirv_small \
+              --workdir "$RUNNER_TEMP/e2e" --parallel
+          # Several batches. --max_seqs defaults to 1000, so every cluster in
+          # every corpus here is one batch --- and a single batch cannot tell a
+          # per-batch quantity from a per-file one, which is exactly the mistake
+          # finding 33 was. Forcing four batches is the whole point of this step.
+          #
+          # This used to allow one disagreeing cluster: batch 1 renamed a
+          # single isoform id under finding 28's set-order divergence. That
+          # divergence is gone --- `crate::pyset` models CPython's set exactly,
+          # so the ids agree too. Do not raise this number without a PORTING.md
+          # entry justifying it.
+          python bench/compare_end_to_end.py \
+              --fastq-folder bench/corpus/sirv_small \
+              --workdir "$RUNNER_TEMP/e2e4" --limit 1 --max-disagreeing 0 \
+              --extra --max_seqs 25
+          # The other entry point. isONform_parallel fans out over the folder,
+          # then reads every cluster back and concatenates it --- code that the
+          # per-cluster comparison above never touches. Everything it leaves on
+          # disk is plain text, so this is a byte comparison.
+          python bench/compare_end_to_end.py --entry parallel \
+              --fastq-folder bench/corpus/sirv_small \
+              --workdir "$RUNNER_TEMP/pe"
+          # And with the splitting path on, which is the only way --max_seqs
+          # does anything at all (PORTING.md finding 37) and the only way a
+          # cluster gets more than one batch file to read back.
+          python bench/compare_end_to_end.py --entry parallel \
+              --fastq-folder bench/corpus/sirv_small \
+              --workdir "$RUNNER_TEMP/pe_split" \
+              --extra --split_wrt_batches --max_seqs 25
+
+      - name: Stage oracles (graph, simplification, spoa, parasail)
+        shell: bash -el {0}
+        run: |
+          python bench/dump_reference.py --fastq-folder bench/corpus/sirv_small \
+              --outdir "$RUNNER_TEMP/dumps" --record-spoa --record-parasail
+          test -n "$(ls "$RUNNER_TEMP/dumps"/graph_*.txt 2>/dev/null)"
+          test -n "$(ls "$RUNNER_TEMP/dumps"/simplify_*.txt 2>/dev/null)"
+          test -s "$RUNNER_TEMP/dumps/spoa_cases.tsv"
+          ISONFORM_GRAPH_DUMPS="$RUNNER_TEMP/dumps" \
+              cargo test --manifest-path rust/Cargo.toml --release \
+              --test graph_oracle -- --nocapture
+          ISONFORM_SIMPLIFY_DUMPS="$RUNNER_TEMP/dumps" \
+              cargo test --manifest-path rust/Cargo.toml --release \
+              --test simplify_oracle -- --nocapture
+          # crate::poa against the real spoa binary on isONform's own inputs.
+          # sirv_small exercises only the IsoformGeneration call sites, not
+          # SimplifyGraph.py:570 --- that one needs a corpus with bubbles worth
+          # popping, so the broad result is measured out-of-band and recorded in
+          # PORTING.md. This step keeps the check from rotting.
+          SPOA_CASES="$RUNNER_TEMP/dumps/spoa_cases.tsv" \
+              cargo test --manifest-path rust/Cargo.toml --release \
+              --lib poa::oracle -- --nocapture
+          # crate::parasail against the real library on isONform's own inputs.
+          # Score and CIGAR both gated exactly. They were not: 12 score and 136
+          # CIGAR errors in 54 884 recorded calls, from an end-cell rule with two
+          # non-obvious parts --- see `end_cell` and PORTING.md finding 25.
+          test -s "$RUNNER_TEMP/dumps/parasail_cases.tsv"
+          PARASAIL_CASES="$RUNNER_TEMP/dumps/parasail_cases.tsv" \
+              cargo test --manifest-path rust/Cargo.toml --release \
+              --lib parasail::oracle::matches -- --nocapture

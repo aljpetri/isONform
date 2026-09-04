@@ -209,7 +209,6 @@ def split_cluster_in_batches_clust(indir, outdir, tmp_work_dir, max_seqs):
     return tmp_work_dir
 
 
-#PYTHONHASHSEED = 0
 def main(args):
     globstart = time()
     directory = args.fastq_folder

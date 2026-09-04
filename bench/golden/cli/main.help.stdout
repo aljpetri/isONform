@@ -1,0 +1,62 @@
+usage: main [-h] [--version] [--fastq FASTQ] [--k K] [--w W] [--xmin XMIN]
+            [--xmax XMAX] [--T T] [--exact] [--disable_numpy]
+            [--delta_len DELTA_LEN] [--max_seqs_to_spoa MAX_SEQS_TO_SPOA]
+            [--max_seqs MAX_SEQS]
+            [--exact_instance_limit EXACT_INSTANCE_LIMIT]
+            [--set_w_dynamically] [--verbose] [--compression]
+            [--outfolder OUTFOLDER] [--delta_iso_len_3 DELTA_ISO_LEN_3]
+            [--delta_iso_len_5 DELTA_ISO_LEN_5] [--parallel PARALLEL] [--slow]
+
+De novo error correction of long-read transcriptome reads
+
+options:
+  -h, --help            show this help message and exit
+  --version             show program's version number and exit
+  --fastq FASTQ         Path to input fastq file with reads (default: False)
+  --k K                 Kmer size (default: 20)
+  --w W                 Window size (default: 31)
+  --xmin XMIN           Upper interval length (default: 18)
+  --xmax XMAX           Lower interval length (default: 80)
+  --T T                 Minimum fraction keeping substitution (default: 0.1)
+  --exact               Get exact solution for WIS for every read
+                        (recalculating weights for each read (much slower but
+                        slightly more accuracy, not to be used for clusters
+                        with over ~500 reads) (default: False)
+  --disable_numpy       Do not require numpy to be installed, but this version
+                        is about 1.5x slower than with numpy. (default: False)
+  --delta_len DELTA_LEN
+                        Maximum length difference between two reads intervals
+                        for which they would still be merged (default: 5)
+  --max_seqs_to_spoa MAX_SEQS_TO_SPOA
+                        Maximum number of seqs to spoa (default: 200)
+  --max_seqs MAX_SEQS   Maximum number of seqs to correct at a time (in case
+                        of large clusters). (default: 1000)
+  --exact_instance_limit EXACT_INSTANCE_LIMIT
+                        Activates slower exact mode for instance smaller than
+                        this limit (default: 0)
+  --set_w_dynamically   Set w = k + max(2*k, floor(cluster_size/1000)).
+                        (default: False)
+  --verbose             Print various developer stats. (default: False)
+  --compression         Use homopolymer compressed reads. (Deprecated, because
+                        we will have fewer minmimizer combinations to span
+                        regions in homopolymenr dense regions. Solution could
+                        be to adjust upper interval length dynamically to
+                        guarantee a certain number of spanning intervals.
+                        (default: False)
+  --outfolder OUTFOLDER
+                        The outfolder of isONform, into which the algorithm
+                        will write the results. (default: None)
+  --delta_iso_len_3 DELTA_ISO_LEN_3
+                        Cutoff parameter: maximum length difference at 3prime
+                        end, for which subisoforms are still merged into
+                        longer isoforms (default: 30)
+  --delta_iso_len_5 DELTA_ISO_LEN_5
+                        Cutoff parameter: maximum length difference at 5prime
+                        end, for which subisoforms are still merged into
+                        longer isoforms (default: 50)
+  --parallel PARALLEL   Indicates whether we run the parallelization wrapper
+                        script (default: False)
+  --slow                EXPERIMENTAL PARAMETER: has high repercussions on run
+                        time use the slow mode for the simplification of the
+                        graph (bubble popping), slow mode: every bubble gets
+                        popped. (default: False)

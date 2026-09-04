@@ -1,0 +1,72 @@
+usage: isONform_parallel [-h] [--version] [--fastq_folder FASTQ_FOLDER]
+                         [--t NR_CORES] [--k K] [--w W] [--xmin XMIN]
+                         [--xmax XMAX]
+                         [--exact_instance_limit EXACT_INSTANCE_LIMIT]
+                         [--keep_old] [--set_w_dynamically]
+                         [--max_seqs MAX_SEQS] [--split_wrt_batches]
+                         [--outfolder OUTFOLDER] [--delta_len DELTA_LEN]
+                         [--delta DELTA] [--max_seqs_to_spoa MAX_SEQS_TO_SPOA]
+                         [--verbose] [--iso_abundance ISO_ABUNDANCE]
+                         [--delta_iso_len_3 DELTA_ISO_LEN_3]
+                         [--delta_iso_len_5 DELTA_ISO_LEN_5] [--tmpdir TMPDIR]
+                         [--write_fastq]
+
+De novo reconstruction of long-read transcriptome reads
+
+options:
+  -h, --help            show this help message and exit
+  --version             show program's version number and exit
+  --fastq_folder FASTQ_FOLDER
+                        Path to input fastq folder with reads in clusters
+                        (default: False)
+  --t NR_CORES          Number of cores allocated for clustering (default: 8)
+  --k K                 Kmer size (default: 20)
+  --w W                 Window size (default: 31)
+  --xmin XMIN           Lower interval length (default: 18)
+  --xmax XMAX           Upper interval length (default: 80)
+  --exact_instance_limit EXACT_INSTANCE_LIMIT
+                        Do exact correction for clusters under this threshold
+                        (default: 50)
+  --keep_old            Do not recompute previous results if
+                        corrected_reads.fq is found and has the smae number of
+                        reads as input file (i.e., is complete). (default:
+                        False)
+  --set_w_dynamically   Set w = k + max(2*k, floor(cluster_size/1000)).
+                        (default: False)
+  --max_seqs MAX_SEQS   Maximum number of seqs to correct at a time (in case
+                        of large clusters). (default: 1000)
+  --split_wrt_batches   Process reads per batch (of max_seqs sequences)
+                        instead of per cluster. Significantly decrease runtime
+                        when few very large clusters are less than the number
+                        of cores used. (default: False)
+  --outfolder OUTFOLDER
+                        Outfolder with all corrected reads. (default: None)
+  --delta_len DELTA_LEN
+                        Maximum length difference between two reads intervals
+                        for which they would still be merged (default: 5)
+  --delta DELTA         diversity rate used to compare sequences (default:
+                        0.1)
+  --max_seqs_to_spoa MAX_SEQS_TO_SPOA
+                        Maximum number of seqs to spoa (default: 200)
+  --verbose             Print various developer stats. (default: False)
+  --iso_abundance ISO_ABUNDANCE
+                        Cutoff parameter: abundance of reads that have to
+                        support an isoform to show in results (default: 5)
+  --delta_iso_len_3 DELTA_ISO_LEN_3
+                        Cutoff parameter: maximum length difference at 3prime
+                        end, for which subisoforms are still merged into
+                        longer isoforms (default: 30)
+  --delta_iso_len_5 DELTA_ISO_LEN_5
+                        Cutoff parameter: maximum length difference at 5prime
+                        end, for which subisoforms are still merged into
+                        longer isoforms (default: 50)
+  --tmpdir TMPDIR       OPTIONAL PARAMETER: Absolute path to custom folder in
+                        which to store temporary files. If tmpdir is not
+                        specified, isONform will attempt to write the
+                        temporary files into the tmp folder on your system. It
+                        is advised to only use this parameter if the
+                        symlinking does not work on your system. (default:
+                        None)
+  --write_fastq         Indicates that we want to ouptut the final output
+                        (transcriptome) as fastq file (New standard: fasta)
+                        (default: False)
