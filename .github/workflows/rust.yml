@@ -92,8 +92,8 @@ jobs:
         run: |
           test -x rust/target/release/main
           test -x rust/target/release/isONform_parallel
-          rust/target/release/main --version | grep -qx 'main 0.3.9'
-          rust/target/release/isONform_parallel --version | grep -qx 'isONform_parallel 0.3.9'
+          rust/target/release/main --version | grep -qx 'main 0.4.0'
+          rust/target/release/isONform_parallel --version | grep -qx 'isONform_parallel 0.4.0'
 
   equivalence:
     name: differential vs the Python reference (${{ matrix.name }})

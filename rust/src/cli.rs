@@ -44,9 +44,15 @@ use std::path::PathBuf;
 use clap::{ArgAction, Parser};
 
 /// The version string both entry points advertise. argparse formats it as
-/// `%(prog)s 0.3.9`, so `--version` prints `main 0.3.9` /
-/// `isONform_parallel 0.3.9`.
-pub const VERSION: &str = "0.3.9";
+/// `%(prog)s <version>`, so `--version` prints `main 0.4.0` /
+/// `isONform_parallel 0.4.0`.
+///
+/// Taken from `Cargo.toml` rather than written out, because the same number
+/// also lives in `setup.py` and in both python entry points, and a release
+/// that bumps some of them and not others produces binaries that lie about
+/// their own version. `version_matches_the_python_entry_points` below is what
+/// actually holds the four in step.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Exit code the reference uses for its own validation failures (`sys.exit(1)`).
 pub const EXIT_VALIDATION: i32 = 1;
@@ -944,9 +950,24 @@ mod tests {
         assert_eq!(err.exit_code(), EXIT_USAGE);
     }
 
+    /// The version is written out in four places: `rust/Cargo.toml` (which
+    /// `VERSION` reads), `setup.py`, and the two python entry points, whose
+    /// `--version` output `bench/equivalence.sh` compares against the port's.
+    /// Nothing but this test stops a release from moving some and not others.
     #[test]
-    fn version_matches_setup_py() {
-        assert_eq!(VERSION, "0.3.9");
+    fn version_matches_the_python_entry_points() {
+        for (name, src) in [
+            ("setup.py", include_str!("../../setup.py")),
+            ("main", include_str!("../../main")),
+            ("isONform_parallel", include_str!("../../isONform_parallel")),
+        ] {
+            assert!(
+                src.contains(VERSION),
+                "{name} does not mention version {VERSION}; \
+                 bump it, or the binaries will advertise a version the \
+                 reference does not"
+            );
+        }
     }
 
     // --- the ARGS Namespace line -----------------------------------------
