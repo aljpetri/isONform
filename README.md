@@ -1,9 +1,12 @@
 # isONform - Reference-free isoform reconstruction from long read sequencing data
 
+### isONform has been re-implemented in Rust (2026-09-04) and is 5-50x faster (see below).
+
+
+
 ## Installation <a name="installation"></a>
 
-isONform has been **re-implemented in Rust (2026-09-04)**. It needs a Rust toolchain
-([rustup.rs](https://rustup.rs)).
+It needs a Rust toolchain ([rustup.rs](https://rustup.rs)).
 
 ```
 git clone https://github.com/aljpetri/isONform.git
@@ -20,8 +23,9 @@ port is checked against; see [INSTALL-python.md](INSTALL-python.md).
 
 ### Rust-port versions
 
-By default, the rust port uses the WFA2 aligner, and is much faster (**8-10x**) at similar
-accuracy, but does not produce identical results to the Python version. 
+By default the Rust port uses the WFA2 aligner: **5–11×** faster than the Python 
+implementation on ONT data and **~50×** on PacBio HiFi, at comparable accuracy, 
+though it does not produce identical output.
 
 The `--faithful` parameter reproduces the python implementation byte for byte, but
 is only about **~2x faster than Python** on shallow data and about the
