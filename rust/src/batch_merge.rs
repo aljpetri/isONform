@@ -114,7 +114,9 @@ fn positional_minimizers(seq: &[u8], w: usize, k: usize) -> Vec<(u64, u32)> {
     if seq.len() < k {
         return v;
     }
-    let kmers: Vec<u64> = (0..=seq.len() - k).map(|i| hash_kmer(&seq[i..i + k])).collect();
+    let kmers: Vec<u64> = (0..=seq.len() - k)
+        .map(|i| hash_kmer(&seq[i..i + k]))
+        .collect();
     if kmers.len() < w {
         v.extend(kmers.iter().enumerate().map(|(i, &h)| (h, i as u32)));
     } else {
@@ -225,7 +227,9 @@ fn minimizers(seq: &[u8], w: usize, k: usize) -> Vec<u64> {
         v.dedup();
         return v;
     }
-    let kmers: Vec<u64> = (0..=seq.len() - k).map(|i| hash_kmer(&seq[i..i + k])).collect();
+    let kmers: Vec<u64> = (0..=seq.len() - k)
+        .map(|i| hash_kmer(&seq[i..i + k]))
+        .collect();
     let mut v = Vec::with_capacity(kmers.len() / w + 2);
     for win in kmers.windows(w) {
         // `min` per window is the minimizer; equal values collapse in the dedup.
@@ -608,8 +612,8 @@ mod tests {
             delta_iso_len_5: 50,
             max_seqs_to_spoa: 200,
             merge_rebuild_max: 50,
-        final_consensus_pass: false,
-        cigar_diversity_counts_runs: false,
+            final_consensus_pass: false,
+            cigar_diversity_counts_runs: false,
         }
     }
 

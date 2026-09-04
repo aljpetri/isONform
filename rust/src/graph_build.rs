@@ -646,7 +646,11 @@ pub fn generate_graph_from_intervals(
                     found.is_some(),
                     best.1,
                     best.2,
-                    if best.0 == u32::MAX { -1 } else { best.0 as i64 }
+                    if best.0 == u32::MAX {
+                        -1
+                    } else {
+                        best.0 as i64
+                    }
                 );
             }
             if found.is_none() && chain_tol > 0 {

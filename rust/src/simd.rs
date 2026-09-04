@@ -648,11 +648,16 @@ mod tests {
         cases.push(("mismatch every 7bp", base.clone(), peppered));
 
         let mut ops = Vec::new();
-        eprintln!("  {:<20} {:>8} {:>8}   {}", "case", "parasail", "block", "verdict");
+        eprintln!(
+            "  {:<20} {:>8} {:>8}   {}",
+            "case", "parasail", "block", "verdict"
+        );
         for (name, a, b) in cases {
             let want = parasail::semiglobal_with(&a, &b, sc, TieBreak::PARASAIL).score;
             let got = semiglobal_ops(&a, &b, sc, &mut ops);
-            let g = got.map(|v| v.to_string()).unwrap_or_else(|| "refused".into());
+            let g = got
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "refused".into());
             let verdict = match got {
                 Some(v) if v == want => "same",
                 Some(v) if v < want => "BLOCK LOWER",

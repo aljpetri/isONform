@@ -56,7 +56,11 @@ pub type EdgeId = u32;
 pub enum NodeKey {
     Source,
     Sink,
-    Interval { start: u32, end: u32, r_id: u32 },
+    Interval {
+        start: u32,
+        end: u32,
+        r_id: u32,
+    },
     /// Identity by **content**: a hash of the interval's flanking minimizer pair
     /// `(m1, m2)`, used when `ISONFORM_PAIR_NODES=1`.
     ///
@@ -64,7 +68,9 @@ pub enum NodeKey {
     /// depend on coordinate drift, on read order, and on file position --- moving
     /// two reads from the front of a file to the end changes the graph from 26 507
     /// nodes to 500 (finding 48). A pair hash depends on none of those.
-    Pair { h: u64 },
+    Pair {
+        h: u64,
+    },
 }
 
 impl fmt::Display for NodeKey {
