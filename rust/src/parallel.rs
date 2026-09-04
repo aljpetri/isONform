@@ -39,8 +39,8 @@ pub struct Instance {
 pub enum InputStructure {
     /// Top-level fastq files, one per cluster. Nothing is moved.
     IsonClust,
-    /// Subdirectories holding `corrected_reads.fastq`. **The input folder is
-    /// rewritten in place** --- see [`restructure_isoncorrect_output`].
+    /// Subdirectories holding `corrected_reads.fastq`. Flattened into a new
+    /// directory --- see [`restructure_isoncorrect_output`].
     IsonCorrect,
 }
 
@@ -50,15 +50,44 @@ pub enum InputStructure {
 /// isONcorrect output: every subdirectory's `corrected_reads.fastq` is **moved**
 /// up to `{subdirectory}.fastq`, and then every subdirectory is **deleted**.
 ///
-/// # This destroys the input folder, and that is the reference's behaviour
+/// # The reference destroys the input folder; this does not, by default
 ///
-/// Not a copy --- `shutil.move` followed by `remove_folders`. A folder of
+/// The reference uses `shutil.move` followed by `remove_folders`, so a folder of
 /// subdirectories that happens to contain no top-level files is flattened and its
-/// subdirectories removed, whatever else was in them. It is reproduced because
-/// pipelines depend on it (this is how isONcorrect's output is fed in), but it is
-/// worth knowing before pointing either implementation at a directory you care
-/// about. `PORTING.md` finding 36.
-pub fn restructure_isoncorrect_output(directory: &Path) -> std::io::Result<InputStructure> {
+/// subdirectories deleted, whatever else was in them --- losing the corrected
+/// reads unless the caller kept a copy. `PORTING.md` finding 36.
+///
+/// The flattening is real work that the rest of the pipeline depends on, but
+/// doing it *in the user's input directory* is incidental to it. So this builds
+/// the flattened view in a **new directory** and returns it, leaving the input
+/// untouched; the caller uses the returned path from then on. Nothing about the
+/// output changes.
+///
+/// `ISONFORM_DESTRUCTIVE_RESTRUCTURE=1` restores the reference's in-place
+/// rewrite, for a pipeline that depends on the input folder being consumed.
+///
+/// Returns the directory to read clusters from, which is the input itself for
+/// isONclust-structured input.
+pub fn restructure_isoncorrect_output(
+    directory: &Path,
+    outfolder: &Path,
+) -> std::io::Result<(InputStructure, std::path::PathBuf)> {
+    let destructive = matches!(
+        std::env::var("ISONFORM_DESTRUCTIVE_RESTRUCTURE")
+            .ok()
+            .as_deref(),
+        Some("1") | Some("on")
+    );
+    restructure_with(directory, outfolder, destructive)
+}
+
+/// The body of [`restructure_isoncorrect_output`], with the mode passed in
+/// rather than read from the environment so both can be tested.
+fn restructure_with(
+    directory: &Path,
+    outfolder: &Path,
+    destructive: bool,
+) -> std::io::Result<(InputStructure, std::path::PathBuf)> {
     let mut any_file = false;
     for e in std::fs::read_dir(directory)? {
         if e?.file_type()?.is_file() {
@@ -68,9 +97,19 @@ pub fn restructure_isoncorrect_output(directory: &Path) -> std::io::Result<Input
     }
     if any_file {
         println!("isONclust structure");
-        return Ok(InputStructure::IsonClust);
+        return Ok((InputStructure::IsonClust, directory.to_path_buf()));
     }
     println!("isONcorrect structure");
+    // Where the flattened view goes. In place for the reference's behaviour,
+    // otherwise a fresh directory beside the output so the input is read-only.
+    let flat = if destructive {
+        directory.to_path_buf()
+    } else {
+        let d = outfolder.join("restructured_input");
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d)?;
+        d
+    };
     for e in std::fs::read_dir(directory)? {
         let e = e?;
         if !e.file_type()?.is_dir() {
@@ -78,11 +117,21 @@ pub fn restructure_isoncorrect_output(directory: &Path) -> std::io::Result<Input
         }
         let source = e.path().join("corrected_reads.fastq");
         let name = e.file_name();
-        let target = directory.join(format!("{}.fastq", name.to_string_lossy()));
+        let target = flat.join(format!("{}.fastq", name.to_string_lossy()));
         if source.exists() {
-            std::fs::rename(&source, &target)?;
+            if destructive {
+                std::fs::rename(&source, &target)?;
+            } else {
+                // Hard link where the filesystem allows it --- same bytes, no
+                // copy, and no dangling link if the input later moves. Falls
+                // back to a copy across devices.
+                if std::fs::hard_link(&source, &target).is_err() {
+                    std::fs::copy(&source, &target)?;
+                }
+            }
+            let verb = if destructive { "Moved" } else { "Linked" };
             println!(
-                "Moved and renamed {} to {}",
+                "{verb} and renamed {} to {}",
                 source.display(),
                 target.display()
             );
@@ -90,8 +139,10 @@ pub fn restructure_isoncorrect_output(directory: &Path) -> std::io::Result<Input
             println!("File {} does not exist.", source.display());
         }
     }
-    remove_folders(directory)?;
-    Ok(InputStructure::IsonCorrect)
+    if destructive {
+        remove_folders(directory)?;
+    }
+    Ok((InputStructure::IsonCorrect, flat))
 }
 
 /// `splitfile`: cut one fastq into `{cl_id}_{i}.{ext}` chunks of `chunksize`
@@ -1072,25 +1123,44 @@ mod tests {
     #[test]
     fn a_folder_with_top_level_files_is_left_alone() {
         let d = tmp("structure");
+        let out = tmp("structure_out");
         std::fs::write(d.join("0.fastq"), "@r\nA\n+\nI\n").unwrap();
         std::fs::create_dir_all(d.join("sub")).unwrap();
-        assert_eq!(
-            restructure_isoncorrect_output(&d).unwrap(),
-            InputStructure::IsonClust
-        );
+        let (structure, read_from) = restructure_with(&d, &out, false).unwrap();
+        assert_eq!(structure, InputStructure::IsonClust);
+        assert_eq!(read_from, d, "clusters are read from the input itself");
         assert!(d.join("sub").exists(), "nothing is moved or deleted");
     }
 
     #[test]
-    fn a_folder_of_only_subdirectories_is_flattened_in_place() {
-        // Destructive, and the reference's behaviour --- see the doc comment.
+    fn a_folder_of_only_subdirectories_is_flattened_beside_the_output() {
         let d = tmp("restructure");
+        let out = tmp("restructure_out");
         std::fs::create_dir_all(d.join("5")).unwrap();
         std::fs::write(d.join("5/corrected_reads.fastq"), "@r\nA\n+\nI\n").unwrap();
+        let (structure, read_from) = restructure_with(&d, &out, false).unwrap();
+        assert_eq!(structure, InputStructure::IsonCorrect);
+        assert_eq!(read_from, out.join("restructured_input"));
         assert_eq!(
-            restructure_isoncorrect_output(&d).unwrap(),
-            InputStructure::IsonCorrect
+            std::fs::read_to_string(read_from.join("5.fastq")).unwrap(),
+            "@r\nA\n+\nI\n"
         );
+        assert!(
+            d.join("5/corrected_reads.fastq").exists(),
+            "the input folder is left intact"
+        );
+    }
+
+    #[test]
+    fn the_destructive_mode_flattens_in_place() {
+        // The reference's behaviour --- see the doc comment.
+        let d = tmp("restructure_destructive");
+        let out = tmp("restructure_destructive_out");
+        std::fs::create_dir_all(d.join("5")).unwrap();
+        std::fs::write(d.join("5/corrected_reads.fastq"), "@r\nA\n+\nI\n").unwrap();
+        let (structure, read_from) = restructure_with(&d, &out, true).unwrap();
+        assert_eq!(structure, InputStructure::IsonCorrect);
+        assert_eq!(read_from, d);
         assert_eq!(
             std::fs::read_to_string(d.join("5.fastq")).unwrap(),
             "@r\nA\n+\nI\n"

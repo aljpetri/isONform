@@ -90,8 +90,14 @@ fn run(args: &ParallelArgs) -> std::io::Result<()> {
     let outfolder = args.outfolder.clone().unwrap_or_else(|| PathBuf::from("."));
 
     // Rewrites `directory` in place when it holds only subdirectories. See
-    // `restructure_isoncorrect_output` — this is destructive, and deliberately so.
-    parallel::restructure_isoncorrect_output(directory)?;
+    // isONcorrect output is a folder of subdirectories; flattening it is what
+    // the rest of the pipeline reads. The reference does that *in place* and
+    // deletes the subdirectories, consuming the input (finding 36); this writes
+    // the flattened view under the outfolder instead and reads from there, so a
+    // run cannot destroy the corpus it was pointed at.
+    // `ISONFORM_DESTRUCTIVE_RESTRUCTURE=1` restores the old behaviour.
+    let (_structure, directory) = parallel::restructure_isoncorrect_output(directory, &outfolder)?;
+    let directory = &directory;
 
     // The reference hardcodes this to `False` with no flag reaching it, so its
     // `--iso_abundance` discards are unobservable (finding 35). The port adds

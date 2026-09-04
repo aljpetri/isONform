@@ -254,11 +254,17 @@ run_one() {
     || die "no isONform_parallel or isonform_parallel in $impl"
 
   rm -rf "$out"; mkdir -p "$out"
-  # isONform_parallel's restructure_isoncorrect_output() MUTATES its input
+  # The *reference's* restructure_isoncorrect_output() MUTATES its input
   # directory --- it shutil.moves every <cl>/corrected_reads.fastq up a level and
-  # then deletes the folders (PORTING.md finding 5). Every run therefore gets a
-  # private copy, or the second run would see a different input from the first.
-  cp -R "$src" "$out/in"
+  # then deletes the folders (PORTING.md finding 5), so the python arm gets a
+  # private copy or the second run would see a different input from the first.
+  # The port builds that flattened view under its own outfolder instead and
+  # reads the corpus read-only, so it needs no copy.
+  local in="$src"
+  if [[ "$kind" == python ]]; then
+    in="$out/in"
+    cp -R "$src" "$in"
+  fi
 
   note "$corpus / $tag  (impl=$impl kind=$kind seed=$seed)"
   local start end
@@ -271,14 +277,14 @@ run_one() {
   start=$("$PY_BIN" -c 'import time;print(time.time())')
   if [[ "$kind" == python ]]; then
     ( cd "$impl" && PYTHONHASHSEED="$seed" $timer "$PY_BIN" "$entry" \
-        --fastq_folder "$out/in" --outfolder "$out/out" --t "$THREADS" \
+        --fastq_folder "$in" --outfolder "$out/out" --t "$THREADS" \
         --split_wrt_batches --iso_abundance "$ISO_ABUNDANCE" $EXTRA_ARGS ) >"$out/log" 2>&1
   else
     # No PYTHONHASHSEED: the port has no seeded hash to pin, which is the
     # point of finding 28's ascending order. `seed` is still recorded so the
     # two implementations' rows line up in runs.tsv.
     ( cd "$impl" && $timer "$entry" \
-        --fastq_folder "$out/in" --outfolder "$out/out" --t "$THREADS" \
+        --fastq_folder "$in" --outfolder "$out/out" --t "$THREADS" \
         --split_wrt_batches --iso_abundance "$ISO_ABUNDANCE" $EXTRA_ARGS ) >"$out/log" 2>&1
   fi
   local ec=$?
@@ -293,8 +299,8 @@ run_one() {
   printf '    exit=%s  %ss  %s isoforms  peakRSS=%sMB\n' "$ec" "$secs" "$n" "$rss"
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$corpus" "$tag" "$seed" "$ec" "$secs" "$n" \
       "${EXTRA_ARGS:-none}" >> "$WORK/eval/runs.tsv"
-  # The private input copy is large and reproducible; the corpus is the source
-  # of truth.
+  # The private input copy (python only) is large and reproducible; the corpus
+  # is the source of truth.
   rm -rf "$out/in"
   [[ $ec -eq 0 ]] || echo "    (failed --- see $out/log)" >&2
 }

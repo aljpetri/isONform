@@ -2194,6 +2194,27 @@ explaining the region. `redund` and `identity` had both been pointing at it ---
 identity rose 0.9697 -> 0.9780 on `sirv_real` once the tails came off, which is
 not what a merge-behaviour difference does.
 
+### Finding 57 --- the input folder was consumed, and it did not have to be
+
+The reference's `restructure_isoncorrect_output` treats a folder with no top-level *files* as
+isONcorrect output: it `shutil.move`s every `<cl>/corrected_reads.fastq` up to `<cl>.fastq` and
+then deletes every subdirectory. The flattening is real work the rest of the pipeline depends on.
+Doing it *in the user's input directory* is not --- it is incidental to how the reference happened
+to write it. The cost is that a run consumes its own input: a second run on the same folder sees a
+different input from the first, and anything else the subdirectories held is gone.
+
+That is not a semantic the port has to keep. It now builds the flattened view in
+`{outfolder}/restructured_input` and reads clusters from there; the input directory is never
+written to. Entries are `hard_link`ed, falling back to `copy` across devices, so the view costs no
+disk and no time. The driver's existing end-of-run `remove_folders(outfolder)` cleans it up with
+the rest of the per-cluster scratch. `ISONFORM_DESTRUCTIVE_RESTRUCTURE=1` restores the reference's
+behaviour for a pipeline that depends on the input being consumed.
+
+Verified on `sirv_real`: default output byte-identical to the stored default baseline, `--faithful`
+byte-identical to python, destructive mode byte-identical to non-destructive, and the corpus intact
+after all three (26/26 `corrected_reads.fastq` still in place). `bench/evaluate.sh` no longer copies
+the corpus for the port's arms --- only for python's, which still consumes what it is given.
+
 ## Method
 
 Carried over from the isONcorrect port. The full version, with the measurements behind each point, is
@@ -2467,8 +2488,9 @@ change output need a measurement first.
 - **Missing validation**: `--xmin > --xmax` crashes with a traceback, a nonexistent `--fastq` crashes
   with `FileNotFoundError`, and the window-size message says "smaller than 100" where the check
   admits 100. All three want diagnostics.
-- **`restructure_isoncorrect_output` mutating its input** (finding 5). At minimum it should be
-  opt-in, or write to a new directory.
+- ~~**`restructure_isoncorrect_output` mutating its input** (finding 5).~~ **Done** --- see
+  *Finding 57*. The port writes the flattened view under its own `--outfolder` and reads the input
+  read-only; `ISONFORM_DESTRUCTIVE_RESTRUCTURE=1` restores the reference's in-place rewrite.
 - ~~**A second corpus from genuinely distinct clusters.**~~ **Done** — three of them, two from real
   ONT data through the upstream pipeline. See *Evaluating isONform* and `bench/corpus/README.md`.
   `sirv_small` stays as the smoke test and for the identical-cluster invariant.
