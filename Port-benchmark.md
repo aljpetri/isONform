@@ -19,6 +19,18 @@ only wall clock varies.
 **port (faithful)** is `--faithful`: the reference reproduced exactly.
 **port (default)** is the shipped configuration: faithful plus the WFA2 aligner.
 
+**Poly-A tails are trimmed from isoforms before matching.** The SIRV reference
+transcripts are annotated without one; cDNA has one. Untrimmed, those bases are
+charged twice --- against identity, whose denominator is the query length, and
+against the length tolerance --- so a perfect reconstruction can fail both. On
+real ONT SIRV, 71 of python's 155 isoforms carry such a tail; on PacBio one
+isoform reconstructed 3 998 of 3 999 bases and then ran 303 poly-A bases past the
+end, scoring 0.929. It affects every implementation about equally, so the
+comparisons hold either way, but absolute numbers move by 2--7 transcripts.
+`bench/accuracy_isoforms.py --no-trim-polya` scores the old way. The simulated
+corpus is unchanged to four decimals, which is the control: the simulator emits
+no poly-A.
+
 
 ## The corpora
 
@@ -86,12 +98,12 @@ Of the 68 reference transcripts.
 | `sirv_sim_gene` | python | 62 | 138 | 136 | 0.947 | 0.954 | 2.19 | 0.9976 |
 | | faithful | 62 | 138 | 136 | 0.947 | 0.954 | 2.19 | 0.9976 |
 | | default | 61 | 133 | 133 | 0.946 | 0.946 | **2.18** | **0.9978** |
-| `sirv_real` | python | 49 | 108 | 90 | 0.773 | 0.892 | 1.84 | 0.9697 |
-| | faithful | 49 | 108 | 90 | 0.773 | 0.892 | 1.84 | 0.9697 |
-| | default | 48 | 110 | 84 | 0.734 | 0.879 | **1.75** | **0.9710** |
-| `sirv_real_deep` | python | 55 | 625 | 490 | 0.796 | 0.902 | 8.91 | 0.9663 |
-| | faithful | 55 | 625 | 490 | 0.796 | 0.902 | 8.91 | 0.9663 |
-| | **default** | **60** | 626 | 474 | **0.815** | **0.934** | **7.90** | **0.9667** |
+| `sirv_real` | python | 53 | 108 | 94 | 0.822 | 0.892 | 1.77 | 0.9780 |
+| | faithful | 53 | 108 | 94 | 0.822 | 0.892 | 1.77 | 0.9780 |
+| | default | 51 | 110 | 89 | 0.778 | 0.879 | **1.75** | 0.9779 |
+| `sirv_real_deep` | python | 57 | 625 | 515 | 0.831 | 0.903 | 9.04 | 0.9712 |
+| | faithful | 57 | 625 | 515 | 0.831 | 0.903 | 9.04 | 0.9712 |
+| | **default** | **61** | 626 | 516 | **0.859** | **0.935** | **8.46** | **0.9739** |
 
 ### Real SIRV by read depth
 
@@ -102,26 +114,28 @@ visible: it costs a transcript on shallow data and stops costing anything by
 
 | reads | implementation | TP | called | strict F1 | lenient F1 | redund | wall | peak RSS |
 |---|---|---|---|---|---|---|---|---|
-| 1 000 | python | 28 | 33 | 0.561 | 0.640 | 1.04 | 43.3s | 383 MB |
-| | faithful | 28 | 33 | 0.561 | 0.640 | 1.04 | 14.3s | 270 MB |
-| | default | 26 | 33 | 0.527 | 0.626 | 1.08 | **7.3s** | **198 MB** |
+| 1 000 | python | 29 | 33 | 0.581 | 0.640 | 1.03 | 43.3s | 383 MB |
+| | faithful | 29 | 33 | 0.581 | 0.640 | 1.03 | 14.3s | 270 MB |
+| | default | 27 | 33 | 0.547 | 0.626 | 1.07 | **7.3s** | **198 MB** |
 | 2 000 | python | 35 | 48 | 0.642 | 0.741 | 1.17 | 78.5s | 613 MB |
 | | faithful | 35 | 48 | 0.642 | 0.741 | 1.17 | 38.7s | 501 MB |
-| | default | 35 | 47 | **0.647** | **0.752** | **1.15** | **18.5s** | **457 MB** |
-| 5 000 | python | 46 | 72 | 0.763 | 0.857 | 1.37 | 461.5s | 1 130 MB |
-| | faithful | 46 | 72 | 0.763 | 0.857 | 1.37 | 60.7s | 764 MB |
-| | default | 44 | 71 | 0.738 | 0.818 | 1.39 | **17.9s** | **406 MB** |
-| 10 000 | python | 49 | 108 | 0.773 | 0.892 | 1.84 | 354.8s | 1 329 MB |
-| | faithful | 49 | 108 | 0.773 | 0.892 | 1.84 | 220.3s | 1 002 MB |
-| | default | 48 | 110 | 0.734 | 0.879 | **1.75** | **45.9s** | **584 MB** |
-| 20 000 | python | 50 | 157 | 0.756 | 0.871 | 2.44 | 327.2s | 1 388 MB |
-| | faithful | 50 | 157 | 0.756 | 0.871 | 2.44 | 309.2s | 1 356 MB |
-| | default | 49 | 155 | 0.746 | **0.873** | 2.45 | **50.8s** | **983 MB** |
-| 50 000 | python | 56 | 340 | 0.791 | 0.929 | 4.62 | 796.5s | 1 729 MB |
-| | faithful | 56 | 340 | 0.791 | 0.929 | 4.62 | 797.9s | 1 771 MB |
-| | default | 56 | 342 | 0.783 | 0.924 | 4.55 | **113.1s** | **1 412 MB** |
+| | **default** | **37** | 47 | **0.682** | **0.752** | **1.16** | **18.5s** | **457 MB** |
+| 5 000 | python | 47 | 72 | 0.783 | 0.857 | 1.38 | 461.5s | 1 130 MB |
+| | faithful | 47 | 72 | 0.783 | 0.857 | 1.38 | 60.7s | 764 MB |
+| | default | 45 | 71 | 0.758 | 0.818 | 1.40 | **17.9s** | **406 MB** |
+| 10 000 | python | 53 | 108 | 0.822 | 0.892 | 1.77 | 354.8s | 1 329 MB |
+| | faithful | 53 | 108 | 0.822 | 0.892 | 1.77 | 220.3s | 1 002 MB |
+| | default | 51 | 110 | 0.778 | 0.879 | **1.75** | **45.9s** | **584 MB** |
+| 20 000 | python | 52 | 157 | 0.789 | 0.871 | 2.46 | 327.2s | 1 388 MB |
+| | faithful | 52 | 157 | 0.789 | 0.871 | 2.46 | 309.2s | 1 356 MB |
+| | default | 52 | 155 | **0.791** | **0.884** | **2.44** | **50.8s** | **983 MB** |
+| 50 000 | python | 59 | 340 | 0.842 | 0.932 | 4.71 | 796.5s | 1 729 MB |
+| | faithful | 59 | 340 | 0.842 | 0.932 | 4.71 | 797.9s | 1 771 MB |
+| | **default** | **60** | 342 | **0.851** | **0.943** | **4.68** | **113.1s** | **1 412 MB** |
 
-
+The simulated corpus has no depth series: its source is a single 10 000-read
+simulated library, so 10 000 is the only depth available without regenerating the
+simulation.
 
 ## Accuracy --- Drosophila
 
@@ -159,9 +173,11 @@ whose graph walk takes no edge at all leaves `current_node_support` aliasing
 [`crate::pyset`] deliberately omits. Unverified, and open.
 
 **WFA2 helps more the deeper the data.** The depth series shows it directly: on
-the same library it costs 2 transcripts at 1 000 reads, 2 at 5 000, 1 at 10 000
-and 20 000, and **nothing at 50 000** --- and on the undownsampled corpus it gains
-**five** (60 against 55), with higher F1 at both thresholds and lower redundancy. On Drosophila it gains 14 FSM
+the same library it costs 2 transcripts at 1 000, 5 000 and 10 000 reads, **gains
+2 at 2 000**, draws at 20 000 and **gains at 50 000** (60 against 59) --- and on
+the undownsampled corpus it gains **four** (61 against 57), with higher F1 at both
+thresholds and lower redundancy. The Drosophila corpora agree: +14 FSM at 20 000
+reads, and 101 more distinct annotated transcripts at 1M. On Drosophila it gains 14 FSM
 at 20 000 reads and, at 1M reads, matches **101 more distinct annotated
 transcripts** (6 764 against 6 663) across 100 more genes while emitting fewer
 isoforms --- fewer instances, more distinct transcripts, which is the direction

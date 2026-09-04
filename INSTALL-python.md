@@ -35,3 +35,13 @@ This command installs isONforms dependencies:
 		`pip install parasail`<br />
 
 4. clone this repository
+
+## A note on paths
+
+The python implementation symlinks each cluster into a temporary working
+directory using the path as given, so a **relative** `--fastq_folder` produces
+links that dangle and the run fails with `No such file or directory`. Pass it
+absolute paths.
+
+The Rust implementation resolves the target, and accepts relative paths for both
+`--fastq_folder` and `--outfolder`, from any working directory.

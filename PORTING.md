@@ -1835,16 +1835,19 @@ The measurement is one binary with one variable, `ISONFORM_WFA2_DANGLE_DP`:
 
 | corpus | metric | DP on | DP off (greedy) |
 |---|---|---|---|
-| `sirv_real` | **strict F1** | **0.693** | **0.722** |
-| | transcripts recovered | 45 / 68 | **47 / 68** |
-| | lenient F1 | **0.874** | 0.862 |
-| | isoforms / redundancy | 81 / 1.31 | 86 / 1.38 |
-| | identity | **0.9758** | 0.9742 |
+| `sirv_real` | **strict F1** | **0.754** | **0.796** |
+| | transcripts recovered | 49 / 68 | **51 / 68** |
+| | isoforms / redundancy | 81 / 1.31 | 86 / 1.43 |
+| | identity | **0.9776** | 0.9763 |
 | `sirv_sim_gene` | F1 / redundancy | 0.946 / 1.25 | 0.946 / 1.25 |
 | `droso` | FSM / NNC / canonical | 466 / 12 / 0.982 | 466 / 12 / 0.982 |
 
+**Rescored with poly-A trimming** (finding 56); the conclusion is unchanged, the
+absolute numbers are not. The original reading --- 0.722 -> 0.693 and 47 -> 45 ---
+was taken before the scorer trimmed tails.
+
 It over-merges: five fewer isoforms, less redundancy, and two real SIRV
-transcripts collapsed. Default is now **off**; `ISONFORM_WFA2_DANGLE_DP=1` opts in.
+transcripts lost. Default is now **off**; `ISONFORM_WFA2_DANGLE_DP=1` opts in.
 The DP itself is correct --- it never scores above the exact DP, and a new fixture
 for finding 41's stated mechanism passes.
 
@@ -2070,17 +2073,25 @@ reference transcripts recovered of 68 on `sirv_real`, and wall clock:
 
 | reads | python | faithful | +wfa2 | +wfa2 +confirm | +pairnodes | +poasched | +mergefix |
 |---|---|---|---|---|---|---|---|
-| 1 000 | 28 / 25.7s | 28 / 14.3s | 26 / **7.3s** | 26 / 8.4s | 25 | 26 | 26 |
-| 2 000 | 35 / 78.5s | 35 / 38.7s | 35 / **18.5s** | 35 / 19.8s | 34 | 35 | 33 |
-| 5 000 | 46 / 119.2s | 46 / 60.7s | 44 / **17.9s** | 44 / 18.4s | 43 | 44 | 43 |
-| 10 000 | 49 / 233.3s | 49 / 220.3s | 48 / **45.9s** | **49** / 50.5s | 49 | 48 | 47 |
-| 20 000 | 50 / 327.2s | 50 / 309.2s | 49 / **50.8s** | **50** / 53.6s | 48 | 49 | 47 |
-| 50 000 | 56 / 796.5s | 56 / 797.9s | 56 / **113.1s** | **57** / 110.6s | 55 | 56 | 55 |
+| 1 000 | 29 / 43.3s | 29 / 14.3s | 27 / **7.3s** | 27 / 8.4s | 26 | 27 | 27 |
+| 2 000 | 35 / 78.5s | 35 / 38.7s | **37** / **18.5s** | **37** / 19.8s | 36 | **37** | 36 |
+| 5 000 | 47 / 461.5s | 47 / 60.7s | 45 / **17.9s** | 45 / 18.4s | 44 | 45 | 46 |
+| 10 000 | 53 / 354.8s | 53 / 220.3s | 51 / **45.9s** | 52 / 50.5s | 51 | 51 | 52 |
+| 20 000 | 52 / 327.2s | 52 / 309.2s | 52 / **50.8s** | 52 / 53.6s | 51 | 52 | 52 |
+| 50 000 | 59 / 796.5s | 59 / 797.9s | 60 / **113.1s** | **61** / 110.6s | 58 | 60 | 56 |
+
+**Rescored with poly-A trimming** (finding 56). The shape holds --- WFA2 costs
+1--2 transcripts shallow and gains deep, `+mergefix` is destructive at depth,
+`+pairnodes` never helps --- but individual cells moved by up to 4, and `+wfa2`
+now *gains* 2 at 2 000 reads where it previously drew.
 
 `+pairnodes`, `+poasched` and `+mergefix` are stacked on `+wfa2`. **`+mergefix`
 is the destructive one** --- it halves the called count (340 -> 199 at 50 000) and
 is 5x slower than `+wfa2` alone there. `+poasched` is inert. `+pairnodes` costs
 1--2 transcripts and buys nothing on top of WFA2.
+
+**+wfa2 +confirm is the best arm at depth**: 61 of 68 at 50 000 reads, two
+better than python, for 5--10% over `+wfa2` alone.
 
 **droso is what decides it.** 561 clusters and a real annotation carry far more
 weight than a 68-transcript panel where every arm sits within 2, non-monotonically:
@@ -2130,6 +2141,58 @@ positives costs **5--10% runtime** and recovers exactly those transcripts:
 Python, still 4.3--7.2x faster. It cannot catch pairs WFA2 wrongly *refuses* ---
 confirming those means confirming every pair and saves nothing. Left opt-in: droso
 cannot distinguish it (455 against 457 FSM).
+
+### Finding 56 --- the SIRV scorer was charging poly-A tails, and it moved everything
+
+The Lexogen SIRV reference transcripts are annotated **without a poly-A tail**;
+cDNA has one. `accuracy_isoforms.py` charged those bases twice --- against
+identity, whose denominator is the query length, and against the length tolerance
+--- so a perfect reconstruction could fail both tests.
+
+Found on PacBio, where it is unmissable. `SIRV4002` has 739 reads, 666 of them
+spanning >= 90% of the transcript, median depth **705**, and the port emitted an
+isoform scoring 0.929 --- apparently a real defect. The parasail alignment is four
+operations:
+
+```text
+3I  3998=  1X  303I
+```
+
+3 998 of 3 999 bases matched, one substitution, **zero internal indels**, and a
+303-base tail that is 301 A's. Not genomic: it matches the `SIRV4` locus at 0.38.
+A perfect reconstruction, failed by the scorer.
+
+On ONT the same thing is present and smaller: **71 of python's 155** isoforms on
+`sirv_real` at 20 000 reads carry a terminal run >= 10 bases that is >= 80% A or
+T, mean trailing overhang 11.8 bases. So the "over-extension" findings 50 and 55
+were built on --- +11 to +29 bases past the transcript end --- was substantially
+poly-A, not a merge or alignment effect.
+
+`trim_polya` strips the longest terminal run at either end that is >= 10 bases and
+>= 85% A or T. On by default; `--no-trim-polya` scores the old way.
+
+| corpus | | before | after |
+|---|---|---|---|
+| `sirv_sim_gene` | py / faithful / default | 62 / 62 / 61 | **unchanged** |
+| `sirv_real` | | 49 / 49 / 48 | **53 / 53 / 51** |
+| `sirv_real_deep` | | 55 / 55 / 60 | **57 / 57 / 61** |
+| `pacbio_sirv` | default / faithful | 59 / --- | **66 / 69** |
+
+**The simulated corpus is unchanged to four decimals.** That is the control: the
+simulator emits no poly-A, so there is no tail to trim, and a scoring change that
+moved it would have been measuring something else.
+
+#### The method lesson, which is the reason this is its own finding
+
+I analysed these overhangs at length --- *where* the extra bases sat, ends versus
+internal, which transcripts, which merge rule --- and built a mechanism out of it
+across several findings. I never once looked at **what the bases were**. One
+`collections.Counter` on the tail would have ended it immediately.
+
+So: when a difference is localised to a region, read the sequence before
+explaining the region. `redund` and `identity` had both been pointing at it ---
+identity rose 0.9697 -> 0.9780 on `sirv_real` once the tails came off, which is
+not what a merge-behaviour difference does.
 
 ## Method
 

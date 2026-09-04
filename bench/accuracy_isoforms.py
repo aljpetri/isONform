@@ -146,6 +146,43 @@ def resolve_isoform_file(path):
 # --------------------------------------------------------------------------
 
 
+
+def trim_polya(seq, min_len=10, purity=0.85):
+    """Strip a terminal poly-A or poly-T run from a reconstructed isoform.
+
+    The SIRV reference transcripts are annotated WITHOUT a poly-A tail; cDNA has
+    one, so an isoform that reconstructs its transcript perfectly still carries
+    10-300 bases the reference cannot match. Those bases are charged twice by the
+    match rule --- against identity, whose denominator is the query length, and
+    against the length tolerance --- so a perfect reconstruction can fail both.
+    Measured: 71 of 155 python isoforms on real ONT SIRV carry such a tail, and on
+    PacBio one isoform reconstructed 3 998 of 3 999 bases and then ran 303 poly-A
+    bases past the end, scoring 0.929.
+
+    Trims the longest terminal run, at either end, that is at least `min_len`
+    long and at least `purity` A (or T). Nothing else is removed, so a transcript
+    that genuinely ends in a short A-rich stretch keeps it.
+    """
+    def strip_end(s, rev):
+        t = s[::-1] if rev else s
+        best = 0
+        for base in "AT":
+            n = a = 0
+            for i, ch in enumerate(t, 1):
+                if ch == base:
+                    a += 1
+                n = i
+                if a >= purity * n and n >= min_len:
+                    best = max(best, n)
+                # give up once purity cannot be recovered
+                if n - a > (1 - purity) * len(t):
+                    break
+        return best
+    lead = strip_end(seq, False)
+    seq = seq[lead:]
+    trail = strip_end(seq, True)
+    return seq[: len(seq) - trail] if trail else seq
+
 def best_match(query, refs, ref_names):
     """Best (identity, ref_name, aligned_len) for `query` over `refs`.
 
@@ -273,6 +310,13 @@ def main():
         "denominator to transcripts that are actually present. Without it "
         "every reference transcript counts and recall is a lower bound.",
     )
+    ap.add_argument(
+        "--no-trim-polya",
+        action="store_true",
+        help="score isoforms with their poly-A tail attached. The reference "
+        "transcripts carry none, so a tail is charged against both identity and "
+        "the length tolerance; trimming is on by default and this turns it off.",
+    )
     ap.add_argument("--min-identity", type=float, default=0.95)
     ap.add_argument("--len-tol", type=float, default=0.10)
     ap.add_argument(
@@ -341,6 +385,10 @@ def main():
     strict = (args.min_identity, args.len_tol)
     lenient = tuple(args.lenient)
 
+    if not args.no_trim_polya:
+        print("poly-A:     terminal poly-A/poly-T runs trimmed from isoforms "
+              "before matching\n            (the reference transcripts carry "
+              "none; --no-trim-polya to disable)")
     for label, (mi, lt) in (("strict", strict), ("lenient", lenient)):
         print(f"== {label}: identity >= {mi:.2f}, length within {lt:.0%} ==")
         print(
@@ -349,6 +397,8 @@ def main():
         )
         for name, path in sets:
             isoforms = read_fasta(path)
+            if not args.no_trim_polya:
+                isoforms = {k: trim_polya(v) for k, v in isoforms.items()}
             r = evaluate(isoforms, refs, expressed, mi, lt)
             print(
                 f"  {name:<14} {r['n_isoforms']:>8} {r['n_matching']:>8} "
