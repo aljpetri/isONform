@@ -119,11 +119,11 @@ fn ordered_for_spoa(
         SpoaOrder::Len => {
             // Descending by read length; stable, so equal lengths keep their
             // order. Before the cap, so the cap keeps the longest.
-            v.sort_by(|x, y| len(y).cmp(&len(x)));
+            v.sort_by_key(|y| std::cmp::Reverse(len(y)));
         }
         SpoaOrder::CapLen => {
             v.truncate(max_seqs_to_spoa);
-            v.sort_by(|x, y| len(y).cmp(&len(x)));
+            v.sort_by_key(|y| std::cmp::Reverse(len(y)));
         }
         SpoaOrder::Median => {
             v.truncate(max_seqs_to_spoa);

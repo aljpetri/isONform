@@ -223,6 +223,10 @@ type TolIndex = FxHashMap<(u32, u32), Vec<(u32, u32, NodeId)>>;
 ///
 /// Exact hits are zero-offset candidates, so they are never lost by chaining;
 /// the caller consults the chain only where the exact lookup missed.
+/// One DP cell: how many intervals the chain covers, its total offset, and the
+/// `(interval, candidate)` it came from.
+type ChainCell = (u32, u32, Option<(usize, usize)>);
+
 fn chain_assign(
     starts: &[(u32, u32)],
     r_id: u32,
@@ -252,9 +256,10 @@ fn chain_assign(
     // dp[i][a] = best (count, -cost) for a chain ending at interval i with
     // candidate a. `n` is ~30 and candidates per interval are few, so the
     // quadratic scan is free.
-    let mut dp: Vec<Vec<(u32, u32, Option<(usize, usize)>)>> =
-        cands.iter().map(|c| vec![(1, 0, None); c.len()]).collect();
+    // (chained count, total offset, predecessor) per candidate, per interval.
+    let mut dp: Vec<Vec<ChainCell>> = cands.iter().map(|c| vec![(1, 0, None); c.len()]).collect();
     for i in 0..n {
+        #[allow(clippy::needless_range_loop)] // indexes cands[i] and dp[i] together
         for a in 0..cands[i].len() {
             let (st_a, _, cost_a) = cands[i][a];
             let mut best = (1u32, cost_a, None);
@@ -289,6 +294,7 @@ fn chain_assign(
     let mut end: Option<(usize, usize)> = None;
     let mut best = (0u32, u32::MAX);
     for i in 0..n {
+        #[allow(clippy::needless_range_loop)] // indexes cands[i] and dp[i] together
         for a in 0..cands[i].len() {
             let (cnt, cost, _) = dp[i][a];
             if cnt > best.0 || (cnt == best.0 && cost < best.1) {

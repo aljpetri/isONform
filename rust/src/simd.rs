@@ -438,7 +438,7 @@ pub mod oracle {
                                 f[2]
                             );
                         }
-                        if worse <= 0 {
+                        if worse == 0 {
                             eprintln!(
                                 "  FAIL#{worse}: len1={} len2={} want={want} got={got} \
                                  scoring=({}/{}/{}/{}) cigar={:.60}",
@@ -649,8 +649,8 @@ mod tests {
 
         let mut ops = Vec::new();
         eprintln!(
-            "  {:<20} {:>8} {:>8}   {}",
-            "case", "parasail", "block", "verdict"
+            "  {:<20} {:>8} {:>8}   verdict",
+            "case", "parasail", "block"
         );
         for (name, a, b) in cases {
             let want = parasail::semiglobal_with(&a, &b, sc, TieBreak::PARASAIL).score;

@@ -109,7 +109,10 @@ fn minshare_config() -> Option<(usize, usize, usize)> {
 /// the anchors as a **gap in the co-linear chain** --- shared minimizers whose
 /// offsets jump. Checking the chain approximates the merge's own test at anchor
 /// resolution, for the cost of a chain rather than a 909x909 DP.
-fn positional_minimizers(seq: &[u8], w: usize, k: usize) -> Vec<(u64, u32)> {
+/// One isoform's `(hash, position)` minimizers.
+pub type MinimizerList = Vec<(u64, u32)>;
+
+fn positional_minimizers(seq: &[u8], w: usize, k: usize) -> MinimizerList {
     let mut v: Vec<(u64, u32)> = Vec::new();
     if seq.len() < k {
         return v;
@@ -126,7 +129,6 @@ fn positional_minimizers(seq: &[u8], w: usize, k: usize) -> Vec<(u64, u32)> {
                 .iter()
                 .enumerate()
                 .min_by_key(|(o, &h)| (h, *o))
-                .map(|(o, h)| (o, h))
                 .unwrap();
             let pos = (start + off) as u32;
             if pos != last {
@@ -178,9 +180,9 @@ fn max_chain_indel(a: &[(u64, u32)], b: &[(u64, u32)]) -> u32 {
                 while j < b.len() && b[j].0 == h {
                     j += 1;
                 }
-                for x in si..i {
-                    for y in sj..j {
-                        hits.push((a[x].1, b[y].1));
+                for (_, pa) in &a[si..i] {
+                    for (_, pb) in &b[sj..j] {
+                        hits.push((*pa, *pb));
                     }
                 }
             }
@@ -216,6 +218,10 @@ fn max_chain_indel(a: &[(u64, u32)], b: &[(u64, u32)]) -> u32 {
 }
 
 /// The `(w, k)` minimizers of one sequence, as a sorted deduplicated hash list.
+/// Superseded by [`positional_minimizers`], which the anchor-chain filter uses.
+/// Kept because the shared-minimizer *count* it feeds is the measurement
+/// `PORTING.md` records as sound at every threshold and worth nothing.
+#[allow(dead_code)]
 fn minimizers(seq: &[u8], w: usize, k: usize) -> Vec<u64> {
     if seq.len() < k + w {
         // Too short for a full window: take every k-mer, which is a superset of
@@ -253,6 +259,8 @@ fn hash_kmer(kmer: &[u8]) -> u64 {
 }
 
 /// How many minimizers two sorted lists share.
+/// Counterpart to [`minimizers`]; see the note there.
+#[allow(dead_code)]
 fn shared(a: &[u64], b: &[u64]) -> usize {
     let (mut i, mut j, mut n) = (0usize, 0usize, 0usize);
     while i < a.len() && j < b.len() {
@@ -336,7 +344,7 @@ pub fn actual_merging_process<E: IsoformEngine>(
     // One minimizer list per isoform, computed once. Consensuses do not change
     // during the merge --- the longer one survives unchanged and the shorter is
     // marked merged --- so these stay valid for the whole pass.
-    let mins: Option<Vec<Vec<Vec<(u64, u32)>>>> = minshare_config().map(|(w, k, _)| {
+    let mins: Option<Vec<Vec<MinimizerList>>> = minshare_config().map(|(w, k, _)| {
         batches
             .iter()
             .map(|(_, isos)| {

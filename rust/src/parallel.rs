@@ -456,6 +456,8 @@ pub fn write_final_output(
 /// The merging step is repaired here rather than reproduced --- see
 /// [`crate::batch_merge::actual_merging_process`] and `PORTING.md` finding 31.
 /// `batch_merge_no_op` puts the reference's do-nothing behaviour back.
+// Argument count follows the reference's own signature, plus the opt-in recursive stage.
+#[allow(clippy::too_many_arguments)]
 pub fn join_back_via_batch_merging(
     outdir: &Path,
     iso_abundance: usize,
@@ -537,6 +539,8 @@ pub fn join_back_via_batch_merging(
 
 /// One cluster's cross-batch merge and output. Split out of
 /// [`join_back_via_batch_merging`] so the cluster loop can be threaded.
+// Argument count follows the same arguments, threaded down one level.
+#[allow(clippy::too_many_arguments)]
 fn merge_one_cluster(
     cl_dir: &Path,
     outdir: &Path,

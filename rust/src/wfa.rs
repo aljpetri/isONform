@@ -600,6 +600,9 @@ fn score_ops(ops: &[CigarOp], sc: Scoring) -> i32 {
     score
 }
 
+/// The verdict oracle. Test-only: it exists to replay recorded reference calls,
+/// and nothing in a normal build calls it.
+#[cfg(test)]
 pub mod oracle;
 
 #[cfg(test)]
