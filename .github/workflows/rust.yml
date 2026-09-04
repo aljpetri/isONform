@@ -95,6 +95,13 @@ jobs:
   equivalence:
     name: differential vs the Python reference (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    env:
+      # The port's *default* is no longer reference semantics: it runs WFA2 and
+      # the accepted optimisations (PORTING.md finding 55). Reference semantics
+      # are what this whole job compares, so ask for them explicitly --- every
+      # step below would otherwise diff two programs that are meant to differ.
+      # The `build` job's `cargo test` deliberately runs the default instead.
+      ISONFORM_FAITHFUL: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -227,14 +234,14 @@ jobs:
           # per-batch quantity from a per-file one, which is exactly the mistake
           # finding 33 was. Forcing four batches is the whole point of this step.
           #
-          # One cluster is allowed to disagree: batch 1 renames a single isoform
-          # id under finding 28's set-order divergence, with every consensus
-          # sequence identical. Anything beyond that is a wiring bug, not a
-          # known divergence --- do not raise this number without a PORTING.md
+          # This used to allow one disagreeing cluster: batch 1 renamed a
+          # single isoform id under finding 28's set-order divergence. That
+          # divergence is gone --- `crate::pyset` models CPython's set exactly,
+          # so the ids agree too. Do not raise this number without a PORTING.md
           # entry justifying it.
           python bench/compare_end_to_end.py \
               --fastq-folder bench/corpus/sirv_small \
-              --workdir "$RUNNER_TEMP/e2e4" --limit 1 --max-disagreeing 1 \
+              --workdir "$RUNNER_TEMP/e2e4" --limit 1 --max-disagreeing 0 \
               --extra --max_seqs 25
           # The other entry point. isONform_parallel fans out over the folder,
           # then reads every cluster back and concatenates it --- code that the

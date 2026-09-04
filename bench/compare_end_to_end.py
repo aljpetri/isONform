@@ -125,8 +125,15 @@ def port_env(args):
     env = dict(os.environ)
     if args.no_bug_compat:
         env.pop("ISONFORM_BUG_COMPAT", None)
+        env.pop("ISONFORM_FAITHFUL", None)
     else:
         env["ISONFORM_BUG_COMPAT"] = "all"
+        # The port's *default* is no longer reference semantics: it runs WFA2
+        # and the accepted optimisations (`--faithful` / PORTING.md finding 55).
+        # Reference semantics are what this script exists to compare, so ask
+        # for them explicitly rather than diffing two programs that are meant
+        # to differ.
+        env["ISONFORM_FAITHFUL"] = "1"
     # Finding 44 is a deliberate *method* deviation, not a bug fix, so
     # ISONFORM_BUG_COMPAT does not cover it: the port rebuilds each group's
     # consensus once at the end instead of once per merge, which changes both the

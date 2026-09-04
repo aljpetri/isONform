@@ -2215,6 +2215,25 @@ byte-identical to python, destructive mode byte-identical to non-destructive, an
 after all three (26/26 `corrected_reads.fastq` still in place). `bench/evaluate.sh` no longer copies
 the corpus for the port's arms --- only for python's, which still consumes what it is given.
 
+### Finding 58 --- the differential CI was diffing two programs that are meant to differ
+
+`rust.yml`'s `equivalence` job compares the port against the live Python reference. It was written
+when the port's default *was* reference semantics. It no longer is: the default runs WFA2 and the
+accepted optimisations (finding 55). Every differential step was therefore comparing the optimised
+port against the reference and calling the intended difference a failure --- the isoform oracle
+reported 2/2 cases differing in merging, and both `--entry parallel` comparisons differed on 5 of 9
+files. Reference semantics are what that job exists to check, so it now sets `ISONFORM_FAITHFUL: '1'`
+at the job level; `bench/compare_end_to_end.py` pins the same thing in `port_env` so a hand-run of the
+script is right too. The `build` job's `cargo test` deliberately keeps the default.
+
+With that pinned, every gate passes and one of them tightens: the four-batch comparison allowed one
+disagreeing cluster for finding 28's set-order divergence, and `crate::pyset` has removed it, so the
+allowance drops to zero.
+
+Worth naming as a method point rather than a bug: a differential harness is only as good as the
+question it asks, and changing the default changed the question without changing the harness. The
+gate stayed green in `cargo test` the whole time, which is why nothing flagged it.
+
 ## Method
 
 Carried over from the isONcorrect port. The full version, with the measurements behind each point, is
