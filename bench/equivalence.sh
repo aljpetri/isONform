@@ -250,7 +250,7 @@ cli_stdout_case() {
 layer_cli() {
   echo "== cli =="
 
-  # --version: argparse prints "%(prog)s 0.3.9"; clap must match exactly.
+  # --version: argparse prints "%(prog)s <version>"; clap must match exactly.
   # Compared on stdout by cli_case's `accepted`? No — argparse exits 0 here, so
   # this needs its own shape.
   local v_py v_rs

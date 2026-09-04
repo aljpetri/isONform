@@ -153,7 +153,7 @@ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
 name = "isonform"
-version = "0.3.9"
+version = "0.4.0"
 dependencies = [
  "biodiff-wfa2-sys",
  "block-aligner",
