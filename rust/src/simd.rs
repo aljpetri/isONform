@@ -122,7 +122,7 @@ fn nuc_matrix_with_parasail_catchall(
 ) -> block_aligner::scores::NucMatrix {
     use block_aligner::scores::{Matrix, NucMatrix};
     let mut m = NucMatrix::new_simple(match_score, mismatch);
-    for b in [b'A', b'T', b'C', b'G', b'N'] {
+    for b in *b"ATCGN" {
         m.set(b'N', b, 0);
     }
     m

@@ -2234,6 +2234,33 @@ Worth naming as a method point rather than a bug: a differential harness is only
 question it asks, and changing the default changed the question without changing the harness. The
 gate stayed green in `cargo test` the whole time, which is why nothing flagged it.
 
+### Finding 59 --- two gates that only a different machine could fail
+
+The first CI run of the port found two things no amount of local checking would have.
+
+**A clippy lint that did not exist yet.** `rust.yml` uses `dtolnay/rust-toolchain@stable`, which
+floats. The development machine was on 1.93; CI resolved 1.98, which added `byte_char_slices`, and
+`simd.rs:125`'s `[b'A', b'T', b'C', b'G', b'N']` is exactly what it fires on. Warnings-as-errors and
+a floating toolchain together mean a green branch can go red without a commit --- that is the price
+of the policy, and it is the right way round: a new lint is worth knowing about the day it lands.
+Fixed by writing `*b"ATCGN"`.
+
+**A filename whose case only matters on Linux.** `compare_end_to_end.py` looked for
+`rust/target/release/isonform_parallel`; the cargo bin is `isONform_parallel`. macOS is
+case-insensitive by default, so the wrong spelling resolved on every machine it had ever been run
+on, and the step failed the first time it met an ext4 filesystem. `bench/evaluate.sh` carries a
+comment about this exact trap and the python script still walked into it. Fixed, and the script now
+checks the exact-cased name against `os.listdir` so the mistake fails on macOS too rather than
+waiting for CI.
+
+Both are the same shape as the argument for the four-platform matrix in the first place (method
+point 7): a check that runs on one machine measures that machine.
+
+A third thing turned up alongside them: the `macos-13` runner never started. GitHub has retired that
+image, and a job targeting a retired runner *queues indefinitely* rather than failing --- so the
+matrix looked like it had four platforms and had three, silently. Moved to `macos-15-intel`, the
+supported Intel image.
+
 ## Method
 
 Carried over from the isONcorrect port. The full version, with the measurements behind each point, is

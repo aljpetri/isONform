@@ -163,7 +163,16 @@ def compare_parallel(args, root):
         "--fastq_folder", os.path.abspath(args.fastq_folder),
         "--k", str(args.k), "--w", str(args.w),
     ] + list(args.extra)
-    port_exe = os.path.join(root, os.path.dirname(args.port), "isonform_parallel")
+    # `isONform_parallel`, not `isonform_parallel`: that is the cargo bin name
+    # (rust/Cargo.toml), and only a case-insensitive filesystem lets the wrong
+    # one resolve. macOS is case-insensitive by default, so the lowercase spelling
+    # worked everywhere it was tried and failed on Linux CI. Same trap as
+    # bench/evaluate.sh:229.
+    port_exe = os.path.join(root, os.path.dirname(args.port), "isONform_parallel")
+    # ...and check the *exact* case is on disk, or this only fails on Linux.
+    d, base = os.path.split(port_exe)
+    if base not in os.listdir(d):
+        sys.exit(f"error: {base} not in {d} --- run cargo build --release")
 
     r1 = subprocess.run(
         [args.python, os.path.join(root, "isONform_parallel"), *common,
