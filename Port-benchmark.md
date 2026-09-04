@@ -41,9 +41,27 @@ no poly-A.
 | `sirv_real_deep` | the same, undownsampled | 99 631 | 26 | as above; deepest cluster 46 437 reads |
 | `droso` | real ONT Drosophila cDNA | 20 000 | 561 | genome + FlyBase annotation |
 | `droso_deep` | the same, 1M reads | 1 000 000 | 9 697 | as above |
+| `pacbio_sirv` | PacBio HiFi SIRV spike-in | 17 550 | 44 | SIRV set 4, 83 transcripts |
+| `pacbio_droso` | PacBio HiFi Drosophila cDNA | 455 226 | 99 | genome + FlyBase annotation |
 
-Both SIRV corpora and both Drosophila corpora went through the real upstream
-pipeline (isONclust, then isONcorrect).
+The five ONT corpora went through the real upstream pipeline: isONclust, then
+isONcorrect.
+
+The two PacBio corpora went through **isONclust only** --- `isON_pipeline.sh
+--mode pacbio` skips correction and points isONform at the clustering output
+directly.
+
+* `pacbio_sirv` is the SIRV spike-in of ENCODE `ENCSR507JOF` (WTC11, Sequel II,
+  LRGASP), file `ENCFF370NFS` (1 714 957 reads). SIRV reads were selected by
+  primary `minimap2 -x map-hifi` alignment to the reference below: 17 633 reads,
+  mean 1 783 bp, longest 12 033 bp. Clustered with `isONclust --isoseq --N 5`.
+* The scoring reference is **SIRV set 4**: the 68 short transcripts plus the 15
+  long SIRVs (3 997--12 029 bp) from ENCODE `ENCSR759PLA`. The seven `SIRV1`..
+  `SIRV7` entries in that file are genomic loci, not transcripts, and are
+  excluded.
+* `pacbio_droso` is SRA `SRR34344449` (D. melanogaster testis, Iso-Seq,
+  1 420 172 reads), clustered the same way, restricted to the 99 clusters with
+  >= 2 000 reads.
 
 ## What the columns mean
 
@@ -83,13 +101,15 @@ in:
 | `sirv_real_deep` | 1 817.3s · 1 896 MB | 1 421.8s (1.3x) · 2 081 MB | **199.5s (9.1x)** · 1 598 MB |
 | `droso` | 51.5s · 385 MB | 26.0s (2.0x) · 259 MB | **10.9s (4.7x)** · 482 MB |
 | `droso_deep` | 11 440.4s · 2 733 MB | 6 187.5s (1.8x) · 1 666 MB | **1 312.6s (8.7x)** · 1 810 MB |
+| `pacbio_sirv` | 7 108.0s · 8 316 MB | 3 002.2s (2.4x) · 4 968 MB | **141.4s (50.3x)** · 3 957 MB |
+| `pacbio_droso` | not run | 27 029.9s · 4 505 MB | **1 264.9s (21.4x*)** · 3 515 MB |
 
-The default is **4.7--11.2x faster than python**; the faithful configuration,
-which gives up the faster aligner in exchange for reproducing the reference, is
-1.3--3.5x. Peak memory is comparable to python throughout and lower on the two
-largest corpora.
+* `pacbio_droso` has no Python benchmark: Python took 7 108s on `pacbio_sirv`, a corpus
+26x smaller, so the run was not attempted. The 21.4x on that row is the default
+against faithful, not against python.
 
-## Accuracy --- SIRV
+
+## Accuracy --- simulated SIRV
 
 Of the 68 reference transcripts.
 
@@ -105,7 +125,7 @@ Of the 68 reference transcripts.
 | | faithful | 57 | 625 | 515 | 0.831 | 0.903 | 9.04 | 0.9712 |
 | | **default** | **61** | 626 | 516 | **0.859** | **0.935** | **8.46** | **0.9739** |
 
-### Real SIRV by read depth
+### Real ONT SIRV by read depth
 
 The same real ONT SIRV library subsampled to six depths, each built through the
 full upstream pipeline. This is where the effect of depth on the WFA2 default is
@@ -137,7 +157,7 @@ The simulated corpus has no depth series: its source is a single 10 000-read
 simulated library, so 10 000 is the only depth available without regenerating the
 simulation.
 
-## Accuracy --- Drosophila
+## Accuracy --- ONT Drosophila
 
 Scored against the genome by spliced alignment, and into SQANTI-style structural
 categories against FlyBase. `FSM` is full splice match: the isoform's intron chain
@@ -156,13 +176,63 @@ is identical to an annotated transcript's.
 transcripts, so it is the Drosophila analogue of SIRV's `TP`, while `FSM` counts
 isoform instances and rises with redundancy.
 
+## Accuracy --- PacBio SIRV
+
+83 reference transcripts: 68 short (191--2 528 bp) and 15 long (3 997--12 029 bp).
+Poly-A trimmed, as everywhere above.
+
+| | TP | called | matching | strict F1 | lenient F1 | redund | identity | len.ratio |
+|---|---|---|---|---|---|---|---|---|
+| python | 69 | 109 | 80 | 0.780 | 0.847 | 1.16 | 0.9921 | 1.006 |
+| faithful | 69 | 109 | 80 | 0.780 | 0.847 | 1.16 | 0.9921 | 1.006 |
+| default | 66 | 114 | 82 | 0.755 | 0.826 | 1.24 | **0.9925** | **1.004** |
+
+`cmp` reports the faithful output byte-identical to python's.
+
+### Short and long SIRVs separately, default
+
+| class | count | recovered |
+|---|---|---|
+| short (191--2 528 bp) | 68 | 48 |
+| long (3 997--12 029 bp) | 15 | 11 |
+
+Read coverage of the four long SIRVs not recovered, against three that were:
+
+| transcript | length | reads | reads >= 90% of length | bases cov >= 1 | bases cov >= 5 | median depth | recovered |
+|---|---|---|---|---|---|---|---|
+| SIRV4002 | 3 999 | 739 | 666 | 100% | 100% | 705 | no |
+| SIRV4001 | 3 997 | 296 | 261 | 100% | 100% | 279 | yes |
+| SIRV10002 | 10 001 | 34 | 3 | 100% | 90.1% | 7 | no |
+| SIRV10001 | 9 941 | 115 | 19 | 100% | 100% | 34 | yes |
+| SIRV12001 | 12 029 | 37 | 0 | 100% | 55.7% | 6 | no |
+| SIRV12002 | 11 999 | 78 | 0 | 69.2% | 49.0% | 4 | no |
+| SIRV12003 | 12 000 | 99 | 2 | 100% | 89.1% | 24 | yes |
+
+SIRV4002, the one with full coverage, aligns to its reference as `3I 3998= 1X
+303I` --- 3 998 of 3 999 bases matched, one substitution, no internal indels, and
+a 303-base trailing run that is 301 A's. Under `--faithful` the same isoform is
+4 094 bp with a 92-base tail, 90% A. Longest isoforms emitted: 12 023, 9 982,
+9 955, 8 081, 8 016, 8 014 bp.
+
+## Accuracy --- PacBio Drosophila
+
+455 226 reads in 99 clusters, scored against the genome and FlyBase.
+
+| | called | FSM | FSM tx | ISM | NIC | NNC | genic | canonical | err.med | aln.frac | genes |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| faithful | 1 386 | 913 (66%) | 238 | 117 | 69 | 227 | 56 | **0.981** | 0.0041 | 0.999 | 166 |
+| default | 1 428 | **934** (65%) | **240** | 116 | 69 | 241 | 64 | 0.979 | 0.0041 | 0.999 | 167 |
+
+`intron_retention` 145 faithful / 147 default; `mono_exon` 282 / 286.
+Median error rate is 0.0041 here against 0.013--0.015 on the ONT corpora.
+
 ## Reading it
 
 **The faithful configuration reproduces the reference.** On every corpus but the
 largest it is byte-identical --- `cmp` reports identical `transcriptome.fasta` ---
 and every metric above matches to the last digit.
 
-**One exception, and it is recorded rather than smoothed over.** On `droso_deep`
+**One exception:** On `droso_deep`
 the faithful port emits **13 313 isoforms against python's 13 312**, differing in
 the deepest cluster's batch 8 (`0_8_103` against `0_8_71`). Every scored metric is
 identical --- same FSM, same categories, same chains --- so this is one extra
