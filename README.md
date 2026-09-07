@@ -29,12 +29,12 @@ port is checked against; see [INSTALL-python.md](INSTALL-python.md).
 
 ### Rust-port versions
 
-By default the Rust port uses the WFA2 aligner: **4–10×** faster than the Python 
+By default the Rust port uses the WFA2 aligner: **5–11×** faster than the Python 
 implementation on ONT data and **~50×** on PacBio HiFi, at comparable accuracy, 
 though it does not produce identical output.
 
 The `--faithful` parameter reproduces the python implementation byte for byte, at
-about **3×** the Python implementation. We recommend using the port in default
+about **2–3×** the Python implementation. We recommend using the port in default
 mode (no `--faithful` flag).
 
 A third aligner is available: `ISONFORM_WFA2=0` uses parasail's own C library
