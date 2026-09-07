@@ -232,6 +232,38 @@ fn subst(sc: Scoring, a: u8, b: u8) -> i32 {
     }
 }
 
+/// Exact semi-global alignment, through whichever implementation of it is
+/// built in.
+///
+/// Both are exact and both produce the same score and CIGAR --- the difference
+/// is that [`crate::parasail_ffi`] links parasail's own C library instead of
+/// reimplementing it, and is several times faster for it. This is the entry
+/// point every caller that wants *reference semantics* should use;
+/// [`semiglobal`] below stays available for the oracles, which have to test the
+/// scalar code itself rather than whatever is currently fastest.
+///
+/// `ISONFORM_PARASAIL_FFI=0` forces the scalar path in a build that has both,
+/// which is what makes all three aligner backends selectable at run time.
+pub fn semiglobal_exact(s1: &[u8], s2: &[u8], sc: Scoring) -> Alignment {
+    #[cfg(feature = "parasail-ffi")]
+    if ffi_enabled() {
+        return crate::parasail_ffi::semiglobal(s1, s2, sc);
+    }
+    semiglobal(s1, s2, sc)
+}
+
+/// Whether [`semiglobal_exact`] routes to the linked C library. Read once.
+#[cfg(feature = "parasail-ffi")]
+pub fn ffi_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| {
+        !matches!(
+            std::env::var("ISONFORM_PARASAIL_FFI").ok().as_deref(),
+            Some("0") | Some("off")
+        )
+    })
+}
+
 /// Align `s1` against `s2`, reproducing `parasail.sg_trace_scan_16`.
 ///
 /// `O(n*m)` time and memory. The guard runs this once per read against a

@@ -214,7 +214,7 @@ impl IsoformEngine for SpoaParasailMerge {
         let aln = crate::wfa::enabled_merge()
             .then(|| crate::wfa::semiglobal(s1, s2, sc))
             .flatten()
-            .unwrap_or_else(|| crate::parasail::semiglobal(s1, s2, sc));
+            .unwrap_or_else(|| crate::parasail::semiglobal_exact(s1, s2, sc));
         let (a, b) = crate::align::ops_to_seq(&aln.ops, s1, s2).unwrap_or_default();
         add(&ALIGN_NS, t.elapsed().as_nanos() as u64);
         add(&ALIGN_CALLS, 1);
@@ -701,7 +701,7 @@ impl IsoformEngine for ParasailMergeOnly {
         unreachable!("confirmation never builds a consensus")
     }
     fn align_merge(&mut self, s1: &[u8], s2: &[u8]) -> (Vec<CigarOp>, Vec<u8>, Vec<u8>) {
-        let aln = crate::parasail::semiglobal(s1, s2, crate::parasail::Scoring::MERGE);
+        let aln = crate::parasail::semiglobal_exact(s1, s2, crate::parasail::Scoring::MERGE);
         let (a, b) = crate::align::ops_to_seq(&aln.ops, s1, s2).unwrap_or_default();
         (aln.ops, a, b)
     }

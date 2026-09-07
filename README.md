@@ -6,7 +6,8 @@
 
 ## Installation <a name="installation"></a>
 
-It needs a Rust toolchain ([rustup.rs](https://rustup.rs)).
+It needs a Rust toolchain ([rustup.rs](https://rustup.rs)), plus `cmake` and
+`libclang` to build the bundled C aligners.
 
 ```
 git clone https://github.com/aljpetri/isONform.git
@@ -18,18 +19,28 @@ That produces `target/release/isONform_parallel` and `target/release/main`. Put
 them on your `PATH` and run them as shown under
 [Running isONform](#Running).
 
+If `cmake` or `libclang` is not available, `cargo build --release
+--no-default-features` builds without linking parasail's C library and falls
+back to a pure-Rust implementation of it. Output is identical either way; the
+fallback is slower.
+
 The original python implementation is still available and is the reference this
 port is checked against; see [INSTALL-python.md](INSTALL-python.md).
 
 ### Rust-port versions
 
-By default the Rust port uses the WFA2 aligner: **5–11×** faster than the Python 
+By default the Rust port uses the WFA2 aligner: **4–10×** faster than the Python 
 implementation on ONT data and **~50×** on PacBio HiFi, at comparable accuracy, 
 though it does not produce identical output.
 
-The `--faithful` parameter reproduces the python implementation byte for byte, but
-is only about **~2x faster than Python** on shallow data and about the
-same speed on the deepest clusters. We recommend using the port in default mode (no `--faithful` flag). 
+The `--faithful` parameter reproduces the python implementation byte for byte, at
+about **3×** the Python implementation. We recommend using the port in default
+mode (no `--faithful` flag).
+
+A third aligner is available: `ISONFORM_WFA2=0` uses parasail's own C library
+instead of WFA2. On ONT data it is faster than the default, uses less memory and
+is closer to the Python implementation's output; on PacBio HiFi it is slower and
+needs about twice the memory. See [Port-benchmark.md](Port-benchmark.md).
 
 Full comparison against the python implementation --- accuracy,
 redundancy, runtime and peak memory on five corpora from 10 000 to 1 000 000 reads

@@ -82,6 +82,18 @@ jobs:
       - name: Clippy
         run: cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
 
+      # The pure-Rust build, which is what a machine without cmake or libclang
+      # gets. `parasail-ffi` is on by default and links parasail's C library;
+      # dropping it falls back to the scalar `parasail.rs`, which is equally
+      # exact. Both paths have to keep compiling, or "--no-default-features"
+      # stops being an answer to a failed build the day someone needs it.
+      - name: Build and test without the linked C library
+        run: |
+          cargo build --release --manifest-path rust/Cargo.toml --no-default-features
+          cargo test --manifest-path rust/Cargo.toml --no-default-features
+          cargo clippy --manifest-path rust/Cargo.toml --all-targets \
+              --no-default-features -- -D warnings
+
       - name: Formatting
         run: cargo fmt --manifest-path rust/Cargo.toml --check
 

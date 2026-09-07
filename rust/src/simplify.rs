@@ -934,7 +934,7 @@ impl Consensus for SpoaParasail {
                 .then(|| crate::wfa::semiglobal(s1, s2, crate::parasail::Scoring::BUBBLE))
                 .flatten()
                 .unwrap_or_else(|| {
-                    crate::parasail::semiglobal(s1, s2, crate::parasail::Scoring::BUBBLE)
+                    crate::parasail::semiglobal_exact(s1, s2, crate::parasail::Scoring::BUBBLE)
                 })
         };
         a.ops.iter().map(|&(len, op)| (len as u32, op)).collect()

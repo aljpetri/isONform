@@ -2261,6 +2261,83 @@ image, and a job targeting a retired runner *queues indefinitely* rather than fa
 matrix looked like it had four platforms and had three, silently. Moved to `macos-15-intel`, the
 supported Intel image.
 
+### Finding 60 --- linking parasail beats reimplementing it, but does not replace WFA2
+
+Finding 55 chose WFA2 as the default aligner: faster than the scalar `parasail.rs`, at the cost of
+being a different algorithm and losing transcripts. A third option was never measured: **link
+parasail's own C library**. The Python `parasail` package is a binding around it, so
+`sg_trace_scan_16` through FFI and `parasail.sg_trace_scan_16` at `modules/consensus.py:57` are the
+same function on the same inputs. It cannot disagree with the reference, because it *is* the
+reference's implementation. The isONclust port found this first; `rust/src/parasail_ffi.rs` is
+carried across from it, including the `sg_trace_scan_32` saturation fallback the reference also has
+and a `parasail_matrix_t` cache per (match, mismatch) pair --- two entries here, where isONclust
+needs one.
+
+**Per alignment it wins outright.** Finding 55 measured on `bench/corpus/sirv_small`, whose
+consensuses are ~200 bp; that was the only corpus still on disk, and the length turns out to matter.
+Re-recorded at realistic length with `bench/dump_reference.py --record-parasail`, best of 3--5 passes
+through `rust/tests/aligner_speed.rs`:
+
+| corpus / site | n | maxlen median | scalar | WFA2 | parasail C | WFA2 cigar==ref | C cigar==ref |
+|---|---|---|---|---|---|---|---|
+| sirv_real, merge | 10 246 | 805 | 1.00x | 2.43x | **7.30x** | 23.8% | **100%** |
+| sirv_real, bubble | 10 515 | 554 | 1.00x | **0.61x** | **6.92x** | 80.7% | **100%** |
+| sirv_real, both | 21 002 | 565 | 1.00x | 1.04x | **7.00x** | 67.4% | **100%** |
+| droso, both | 16 939 | 412 | 1.00x | 2.89x | **7.24x** | 30.6% | **100%** |
+
+Two things there were not true at 200 bp: WFA2's merge-site advantage falls from 4.5x to 2.4x, and at
+the bubble site **WFA2 is slower than the scalar port it replaced**. WFA2 is O(n·s) in edit distance,
+so it degrades where sequences get longer and stay dissimilar; finding 55's 4.5x measured short
+sequences, not this pipeline.
+
+**Gated on verdicts, not CIGARs** (finding 41): what ships is two booleans, whether two consensuses
+merge and whether a bubble pops. `parasail_ffi::oracle` runs both through `align_to_merge` and
+`parse_cigar_diversity` for every recorded call, scalar against linked: **350 460 agree, 0 disagree**
+on each, with score and CIGAR identical on 100%.
+
+**End to end it is not the same story.** Three corpora, `--t 8`, back-to-back runs on an otherwise
+idle machine (the first droso and PacBio numbers taken under contention were wrong by 1.5x and 7x
+respectively --- worth saying, because a 7x that turns out to be a background job is exactly the
+result a conclusion should not rest on):
+
+| corpus | python | faithful, scalar | **faithful, linked** | default (WFA2) | **linked, WFA2 off** |
+|---|---|---|---|---|---|
+| `sirv_real` 10k | 236.3 s / 108 | 187.9 s / 108 | **80.4 s** / 108 | 47.2 s / 110 | **23.1 s** / 112 |
+| `droso` 20k | 51.5 s / 504 | 26.0 s / 504 | **25.5 s** / 504 | 13.8 s / 512 | **13.2 s** / 517 |
+| `pacbio_sirv` 17.5k | 7108 s / 109 | 3002 s / 109 | **2214 s** / 109 | 137.5 s / 114 | **164.4 s** / 115 |
+
+Accuracy moves toward the reference everywhere it moves at all: `sirv_real` strict F1 0.796 against
+WFA2's 0.778 (python 0.822); `pacbio_sirv` 0.762 against 0.755 (python 0.780), 67 of 83 transcripts
+against 66; `droso` FSM per annotated transcript 43.3% against 41.2%, on 414 distinct FSM
+transcripts against WFA2's 418.
+
+**Peak RSS is where it loses.** parasail is O(n·m) in memory as well as time, and PacBio SIRVs run to
+12 kb:
+
+| corpus | WFA2 | linked parasail |
+|---|---|---|
+| `sirv_real` | 585 MB | **484 MB** |
+| `droso` | 482 MB | **292 MB** |
+| `pacbio_sirv` | 3954 MB | **8262 MB** |
+
+**So the default does not change.** On ONT data linking parasail is faster, lighter and more accurate
+than WFA2, and it would be the obvious default if ONT were all there was. On PacBio HiFi it is 1.2x
+slower and takes 2.1x the memory, and 8.3 GB for one worker on a 17.5k-read corpus is not something
+to impose on anyone running `pacbio_droso`'s 455k reads. WFA2's O(n·s) is genuinely the right
+algorithm for near-error-free reads. Both stay selectable --- `ISONFORM_WFA2=0` picks the linked
+library on ONT data, where it is simply better --- and the default stays where finding 55 put it.
+
+**What does change is `--faithful`.** The exact path now routes through the linked library instead of
+the scalar reimplementation, which is the same function and so cannot alter output: byte-identity
+re-verified on all four end-to-end comparisons, and again with `ISONFORM_PARASAIL_FFI=0` forcing the
+scalar path. Exact mode goes from 1.26x the reference to **2.94x** on `sirv_real` and from 2.37x to
+**3.21x** on `pacbio_sirv`, for nothing.
+
+**The build cost, and why the pure-Rust path stays.** `libparasail-sys` builds parasail from source
+and needs `cmake` and `libclang`. `--no-default-features` drops it and every call site falls back to
+`parasail.rs`, which is equally exact and needs nothing; CI builds, tests and lints both
+configurations. The choice is build complexity against speed, not correctness.
+
 ## Method
 
 Carried over from the isONcorrect port. The full version, with the measurements behind each point, is
