@@ -18,6 +18,10 @@ only wall clock varies.
 
 **port (faithful)** is `--faithful`: the reference reproduced exactly.
 **port (default)** is the shipped configuration: faithful plus the WFA2 aligner.
+**port (parasail-C)** is `ISONFORM_WFA2=0`: the default configuration with
+parasail's own C library in place of WFA2 --- see *The third aligner* below.
+The faithful and parasail-C rows in *Speed and memory* predate that backend and
+are the pure-Rust reimplementation; *The third aligner* re-measures both.
 
 **Poly-A tails are trimmed from isoforms before matching.** The SIRV reference
 transcripts are annotated without one; cDNA has one. Untrimmed, those bases are
@@ -107,6 +111,59 @@ in:
 * `pacbio_droso` has no Python benchmark: Python took 7 108s on `pacbio_sirv`, a corpus
 26x smaller, so the run was not attempted. The 21.4x on that row is the default
 against faithful, not against python.
+
+
+## The third aligner
+
+isONform can use any of three aligners at its two alignment sites, the consensus
+merge (`IsoformGeneration.py:381`) and bubble popping (`SimplifyGraph.py:657`):
+
+| | selected by | exact? |
+|---|---|---|
+| WFA2 | default | no --- reproduces the reference's CIGAR on 24--81% of calls |
+| parasail, C library | `ISONFORM_WFA2=0` | yes --- it is the library the reference calls |
+| parasail, pure Rust | `--no-default-features` at build time | yes |
+
+The two parasail backends produce identical output; the C library is the same
+code the Python `parasail` package binds, so byte-identity with the reference is
+unaffected by which is built.
+
+**Per alignment**, replaying real recorded `parasail_alignment` calls
+(`rust/tests/aligner_speed.rs`, best of 3--5 passes):
+
+| corpus / site | calls | maxlen median | scalar | WFA2 | parasail C |
+|---|---|---|---|---|---|
+| `sirv_real`, merge | 10 246 | 805 | 1.00x | 2.43x | **7.30x** |
+| `sirv_real`, bubble | 10 515 | 554 | 1.00x | 0.61x | **6.92x** |
+| `droso`, both | 16 939 | 412 | 1.00x | 2.89x | **7.24x** |
+
+**End to end**, `--t 8`, back-to-back runs on an otherwise idle machine:
+
+| corpus | python | faithful (scalar) | faithful (linked) | default (WFA2) | parasail-C |
+|---|---|---|---|---|---|
+| `sirv_real` | 236.3s · 1 328 MB | 187.9s · 938 MB | **80.4s** · 1 026 MB | 47.2s · 585 MB | **23.1s · 484 MB** |
+| `droso` | 51.5s · 385 MB | 26.0s · 259 MB | **25.5s** · 259 MB | 13.8s · 482 MB | **13.2s · 292 MB** |
+| `pacbio_sirv` | 7 108s · 8 316 MB | 3 002s · 4 968 MB | **2 214s** · 12 731 MB | **137.5s · 3 954 MB** | 164.4s · 8 262 MB |
+
+Isoforms called: `sirv_real` 108 / 108 / 108 / 110 / 112; `droso` 504 / 504 / 504
+/ 512 / 517; `pacbio_sirv` 109 / 109 / 109 / 114 / 115.
+
+**Accuracy** moves toward the Python implementation wherever it moves at all:
+
+| corpus | metric | python | default (WFA2) | parasail-C |
+|---|---|---|---|---|
+| `sirv_real` | strict F1 | 0.822 | 0.778 | **0.796** |
+| `pacbio_sirv` | strict F1 | 0.780 | 0.755 | **0.762** |
+| `pacbio_sirv` | transcripts recovered / 83 | 69 | 66 | **67** |
+| `droso` | FSM per annotated transcript | 42.6% | 41.2% | **43.3%** |
+| `droso` | distinct FSM transcripts | 409 | **418** | 414 |
+
+**Which to use.** On ONT data parasail-C is faster than the default, uses less
+memory, and is closer to the Python implementation's output. On PacBio HiFi it is
+1.2x slower and needs 2.1x the memory --- parasail is O(n·m) in both, and PacBio
+SIRVs run to 12 kb, where WFA2's O(n·s) in edit distance is the right algorithm
+for near-error-free reads. That is why WFA2 remains the default.
+
 
 
 ## Accuracy --- simulated SIRV
@@ -265,4 +322,19 @@ bench/evaluate.sh score <corpus> <tag>...
 ```
 
 `--faithful` on the Rust binaries selects the reproduce-the-reference
-configuration; without it, the default above.
+configuration; without it, the default above. `ISONFORM_WFA2=0` in the
+environment selects parasail's C library instead of WFA2.
+
+The per-alignment table in *The third aligner* is reproduced by recording real
+calls and replaying them:
+
+```bash
+python bench/dump_reference.py --fastq-folder <flattened corpus> \
+       --outdir /tmp/dump --record-parasail
+PARASAIL_CASES=/tmp/dump/parasail_cases.tsv \
+       cargo test --release --test aligner_speed -- --nocapture
+```
+
+Use a corpus of *corrected* reads: the sequences being aligned are consensuses,
+and their length is what decides the ratio. `bench/corpus/sirv_small` yields
+~200 bp and ranks the backends differently from anything realistic.

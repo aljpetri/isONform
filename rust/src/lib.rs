@@ -23,6 +23,11 @@ pub mod isoforms;
 pub mod minimizers;
 pub mod parallel;
 pub mod parasail;
+/// parasail's C library, linked. Behind the default `parasail-ffi` feature ---
+/// `--no-default-features` drops it and every call site falls back to the exact
+/// scalar `parasail` module above.
+#[cfg(feature = "parasail-ffi")]
+pub mod parasail_ffi;
 pub mod poa;
 pub mod pyset;
 pub mod reads;

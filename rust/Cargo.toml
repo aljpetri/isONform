@@ -12,8 +12,24 @@ description = "De novo construction of isoforms from long-read data"
 repository = "https://github.com/aljpetri/isONform"
 license = "GPL-3.0-only"
 
+[features]
+# parasail's own C library, linked. Exact by construction --- it IS the
+# implementation the reference calls --- and measured 5.6x our scalar parasail
+# port and 4.1x WFA2 on isONform's own recorded merge alignments, where WFA2
+# reproduces the reference CIGAR on 19% of cases and this on 100%. See
+# src/parasail_ffi.rs and PORTING.md finding 60.
+#
+# On by default. `--no-default-features` drops it and falls back to the pure-Rust
+# `parasail.rs`, which is equally exact and needs no cmake or libclang; the
+# choice is build complexity against speed, not correctness.
+default = ["parasail-ffi"]
+parasail-ffi = ["dep:libparasail-sys"]
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+# parasail, linked as a C library rather than reimplemented. Optional: see the
+# `parasail-ffi` feature above. Carried across from the isONclust port.
+libparasail-sys = { version = "0.2", optional = true }
 # WFA2 (wavefront alignment), as a faster stand-in for the semi-global DP at the
 # two hot alignment sites. Measured on 54 884 recorded real calls: 4.5x our
 # parasail overall, and 7.3x in the 80-90%-identity bucket that holds 59% of
