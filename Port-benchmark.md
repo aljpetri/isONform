@@ -20,8 +20,9 @@ only wall clock varies.
 **port (default)** is the shipped configuration: faithful plus the WFA2 aligner.
 **port (parasail-C)** is `ISONFORM_WFA2=0`: the default configuration with
 parasail's own C library in place of WFA2 --- see *The third aligner* below.
-The faithful and parasail-C rows in *Speed and memory* predate that backend and
-are the pure-Rust reimplementation; *The third aligner* re-measures both.
+The `port (faithful)` column in *Speed and memory* below predates that backend
+and is the pure-Rust reimplementation, so it understates faithful mode on every
+row; *The third aligner* re-measures it on the three corpora it was re-run on.
 
 **Poly-A tails are trimmed from isoforms before matching.** The SIRV reference
 transcripts are annotated without one; cDNA has one. Untrimmed, those bases are
@@ -107,6 +108,11 @@ in:
 | `droso_deep` | 11 440.4s · 2 733 MB | 6 187.5s (1.8x) · 1 666 MB | **1 312.6s (8.7x)** · 1 810 MB |
 | `pacbio_sirv` | 7 108.0s · 8 316 MB | 3 002.2s (2.4x) · 4 968 MB | **141.4s (50.3x)** · 3 957 MB |
 | `pacbio_droso` | not run | 27 029.9s · 4 505 MB | **1 264.9s (21.4x*)** · 3 515 MB |
+
+The `port (faithful)` column is the pure-Rust parasail. Linking parasail's C
+library makes that configuration 1.4--2.3x faster again without changing its
+output --- measured on three of these corpora in *The third aligner*; the rest
+of this column has not been re-run.
 
 * `pacbio_droso` has no Python benchmark: Python took 7 108s on `pacbio_sirv`, a corpus
 26x smaller, so the run was not attempted. The 21.4x on that row is the default
