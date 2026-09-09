@@ -1,5 +1,9 @@
 # isONform - Reference-free isoform reconstruction from long read sequencing data
 
+**Doing de novo transcriptome reconstruction?** isONclust, isONcorrect and isONform are one
+workflow — [isONpipe](https://github.com/ksahlin/isONpipe) installs all three and runs them
+with one command.
+
 ### isONform has been re-implemented in Rust (2026-09-04) and is 5-50x faster (see below).
 
 
@@ -69,16 +73,14 @@ Argument names, defaults, validation messages and exit codes match the python
 implementation, so any existing command or script works unchanged. Add
 `--faithful` to reproduce the python output byte for byte.
 
-The full isON-pipeline (isONclust, isONcorrect, isONform) can be found [here](https://github.com/aljpetri/isONform/blob/master/isON_pipeline.sh) and is run via:
+### The full pipeline
+
+[isONpipe](https://github.com/ksahlin/isONpipe) installs isONclust, isONcorrect and isONform and
+runs all three:
 
 ```
-./isON_pipeline.sh --raw_reads </absolute/path/to/raw_reads.fq>  --outfolder <outfolder>  --num_cores <num_cores> --isONform_folder <isONform_folder> --iso_abundance <iso_abundance> --mode <mode>
-```
-(Please note that this requires isONclust [LINK](https://github.com/ksahlin/isONclust) and isONcorrect [LINK](https://github.com/ksahlin/isONcorrect) to be installed in addition to isONform)
-
-To receive more information about the arguments used for the isON_pipeline script:
-```
-./isON_pipeline.sh --help
+isONpipe install
+isONpipe run --reads reads.fq --outfolder out --t 16
 ```
 
 ## Outputs <a name="Outputs"></a>
